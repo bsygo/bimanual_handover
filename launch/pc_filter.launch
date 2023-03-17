@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<launch>
+    <node name="pc_filter" pkg="sensor_filters" type="pointcloud2_filter_chain" output="screen">
+        <rosparam command="load" file="$(find bimanual_handover)/config/pc_filter.yaml" />
+            <remap from="~input" to="pc/pc_cropped" />
+            <remap from="~output" to="pc/pc_filtered" />
+    </node>
+</launch>

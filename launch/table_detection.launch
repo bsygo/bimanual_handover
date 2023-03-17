@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<launch>
+    <arg name="launch_prefix" default="" />
+    <arg name="node_namespace" default="apriltag_table_top_node" />
+    <arg name="camera_name" default="azure_kinect/rgb" />
+    <arg name="camera_frame" default="azure_kinect_rgb_camera_link" />
+    <arg name="image_topic" default="image_raw" />
+    <param name="/use_sim_time" value="true" />
+    <rosparam command="load" file="$(find bimanual_handover)/config/settings.yaml" ns="$(arg node_namespace)" />
+    <rosparam command="load" file="$(find bimanual_handover)/config/tags.yaml" ns="$(arg node_namespace)" />
+    <node pkg="apriltag_ros" type="apriltag_ros_continuous_node" name="$(arg node_namespace)" clear_params="true" output="screen" launch-prefix="$(arg launch_prefix)" >
+        <remap from="image_rect" to="$(arg camera_name)/$(arg image_topic)" />
+        <remap from="camera_info" to="$(arg camera_name)/camera_info" />
+        <param name="camera_frame" type="str" value="$(arg camera_frame)" />
+        <param name="publish_tag_detections_image" type="bool" value="true" />
+    </node>
+    <node pkg="tf" type="static_transform_publisher" name="camera_connector" args="0 0 0 0 0 0 /azure_kinect_rgb_camera_link_urdf /rgb_camera_link 10" />
+</launch>

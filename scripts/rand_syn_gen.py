@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+
+import rospy 
+import numpy as np
+import random
+import bimanual_handover.syn_grasp_gen as sgg
+
+global syn_grasp_gen
+
+def main():
+    success = False
+    count = 0
+    while (not success) and count < 10:
+        try:
+            alphas = np.array([random.gauss(0, 0.5), random.gauss(0, 0.5), random.gauss(0, 0.5)])
+            print(alphas)
+            syn_grasp_gen.move_joint_config(alphas)
+            success = True
+        except Exception as e:
+            print(e)
+            count += 1
+            print(count)
+    print('fin')
+    return
+
+if __name__ == "__main__":
+    global syn_grasp_gen
+    stop = False
+    syn_grasp_gen = sgg.SynGraspGen(display_state = True)
+    while not stop:
+        main()
+        result = input("Please press 'y' if you want to generate a new pose.\n")
+        if not result == 'y':
+            stop = True

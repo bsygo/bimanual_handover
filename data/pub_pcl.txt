@@ -1,2 +1,0 @@
-rosrun pcl_ros pcd_to_pointcloud 1681738029.828498680.pcd 5 _frame_id:="azure_kinect_rgb_camera_link_urdf"
-

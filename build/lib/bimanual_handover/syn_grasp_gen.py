@@ -10,13 +10,16 @@ from moveit_msgs.msg import DisplayRobotState
 class SynGraspGen():
 
     def __init__(self, display_state = False):
-        rospy.init_node('syn_grasp_gen')
+#        rospy.init_node('syn_grasp_gen')
         self.zero_pca_action = np.array([-2, 0, 0])
         self.synergy = hs.HandSynergy()
         self.hand = MoveGroupCommander("right_hand")
         self.display_state = display_state
         self.initial_hand_joints = self.hand.get_current_joint_values()
         self.display_state_pub = rospy.Publisher("synergies_debug", DisplayRobotState, latch = True, queue_size = 1)
+
+    def set_initial_hand_joints(self):
+       self.inital_hand_joints = self.hand.get_current_joint_values() 
 
     def gen_joint_config(self, alphas):
         sh_joints = self.initial_hand_joints # self.hand.get_current_joint_values()

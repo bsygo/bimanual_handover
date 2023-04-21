@@ -26,6 +26,7 @@ def main():
 if __name__ == "__main__":
     global syn_grasp_gen
     stop = False
+    rospy.init_node('rand_syn_gen_node')
     syn_grasp_gen = sgg.SynGraspGen(display_state = True)
     while not stop:
         main()

@@ -10,8 +10,7 @@ from moveit_msgs.msg import DisplayRobotState
 class SynGraspGen():
 
     def __init__(self, display_state = False):
-#        rospy.init_node('syn_grasp_gen')
-        self.zero_pca_action = np.array([-2, 0, 0])
+        self.zero_pca_action = np.array([0, 0, 0]) # np.array([-2, 0, 0])
         self.synergy = hs.HandSynergy()
         self.hand = MoveGroupCommander("right_hand")
         self.display_state = display_state

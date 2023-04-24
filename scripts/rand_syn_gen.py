@@ -12,7 +12,7 @@ def main():
     count = 0
     while (not success) and count < 10:
         try:
-            alphas = np.array([random.gauss(0, 0.5), random.gauss(0, 0.5), random.gauss(0, 0.5)])
+            alphas = np.array([0, -0.57, 0])#np.array([random.gauss(0, 0.5), random.gauss(0, 0.5), random.gauss(0, 0.5), random.gauss(0, 0.5), random.gauss(0, 0.5)])
             print(alphas)
             syn_grasp_gen.move_joint_config(alphas)
             success = True

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import rospy
-from moveit_commander import MoveGroupCommander, roscpp_initialize, roscpp_shutdown
+from moveit_commander import MoveGroupCommander, roscpp_initialize, roscpp_shutdown, PlanningSceneInterface, RobotCommander
 import sensor_msgs.point_cloud2 as pc2
 from sensor_msgs.msg import PointCloud2
 from visualization_msgs.msg import Marker
@@ -9,7 +9,7 @@ from geometry_msgs.msg import PoseStamped, Quaternion
 from tf.transformations import quaternion_from_euler
 import math
 
-global hand
+global hand, psi, robot
 
 def move(pc):
     pub = rospy.Publisher("debug_marker", Marker, latch = True, queue_size = 1)
@@ -23,8 +23,6 @@ def move(pc):
                 max_point[x] = point[x]
             if point[x] < min_point[x]:
                 min_point[x] = point[x]
-    print(min_point)
-    print(max_point)
     marker = Marker()
     marker.header.frame_id = "base_footprint"
     marker.id = 0
@@ -55,16 +53,25 @@ def move(pc):
     hand.set_pose_target(hand_pose)
     hand.go()
     hand.stop()
+    can_pose = hand_pose
+    can_pose.pose.position.y += 0.025
+    can_pose.pose.position.z = min_point[2] + math.dist([max_point[2]], [min_point[2]])/2
+    can_pose.pose.orientation = Quaternion(*quaternion_from_euler(0, 0, 0).tolist())
+    psi.add_cylinder('can', can_pose, math.dist([max_point[2]],[min_point[2]]), math.dist([max_point[0]], [min_point[0]])/2)
+    psi.disable_collision_detections('can', robot.get_link_names("right_fingers"))
+    psi.disable_collision_detections('can', ['rh_ff_biotac_link', 'rh_mf_biotac_link', 'rh_rf_biotac_link', 'rh_lf_biotac_link', 'rh_th_biotac_link', 'rh_ffdistal', 'rh_mfdistal', 'rh_rfdistal', 'rh_lfdistal', 'rh_thdistal'])
 
 def end_moveit():
     roscpp_shutdown()
 
 def main():
-    global hand
+    global hand, psi, robot
     rospy.init_node("pc_mover")
-    rospy.on_shutdown(end_moveit)
     roscpp_initialize("")
+    rospy.on_shutdown(end_moveit)
     hand = MoveGroupCommander("right_arm")
+    psi = PlanningSceneInterface()
+    robot = RobotCommander()
     hand.set_end_effector_link("rh_manipulator")
     rospy.Subscriber("/pc/pc_filtered", PointCloud2, move)
     rospy.spin()

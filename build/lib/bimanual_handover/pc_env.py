@@ -31,13 +31,11 @@ class SimpleEnv(gym.Env):
         observation["last_action"] = action
         observation["finger_joints"] = new_joints
         observation["finger_contacts"] = contact_points
-        if np.sum(contact_points) == 5 and reward != -1:
-            reward = 1.0
+        if np.sum(contact_points) > 0 and reward != -1:
+            reward = np.sum(contact_points, dtype = np.float64)
             terminated = True
         elif reward != -1:
             joint_diff = 0
-            print(new_joints)
-            print(self.last_joints)
             for i in range(len(self.last_joints)):
                 if new_joints[i] >= self.last_joints[i]:
                     joint_diff += math.dist([new_joints[i]], [self.last_joints[i]])
@@ -57,7 +55,7 @@ class SimpleEnv(gym.Env):
         self.pca_con.set_initial_hand_joints()
         contact_points = self.__contact_points()
         observation = {}
-        observation["last_action"] = np.array([0, 0, 0])
+        observation["last_action"] = np.array([0, 0, 0], dtype = np.float64)
         observation["finger_joints"] = np.array(self.fingers.get_current_joint_values())
         observation["finger_contacts"] = contact_points
         self.last_joints = observation["finger_joints"]

@@ -3,7 +3,7 @@
 import gym
 import bimanual_handover.pc_env as pc_env
 import rospy
-from moveit_commander import MoveGroupCommander, roscpp_initialize, roscpp_shutdown
+from moveit_commander import MoveGroupCommander, roscpp_initialize, roscpp_shutdown, PlanningSceneInterface
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
@@ -44,12 +44,13 @@ def main():
     roscpp_initialize('')
     rospy.on_shutdown(end_moveit)
     fingers = MoveGroupCommander('right_fingers')
+    ps = PlanningSceneInterface()
     fingers.set_max_velocity_scaling_factor(1.0)
     fingers.set_max_acceleration_scaling_factor(1.0)
     rospy.loginfo('Waiting for pc.')
     pc = rospy.wait_for_message('pc/pc_filtered', PointCloud2, 20)
     rospy.loginfo('Setting up env.')
-    env = pc_env.SimpleEnv(fingers, pc) 
+    env = pc_env.SimpleEnv(fingers, pc, ps) 
 #    check_env(env)
     rospy.loginfo('Env check completed.')
     model = PPO("MultiInputPolicy", env, verbose = 1)

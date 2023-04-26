@@ -10,7 +10,7 @@ from moveit_msgs.msg import DisplayRobotState
 class SynGraspGen():
 
     def __init__(self, display_state = False):
-        self.zero_pca_action = np.array([0, 0, 0]) # np.array([-2, 0, 0])
+        self.zero_pca_action = np.array([-2, 0, 0])
         self.synergy = hs.HandSynergy()
         self.hand = MoveGroupCommander("right_hand")
         self.display_state = display_state
@@ -24,15 +24,19 @@ class SynGraspGen():
         sh_joints = self.initial_hand_joints # self.hand.get_current_joint_values()
         sh_names = self.hand.get_active_joints()
         joint_names = ['WRJ2', 'WRJ1'] + hs.FINGER_JOINTS_ORDER
-        switched_sh_joints = []
+        order = []
         for name in joint_names:
-            index = sh_names.index('rh_' + name)
-            switched_sh_joints.append(sh_joints[index])
-        switched_sh_joints = np.array(switched_sh_joints)
+            order.append(sh_names.index('rh_' + name))
+        switched_sh_joints = np.array(sh_joints)[order]
         joints = self.synergy.get_shadow_target_joints(switched_sh_joints, np.array([0, 0]), alphas + self.zero_pca_action)
         joint_dict = {}
         for i in range(len(joint_names)):
             joint_dict.update({'rh_' + joint_names[i] : joints[i]})
+
+        # change THJ4 and THJ5
+        temp = joint_dict['rh_THJ4']
+        joint_dict['rh_THJ4'] = joint_dict['rh_THJ5']
+        joint_dict['rh_THJ5'] = temp
 
         if self.display_state:
             robot = RobotCommander()

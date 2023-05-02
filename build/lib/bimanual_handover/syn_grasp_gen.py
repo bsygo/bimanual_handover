@@ -10,7 +10,7 @@ from moveit_msgs.msg import DisplayRobotState
 class SynGraspGen():
 
     def __init__(self, display_state = False):
-        self.zero_pca_action = np.array([-2, 0, 0])
+        self.zero_pca_action = np.array([-1.5, -0.55, 0.25]) # offsets to center the 0 pose
         self.synergy = hs.HandSynergy()
         self.hand = MoveGroupCommander("right_hand")
         self.display_state = display_state

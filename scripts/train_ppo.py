@@ -7,6 +7,7 @@ from moveit_commander import MoveGroupCommander, roscpp_initialize, roscpp_shutd
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.logger import configure
 from sensor_msgs.msg import PointCloud2
 from tqdm.auto import tqdm
 from stable_baselines3.common.callbacks import BaseCallback
@@ -40,6 +41,7 @@ def end_moveit():
     roscpp_shutdown()
 
 def main():
+    test = False
     rospy.init_node('ppo_trainer')
     roscpp_initialize('')
     rospy.on_shutdown(end_moveit)
@@ -51,16 +53,21 @@ def main():
     pc = rospy.wait_for_message('pc/pc_filtered', PointCloud2, 20)
     rospy.loginfo('Setting up env.')
     env = pc_env.SimpleEnv(fingers, pc, ps) 
-#    check_env(env)
-    rospy.loginfo('Env check completed.')
-    model = PPO("MultiInputPolicy", env, verbose = 1)
-    rospy.loginfo('Starting learning.')
-    with ProgressBarManager(2000) as callback:
-        model.learn(total_timesteps=2000, callback=callback)
-    model.save("test_ppo_model")
+    if not test:
+    #    check_env(env)
+        rospy.loginfo('Env check completed.')
+        model = PPO("MultiInputPolicy", env, verbose = 1, tensorboard_log="./test_tensorboard")
+        rospy.loginfo('Starting learning.')
+        logger = configure("./test_tensorboard", ["stdout", "tensorboard"])
+        model.set_logger(logger)
+        with ProgressBarManager(2000) as callback:
+            model.learn(total_timesteps=2000, callback=callback)
+        model.save("test_ppo_model")
+    else:
+        model = PPO.load("../test_ppo_model")
     obs = env.reset()
     action, _states = model.predict(obs)
-    obs, reward, terminated, truncated, info = env.step(action)
+    obs, reward, terminated, info = env.step(action)
     print(reward)
     roscpp_shutdown()
 

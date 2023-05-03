@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import rospy
+import rospkg
 from geometry_msgs.msg import PoseStamped
 from copy import deepcopy
 import gym
@@ -15,13 +16,14 @@ class SimpleEnv(gym.Env):
     def __init__(self, fingers, pc, ps = None):
         super().__init__()
         self.action_space = spaces.Box(low = np.array([-1.5, -0.65, -1.25]), high = np.array([1.5, 0.65, 1.25]), dtype = np.float64) # + decision if finished, limits found through manual testing
-        self.observation_space = spaces.Dict({"last_action": spaces.Box(low = np.array([-1.5, -0.65, -1.25]), high = np.array([1.5, 0.65, 1.25]), dtype = np.float64), "finger_joints": spaces.Box(-1.134, 1.658, shape = (22,), dtype = np.float64), "finger_contacts": spaces.MultiBinary(5)})# (last_action, finger_joints, finger_contacts) 
+        self.observation_space = spaces.Dict({"finger_joints": spaces.Box(-1.134, 1.658, shape = (22,), dtype = np.float64), "finger_contacts": spaces.MultiBinary(5)})# (last_action, finger_joints, finger_contacts) {"last_action": spaces.Box(low = np.array([-1.5, -0.65, -1.25]), high = np.array([1.5, 0.65, 1.25]), dtype = np.float64), 
         self.fingers = fingers
         self.pc = pc
         self.ps = ps
         self.pca_con = sgg.SynGraspGen() 
         self.last_joints = None
         self.debug_pub = rospy.Publisher('env_debug', PoseStamped)
+        self.log_file = open(rospkg.RosPack().get_path('bimanual_handover') + "/logs/log.txt", 'w')
 
     def step(self, action):
         reward = 0
@@ -33,7 +35,7 @@ class SimpleEnv(gym.Env):
         contact_points = self.__contact_points()
         new_joints = np.array(self.fingers.get_current_joint_values())
         observation = {}
-        observation["last_action"] = action
+#        observation["last_action"] = action
         observation["finger_joints"] = new_joints
         observation["finger_contacts"] = contact_points
         if np.sum(contact_points) > 0 and reward != -1:
@@ -51,7 +53,9 @@ class SimpleEnv(gym.Env):
         self.last_joints = observation["finger_joints"]
         truncated = False
         info = {}
+        print(action)
         print(reward)
+        self.log_file.write("{}, {} \n".format(action, reward))
         return observation, reward, terminated, info
 
     def reset(self):
@@ -60,7 +64,7 @@ class SimpleEnv(gym.Env):
         self.pca_con.set_initial_hand_joints()
         contact_points = self.__contact_points()
         observation = {}
-        observation["last_action"] = np.array([0, 0, 0], dtype = np.float64)
+#        observation["last_action"] = np.array([0, 0, 0], dtype = np.float64)
         observation["finger_joints"] = np.array(self.fingers.get_current_joint_values())
         observation["finger_contacts"] = contact_points
         self.last_joints = observation["finger_joints"]
@@ -71,6 +75,7 @@ class SimpleEnv(gym.Env):
         return
 
     def close(self):
+        self.log_file.close()
         return
 
     def __contact_points(self):
@@ -97,16 +102,8 @@ class SimpleEnv(gym.Env):
         contact_points = [0, 0, 0, 0, 0]
         print(r)
         for x in range(len(tip_points)):
-            print(np.linalg.norm(np.cross(tip_points[x] - p1, tip_points[x] - p2))/np.linalg.norm(p2 - p1))
             if np.linalg.norm(np.cross(tip_points[x] - p1, tip_points[x] - p2))/np.linalg.norm(p2 - p1) <= r:
                 contact_points[x] = 1
-        '''
-        points = pc2.read_points(self.pc, field_names = ("x", "y", "z"), skip_nans = True)
-        for point in points:
-            for x in range(len(tip_points)):
-                if math.dist(point, list(tip_points[x])) <= 0.01:
-                    contact_points[x] = 1
-        '''
         contact_points = np.array(contact_points, dtype = np.int8)
         print(contact_points)
         return contact_points

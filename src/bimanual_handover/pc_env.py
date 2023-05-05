@@ -16,11 +16,11 @@ class SimpleEnv(gym.Env):
     def __init__(self, fingers, pc, ps = None):
         super().__init__()
         self.action_space = spaces.Box(low = np.array([-1.5, -0.65, -1.25]), high = np.array([1.5, 0.65, 1.25]), dtype = np.float64) # + decision if finished, limits found through manual testing
-        self.observation_space = spaces.Dict({"finger_joints": spaces.Box(-1.134, 1.658, shape = (22,), dtype = np.float64), "finger_contacts": spaces.MultiBinary(5)})# (last_action, finger_joints, finger_contacts) {"last_action": spaces.Box(low = np.array([-1.5, -0.65, -1.25]), high = np.array([1.5, 0.65, 1.25]), dtype = np.float64), 
+        self.observation_space = spaces.Dict({"finger_joints": spaces.Box(-1.134, 1.658, shape = (22,), dtype = np.float64), "finger_contacts": spaces.MultiBinary(5)})# (last_action, finger_joints, finger_contacts) {"last_action": spaces.Box(low = np.array([-1.5, -0.65, -1.25]), high = np.array([1.5, 0.65, 1.25]), dtype = np.float64),
         self.fingers = fingers
         self.pc = pc
         self.ps = ps
-        self.pca_con = sgg.SynGraspGen() 
+        self.pca_con = sgg.SynGraspGen()
         self.last_joints = None
         self.debug_pub = rospy.Publisher('env_debug', PoseStamped)
         self.log_file = open(rospkg.RosPack().get_path('bimanual_handover') + "/logs/log.txt", 'w')
@@ -40,7 +40,9 @@ class SimpleEnv(gym.Env):
         observation["finger_contacts"] = contact_points
         if np.sum(contact_points) > 0 and reward != -1:
             reward = np.sum(contact_points, dtype = np.float64)
-            terminated = True
+            if np.sum(contact_points) == 5:
+                reward += 1
+                terminated = True
         elif reward != -1:
             joint_diff = 0
             for i in range(len(self.last_joints)):
@@ -59,6 +61,8 @@ class SimpleEnv(gym.Env):
         return observation, reward, terminated, info
 
     def reset(self):
+        self.log_file.close()
+        self.log_file.open(rospkg.RosPack().get_path('bimanual_handover') + "/logs/log.txt", 'a')
         self.fingers.set_named_target('open')
         self.fingers.go()
         self.pca_con.set_initial_hand_joints()

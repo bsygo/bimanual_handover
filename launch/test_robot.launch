@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<launch>
+        <include file="$(find bimanual_handover)/launch/pc_filter.launch"/>
+        <node name="capture_pc" pkg="bimanual_handover" type="capture_pc"/>
+        <node name="test_robot" pkg="bimanual_handover" type="test_robot"/>
+</launch>

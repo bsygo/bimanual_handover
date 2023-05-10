@@ -50,10 +50,10 @@ def main(argv):
         test = False
         rospy.loginfo('No test parameter specified, defaulting to False.')
     if 'MODEL' in args:
-        model_path = args['MODEL']
+        model_path = path + args['MODEL']
     else:
-        model_path = path + "/models/ppo_model"
-        rospy.loginfo('No model parameter specified, defaulting to standard model.')
+        model_path = None #path + "/models/ppo_model"
+        rospy.loginfo('No model parameter specified, defaulting to new model.')
 
     rospy.loginfo('Waiting for pc.')
     pc = rospy.wait_for_message('pc/pc_filtered', PointCloud2, 20)
@@ -66,10 +66,13 @@ def main(argv):
             rospy.loginfo('Env check completed.')
         date = datetime.now()
         str_date = date.strftime("%d_%m_%Y_%H_%M")
-        checkpoint_callback = CheckpointCallback(save_freq = 500, save_path = path + "/models/", name_prefix = "ppo_checkpoint_" + str_date, save_replay_buffer = True, save_vecnormalize = True)
-        model = PPO("MultiInputPolicy", env, n_steps = 20, batch_size = 5, n_epochs = 100, verbose = 1, tensorboard_log=path + "/logs/tensorboard")
+        checkpoint_callback = CheckpointCallback(save_freq = 1000, save_path = path + "/models/checkpoints/", name_prefix = "ppo_checkpoint_" + str_date, save_replay_buffer = True, save_vecnormalize = True)
+        if model_path is None:
+            model = PPO("MultiInputPolicy", env, n_steps = 100, batch_size = 20, n_epochs = 100, verbose = 1, tensorboard_log=path + "/logs/tensorboard")
+        else:
+            model = PPO.load(model_path, env = env)
         rospy.loginfo('Start learning.')
-        model.learn(total_timesteps=2000, progress_bar = True, callback = checkpoint_callback)
+        model.learn(total_timesteps=5000, progress_bar = True, callback = checkpoint_callback, tb_log_name = "PPO_" + str_date, reset_num_timesteps = False)
         rospy.loginfo('Learning complete.')
         model.save(path + "/models/ppo_model_" + str_date)
     else:

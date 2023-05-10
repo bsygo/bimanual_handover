@@ -56,13 +56,13 @@ class SynGraspGen():
 
     def exec_joint_config(self, joint_dict):
         self.hand.set_joint_value_target(joint_dict)
-        self.hand.go()
-        return
+        result = self.hand.go()
+        return result
 
     def move_joint_config(self, alphas = np.array([0, 0, 0])):
         joint_dict = self.gen_joint_config(alphas)
-        self.exec_joint_config(joint_dict)
-        return
+        result = self.exec_joint_config(joint_dict)
+        return result
 
 if __name__ == "__main__":
     syn_grasp_gen = SynGraspGen()

@@ -23,8 +23,8 @@ def republish_pc():
 
 def main():
     global publish, pc
-    rospy.init_node('pc_capture')
-    publish = True
+    rospy.init_node('capture_pc')
+    publish = False
     rospy.Subscriber('change_publish', bool, change_publish, queue_size = 1)
     republish_pc()
 

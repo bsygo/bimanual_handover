@@ -21,6 +21,7 @@ class RobotSetupMover():
         self.debug = debug
         self.pc = None
         self.pc_sub = rospy.Subscriber("/pc/pc_filtered", PointCloud2, self.update_pc)
+        print(self.pc_sub)
 
     def update_pc(self, pc):
         self.pc = pc
@@ -106,6 +107,7 @@ class RobotSetupMover():
         self.arm.go()
 
 if __name__ == "__main__":
+    rospy.init_node('robot_setup_mover')
     mover = RobotSetupMover()
     mover.reset_fingers()
     mover.move_fixed_pose_pc()

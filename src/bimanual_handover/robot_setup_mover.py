@@ -21,7 +21,6 @@ class RobotSetupMover():
         self.debug = debug
         self.pc = None
         self.pc_sub = rospy.Subscriber("/pc/pc_filtered", PointCloud2, self.update_pc)
-        print(self.pc_sub)
 
     def update_pc(self, pc):
         self.pc = pc

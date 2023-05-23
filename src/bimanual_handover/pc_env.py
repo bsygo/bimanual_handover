@@ -27,6 +27,8 @@ class RealEnv(gym.Env):
         self.log_file = open(rospkg.RosPack().get_path('bimanual_handover') + "/logs/log" + self.time + ".txt", 'w')
         self.last_joints = None
         self.reset_timer = 0
+        self.closing_joints = ['rh_FFJ2', 'rh_FFJ3', 'rh_MFJ2', 'rh_MFJ3', 'rh_RFJ2', 'rh_RFJ3', 'rh_LFJ2', 'rh_LFJ3', 'rh_THJ2']
+        self.joint_order = self.fingers.get_active_joints()
 
     def step(self, action):
         reward = 0
@@ -47,11 +49,13 @@ class RealEnv(gym.Env):
         observation['biotac'] = np.concatenate((biotac.tactiles[0].electrodes, biotac.tactiles[1].electrodes, biotac.tactiles[2].electrodes, biotac.tactiles[3].electrodes, biotac.tactiles[4].electrodes))
         observation['ft'] = np.concatenate(([ft.wrench.force.x, ft.wrench.force.y, ft.wrench.force.z], [ft.wrench.torque.x, ft.wrench.torque.y, ft.wrench.torque.z]))
         if reward >= 0:
-            for i in range(len(self.last_joints)):
-                if new_joints[i] >= self.last_joints[i]:
-                    joint_diff += math.dist([new_joints[i]], [self.last_joints[i]])
+            joint_diff = 0
+            for joint in self.closing_joints:
+                index = self.joint_order.index(joint)
+                if new_joints[index] >= self.last_joints[index]:
+                    joint_diff += math.dist([new_joints[index]], [self.last_joints[index]])
                 else:
-                    joint_diff += - math.dist([new_joints[i]], [self.last_joints[i]])
+                    joint_diff += - math.dist([new_joints[index]], [self.last_joints[index]])
             reward = 0.03 * joint_diff
         self.last_joints = np.array(self.fingers.get_current_joint_values())
         self.log_file.write("{}, {} \n".format(action, reward))
@@ -90,7 +94,7 @@ class SimpleEnv(gym.Env):
 
     def __init__(self, fingers, pc, ps = None):
         super().__init__()
-        self.action_space = spaces.Box(low = -1, high = 1, shape = (3,), dtype = np.float64) # + decision if finished, limits found through manual testing
+        self.action_space = spaces.Box(low = -1, high = 1, shape = (5,), dtype = np.float64) # + decision if finished, limits found through manual testing
         self.observation_space = spaces.Dict({"finger_contacts": spaces.MultiBinary(5)})
         # Should instead include force/torque readings from the gripper, the gripper pressure sensor data and the biotac tactile data
 
@@ -109,7 +113,7 @@ class SimpleEnv(gym.Env):
     def step(self, action):
         reward = 0
         terminated = False
-        scaled_action = np.array([action[0] * 1.5, action[1] * 0.65, action[2] * 1.25])
+        scaled_action = np.array([action[0] * 1.5, action[1] * 0.65, action[2] * 1.25, action[3] * 0.95, action[4] * 0.45])
         try:
             result = self.pca_con.move_joint_config(scaled_action)
         except MoveItCommanderException as e:

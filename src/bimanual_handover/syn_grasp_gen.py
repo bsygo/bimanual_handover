@@ -10,8 +10,8 @@ from moveit_msgs.msg import DisplayRobotState
 class SynGraspGen():
 
     def __init__(self, display_state = False):
-        self.zero_pca_action = np.array([-1.5, -0.55, 0.25]) # offsets to center the 0 pose
-        self.synergy = hs.HandSynergy()
+        self.zero_pca_action = np.array([-1.5, -0.55, 0.25, 0.15, 0.05]) # offsets to center the 0 pose
+        self.synergy = hs.HandSynergy(n_components = 5)
         self.hand = MoveGroupCommander("right_hand")
         self.display_state = display_state
         self.initial_hand_joints = self.hand.get_current_joint_values()
@@ -59,7 +59,7 @@ class SynGraspGen():
         result = self.hand.go()
         return result
 
-    def move_joint_config(self, alphas = np.array([0, 0, 0])):
+    def move_joint_config(self, alphas = np.array([0, 0, 0, 0, 0])):
         joint_dict = self.gen_joint_config(alphas)
         result = self.exec_joint_config(joint_dict)
         return result

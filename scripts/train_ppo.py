@@ -58,7 +58,8 @@ def main(argv):
     rospy.loginfo('Waiting for pc.')
     pc = rospy.wait_for_message('pc/pc_filtered', PointCloud2, 20)
     rospy.loginfo('Setting up env.')
-    env = pc_env.SimpleEnv(fingers, pc, ps)
+    env = pc_env.RealEnv(fingers)
+#    env = pc_env.SimpleEnv(fingers, pc, ps)
 
     if not test:
         if check:

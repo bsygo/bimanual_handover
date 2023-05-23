@@ -3,7 +3,7 @@
 import rospy
 from datetime import datetime
 import rospkg
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, WrenchStamped
 from copy import deepcopy
 import gym
 import numpy as np
@@ -13,13 +13,92 @@ import bimanual_handover.syn_grasp_gen as sgg
 import sensor_msgs.point_cloud2 as pc2
 from moveit_msgs.msg import MoveItErrorCodes
 from moveit_commander import MoveItCommanderException
+from pr2_msgs.msg import PressureState
+from sr_robot_msgs.msg import BiotacAll
+
+class RealEnv(gym.Env):
+
+    def __init__(self, fingers):
+        super().__init__()
+        self.action_space = spaces.Box(low = -1, high = 1, shape = (5,), dtype = np.float64) # + decision if finished, limits found through manual testing
+        self.observation_space = spaces.Dict({"pressure": spaces.Box(low = 0, high = 10000, shape = (44), dtype = np.float64), "biotac": spaces.Box(low = 0, high = 10000, shape = (95,), dtype = np.float64), "ft": spaces.Box(low = -20, high = 20, shape = (6,), dtype = np.float64)})
+        self.fingers = fingers
+        self.pca_con = sgg.SynGraspGen()
+        self.log_file = open(rospkg.RosPack().get_path('bimanual_handover') + "/logs/log" + self.time + ".txt", 'w')
+        self.last_joints = None
+        self.reset_timer = 0
+        self.closing_joints = ['rh_FFJ2', 'rh_FFJ3', 'rh_MFJ2', 'rh_MFJ3', 'rh_RFJ2', 'rh_RFJ3', 'rh_LFJ2', 'rh_LFJ3', 'rh_THJ2']
+        self.joint_order = self.fingers.get_active_joints()
+
+    def step(self, action):
+        reward = 0
+        terminated = False
+        scaled_action = np.array([action[0] * 1.5, action[1] * 0.65, action[2] * 1.25, action[3] * 0.95, action[4] * 0.45])
+        try:
+            result = self.pca_con.move_joint_config(scaled_action)
+        except MoveItCommanderException as e:
+            print(e)
+            reward = -0.2
+        if not result is MoveItErrorCodes.SUCCESS:
+            reward = -0.2
+        pressure = rospy.wait_for_message('/pressure/l_gripper_motor', PressureState)
+        biotac = rospy.wait_for_message('/hand/rh/tactile', BiotacAll)
+        ft = rospy.wait_for_message('/ft_l_gripper_motor', WrenchStamped)
+        observation = {}
+        observation['pressure'] = np.concatenate((pressure.l_finger_tip, pressure.r_finger_tip))
+        observation['biotac'] = np.concatenate((biotac.tactiles[0].electrodes, biotac.tactiles[1].electrodes, biotac.tactiles[2].electrodes, biotac.tactiles[3].electrodes, biotac.tactiles[4].electrodes))
+        observation['ft'] = np.concatenate(([ft.wrench.force.x, ft.wrench.force.y, ft.wrench.force.z], [ft.wrench.torque.x, ft.wrench.torque.y, ft.wrench.torque.z]))
+        if reward >= 0:
+            joint_diff = 0
+            for joint in self.closing_joints:
+                index = self.joint_order.index(joint)
+                if new_joints[index] >= self.last_joints[index]:
+                    joint_diff += math.dist([new_joints[index]], [self.last_joints[index]])
+                else:
+                    joint_diff += - math.dist([new_joints[index]], [self.last_joints[index]])
+            reward = 0.03 * joint_diff
+        self.last_joints = np.array(self.fingers.get_current_joint_values())
+        self.log_file.write("{}, {} \n".format(action, reward))
+        self.reset_timer += 1
+        if self.reset_timer == 100:
+            terminated = True
+        return observation, reward, terminated, info
+
+    def reset(self): 
+        self.reset_timer = 0
+        self.log_file.close()
+        self.log_file = open(rospkg.RosPack().get_path('bimanual_handover') + "/logs/log"+ self.time + ".txt", 'a')
+        self.fingers.set_named_target('open')
+        self.fingers.go()
+        self.pca_con.set_initial_hand_joints()
+        observation = {}
+        pressure = rospy.wait_for_message('/pressure/l_gripper_motor', PressureState)
+        biotac = rospy.wait_for_message('/hand/rh/tactile', BiotacAll)
+        ft = rospy.wait_for_message('/ft_l_gripper_motor', WrenchStamped)
+        observation = {}
+        observation['pressure'] = np.concatenate((pressure.l_finger_tip, pressure.r_finger_tip))
+        observation['biotac'] = np.concatenate((biotac.tactiles[0].electrodes, biotac.tactiles[1].electrodes, biotac.tactiles[2].electrodes, biotac.tactiles[3].electrodes, biotac.tactiles[4].electrodes))
+        observation['ft'] = np.concatenate(([ft.wrench.force.x, ft.wrench.force.y, ft.wrench.force.z], [ft.wrench.torque.x, ft.wrench.torque.y, ft.wrench.torque.z]))
+        self.last_joints = np.array(self.fingers.get_current_joint_values())
+        return observation
+
+    def render(self):
+        return
+
+    def close(self):
+        self.log_file.close()
+        return
+
 
 class SimpleEnv(gym.Env):
 
     def __init__(self, fingers, pc, ps = None):
         super().__init__()
-        self.action_space = spaces.Box(low = -1, high = 1, shape = (3,), dtype = np.float64) # + decision if finished, limits found through manual testing
-        self.observation_space = spaces.Dict({"finger_contacts": spaces.MultiBinary(5)})#"finger_joints": spaces.Box(low = -1, high = 1, shape = (22,), dtype = np.float64), spaces.Box(-1.134, 1.658, shape = (22,), dtype = np.float64), "finger_contacts": spaces.MultiBinary(5)})# (last_action, finger_joints, finger_contacts) {"last_action": spaces.Box(low = np.array([-1.5, -0.65, -1.25]), high = np.array([1.5, 0.65, 1.25]), dtype = np.float64),
+        self.action_space = spaces.Box(low = -1, high = 1, shape = (5,), dtype = np.float64) # + decision if finished, limits found through manual testing
+        self.observation_space = spaces.Dict({"finger_contacts": spaces.MultiBinary(5)})
+        # Should instead include force/torque readings from the gripper, the gripper pressure sensor data and the biotac tactile data
+
+        #"finger_joints": spaces.Box(low = -1, high = 1, shape = (22,), dtype = np.float64), spaces.Box(-1.134, 1.658, shape = (22,), dtype = np.float64), "finger_contacts": spaces.MultiBinary(5)})# (last_action, finger_joints, finger_contacts) {"last_action": spaces.Box(low = np.array([-1.5, -0.65, -1.25]), high = np.array([1.5, 0.65, 1.25]), dtype = np.float64),
         self.fingers = fingers
         self.pc = pc
         self.ps = ps
@@ -34,7 +113,7 @@ class SimpleEnv(gym.Env):
     def step(self, action):
         reward = 0
         terminated = False
-        scaled_action = np.array([action[0] * 1.5, action[1] * 0.65, action[2] * 1.25])
+        scaled_action = np.array([action[0] * 1.5, action[1] * 0.65, action[2] * 1.25, action[3] * 0.95, action[4] * 0.45])
         try:
             result = self.pca_con.move_joint_config(scaled_action)
         except MoveItCommanderException as e:
@@ -80,22 +159,6 @@ class SimpleEnv(gym.Env):
                 #reward = 1
                 reward += 0.2
 #                terminated = True
-        '''
-        if np.sum(contact_points) > 0 and reward != -1:
-            reward = np.sum(contact_points, dtype = np.float64)
-            if np.sum(contact_points) == 5:
-                reward += 1
-                terminated = True
-        elif reward != -1:
-            joint_diff = 0
-            for i in range(len(self.last_joints)):
-                if new_joints[i] >= self.last_joints[i]:
-                    joint_diff += math.dist([new_joints[i]], [self.last_joints[i]])
-                else:
-                    joint_diff += - math.dist([new_joints[i]], [self.last_joints[i]])
-            reward = 0.03 * joint_diff
-            # 0.2 * np.sum(contact_points)# reward: 0.03 * distance between new and old joint values during session, 1 or 0 if enough contact points
-        '''
         self.last_joints = normalized_joints 
         truncated = False
         info = {}

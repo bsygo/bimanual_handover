@@ -19,14 +19,26 @@ class RobotSetupMover():
         self.robot = RobotCommander()
         self.hand.set_end_effector_link("rh_manipulator")
         self.debug = debug
-        #rospy.Subscriber("/pc/pc_filtered", PointCloud2, move)
-    
+        self.pc = None
+        self.pc_sub = rospy.Subscriber("/pc/pc_filtered", PointCloud2, self.update_pc)
+        print(self.pc_sub)
+
+    def update_pc(self, pc):
+        print('updated')
+        self.pc = pc
+   
     def move_fixed_pose_pc(self):
-        pc = rospy.wait_for_message("/pc/pcfiltered", PointCloud2)
-        rospy.loginfo("pc received")
+        print('started')
+        finished = False
+        while not finished:
+            finished = self.try_move_fixed_pose_pc()
+
+    def try_move_fixed_pose_pc(self):
+        if self.pc is None:
+            return False
         pub = rospy.Publisher("debug_marker", Marker, latch = True, queue_size = 1)
         hand_pub = rospy.Publisher("debug_hand_pose", PoseStamped, latch = True, queue_size = 1)
-        gen = pc2.read_points(pc, field_names = ("x", "y", "z"), skip_nans = True)
+        gen = pc2.read_points(self.pc, field_names = ("x", "y", "z"), skip_nans = True)
 
         # find max and min values of the pointcloud
         max_point = [-100, -100, -100]
@@ -86,6 +98,7 @@ class RobotSetupMover():
         self.psi.add_cylinder('can', can_pose, math.dist([max_point[2]],[min_point[2]]), math.dist([max_point[0]], [min_point[0]])/2)
         self.psi.disable_collision_detections('can', self.robot.get_link_names("right_fingers"))
         self.psi.disable_collision_detections('can', ['rh_ff_biotac_link', 'rh_mf_biotac_link', 'rh_rf_biotac_link', 'rh_lf_biotac_link', 'rh_th_biotac_link', 'rh_ffdistal', 'rh_mfdistal', 'rh_rfdistal', 'rh_lfdistal', 'rh_thdistal'])
+        return True
 
     def reset_fingers(self):
         self.fingers.set_named_target('open')
@@ -96,6 +109,7 @@ class RobotSetupMover():
         self.arm.go()
 
 if __name__ == "__main__":
+    rospy.init_node('robot_setup_mover')
     mover = RobotSetupMover()
     mover.reset_fingers()
     mover.move_fixed_pose_pc()

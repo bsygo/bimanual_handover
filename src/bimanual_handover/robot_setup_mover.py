@@ -106,6 +106,7 @@ class RobotSetupMover():
         self.arm.go()
 
 if __name__ == "__main__":
+    rospy.init_node('robot_setup_mover')
     mover = RobotSetupMover()
     mover.reset_fingers()
     mover.move_fixed_pose_pc()

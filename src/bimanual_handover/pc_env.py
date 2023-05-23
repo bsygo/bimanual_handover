@@ -20,7 +20,7 @@ class RealEnv(gym.Env):
 
     def __init__(self, fingers):
         super().__init__()
-        self.action_space = spaces.Box(low = -1, high = 1, shape = (3,), dtype = np.float64) # + decision if finished, limits found through manual testing
+        self.action_space = spaces.Box(low = -1, high = 1, shape = (5,), dtype = np.float64) # + decision if finished, limits found through manual testing
         self.observation_space = spaces.Dict({"pressure": spaces.Box(low = 0, high = 10000, shape = (44), dtype = np.float64), "biotac": spaces.Box(low = 0, high = 10000, shape = (95,), dtype = np.float64), "ft": spaces.Box(low = -20, high = 20, shape = (6,), dtype = np.float64)})
         self.fingers = fingers
         self.pca_con = sgg.SynGraspGen()
@@ -31,7 +31,7 @@ class RealEnv(gym.Env):
     def step(self, action):
         reward = 0
         terminated = False
-        scaled_action = np.array([action[0] * 1.5, action[1] * 0.65, action[2] * 1.25])
+        scaled_action = np.array([action[0] * 1.5, action[1] * 0.65, action[2] * 1.25, action[3] * 0.95, action[4] * 0.45])
         try:
             result = self.pca_con.move_joint_config(scaled_action)
         except MoveItCommanderException as e:

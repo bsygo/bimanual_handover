@@ -7,4 +7,8 @@
             <remap from="~input" to="pc/pc_cropped" />
             <remap from="~output" to="pc/pc_filtered" />
     </node>
+    <node name="gpd_service" pkg="gpd_ros" type="detect_grasps_server" output="screen">
+        <param name="config_file" type="str" value="/homeL/6sygo/master/src/gpd/cfg/ros_eigen_params.cfg" />
+        <param name="rviz_topic" type="str" value="plot_grasps" />
+    </node>
 </launch>

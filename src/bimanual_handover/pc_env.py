@@ -10,6 +10,7 @@ import numpy as np
 import math
 from gym import spaces
 import bimanual_handover.syn_grasp_gen as sgg
+import bimanual_handover.close_contact_mover as ccm
 import sensor_msgs.point_cloud2 as pc2
 from moveit_msgs.msg import MoveItErrorCodes
 from moveit_commander import MoveItCommanderException
@@ -30,12 +31,14 @@ class RealEnv(gym.Env):
         self.reset_timer = 0
         self.closing_joints = ['rh_FFJ2', 'rh_FFJ3', 'rh_MFJ2', 'rh_MFJ3', 'rh_RFJ2', 'rh_RFJ3', 'rh_LFJ2', 'rh_LFJ3', 'rh_THJ2']
         self.joint_order = self.fingers.get_active_joints()
+        # self.close_contact_mover = ccm.CloseContactMover()
 
     def step(self, action):
         reward = 0
         result = None
         terminated = False
-        scaled_action = np.array([action[0] * 1.5, action[1] * 0.65, action[2] * 1.25, action[3] * 0.95, action[4] * 0.45])
+        scaled_action = np.array([action[0] * 0.15, action[1] * 0.065, action[2] * 0.125, action[3] * 0.095, action[4] * 0.045])
+#        scaled_action = np.array([action[0] * 1.5, action[1] * 0.65, action[2] * 1.25, action[3] * 0.95, action[4] * 0.45])
         try:
             result = self.pca_con.move_joint_config(scaled_action)
         except MoveItCommanderException as e:
@@ -73,7 +76,8 @@ class RealEnv(gym.Env):
         self.log_file = open(rospkg.RosPack().get_path('bimanual_handover') + "/logs/log"+ self.time + ".txt", 'a')
         self.fingers.set_named_target('open')
         self.fingers.go()
-        self.pca_con.set_initial_hand_joints()
+        # self.fingers.set_joint_value_target('rh_THJ4', 1.0472)
+        # self.close_contact_mover.move_until_contacts()
         observation = {}
         print('waiting for pressure')
         pressure = rospy.wait_for_message('/pressure/l_gripper_motor', PressureState)

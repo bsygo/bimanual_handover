@@ -13,6 +13,8 @@ find_package(catkin REQUIRED COMPONENTS
   pcl_conversions
   pcl_ros
   sensor_msgs
+  moveit_core
+  moveit_ros_planning
 )
 
 ## System dependencies are found with CMake's conventions
@@ -136,6 +138,7 @@ include_directories(
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
 add_executable(pc_cropper_node src/bimanual_handover/pc_crop.cpp)
+add_executable(collision_checking src/bimanual_handover/collision_checking.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -149,6 +152,9 @@ add_executable(pc_cropper_node src/bimanual_handover/pc_crop.cpp)
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(pc_cropper_node
+  ${catkin_LIBRARIES}
+)
+target_link_libraries(collision_checking
   ${catkin_LIBRARIES}
 )
 

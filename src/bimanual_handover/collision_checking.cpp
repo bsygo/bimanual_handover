@@ -9,6 +9,7 @@
 #include <trajectory_msgs/JointTrajectory.h>
 #include <Eigen/Geometry>
 #include <iostream>
+#include <bimanual_handover/CollisionChecking.h>
 
 class CollisionDetector{
 public:
@@ -58,6 +59,8 @@ public:
             acm->setEntry("gripper", *i, true);
             acm->setEntry("sh", *i, true);
         }
+        ros::ServiceServer collision_service = handle.advertiseService("collision_service", &CollisionDetector::collision_checking, this);
+        ros::spin();
     }
 
     void move_sh(geometry_msgs::Pose new_pose){
@@ -68,12 +71,13 @@ public:
         ps->processCollisionObjectMsg(new_sh);
     }
 
-    bool collision_checking(geometry_msgs::Pose sh_pose){
-        this->move_sh(sh_pose);
-        const collision_detection::CollisionRequest req = collision_detection::CollisionRequest();
-        collision_detection::CollisionResult res = collision_detection::CollisionResult();
-        ps->checkCollision(req, res, ps->getCurrentState(), *acm);
-        return res.collision;
+    bool collision_checking(bimanual_handover::CollisionChecking::Request &req, bimanual_handover::CollisionChecking::Response &res){
+        this->move_sh(req.sh_pose);
+        const collision_detection::CollisionRequest col_req = collision_detection::CollisionRequest();
+        collision_detection::CollisionResult col_res = collision_detection::CollisionResult();
+        ps->checkCollision(col_req, col_res, ps->getCurrentState(), *acm);
+        res.collision = col_res.collision; 
+        return true;
     }
 };
 
@@ -88,7 +92,7 @@ int main(int argc, char **argv){
     sh.position.x = 0;
     sh.position.y = 0;
     sh.position.z = 0;
-    std::cout << cd.collision_checking(sh) << std::endl;
+    //std::cout << cd.collision_checking(sh) << std::endl;
     cd.ps->printKnownObjects();
     std::vector<std::string> colliding_links;
     cd.ps->getCollidingLinks(colliding_links);

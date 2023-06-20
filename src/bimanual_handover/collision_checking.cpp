@@ -13,6 +13,7 @@
 class CollisionDetector{
 public:
     planning_scene::PlanningScene* ps;
+    collision_detection::AllowedCollisionMatrix* acm;
 
     CollisionDetector(geometry_msgs::Pose gripper_pose){
         ros::NodeHandle handle = ros::NodeHandle();
@@ -52,15 +53,14 @@ public:
         ps->processCollisionObjectMsg(sh);
 
         std::vector<std::string> link_names = robot_model->getLinkModelNames();
-        collision_detection::AllowedCollisionMatrix acm = ps->getAllowedCollisionMatrixNonConst();
-//        for(auto i = link_names.begin(); i != link_names.end(); ++i){
-//            acm.setEntry("gripper", *i, true);
-//            acm.setEntry("sh", *i, true);
-//        }
+        acm = &ps->getAllowedCollisionMatrixNonConst();
+        for(auto i = link_names.begin(); i != link_names.end(); ++i){
+            acm->setEntry("gripper", *i, true);
+            acm->setEntry("sh", *i, true);
+        }
     }
 
     void move_sh(geometry_msgs::Pose new_pose){
-        std::cout << "test";
         moveit_msgs::CollisionObject new_sh;
         new_sh.id = "sh";
         new_sh.operation = moveit_msgs::CollisionObject::MOVE;
@@ -70,7 +70,10 @@ public:
 
     bool collision_checking(geometry_msgs::Pose sh_pose){
         this->move_sh(sh_pose);
-        return ps->isStateColliding("gripper");
+        const collision_detection::CollisionRequest req = collision_detection::CollisionRequest();
+        collision_detection::CollisionResult res = collision_detection::CollisionResult();
+        ps->checkCollision(req, res, ps->getCurrentState(), *acm);
+        return res.collision;
     }
 };
 
@@ -82,7 +85,7 @@ int main(int argc, char **argv){
     gripper.position.z = 0;
     CollisionDetector cd = CollisionDetector(gripper);
     geometry_msgs::Pose sh;
-    sh.position.x = 40;
+    sh.position.x = 0;
     sh.position.y = 0;
     sh.position.z = 0;
     std::cout << cd.collision_checking(sh) << std::endl;
@@ -92,5 +95,4 @@ int main(int argc, char **argv){
     for(auto i = colliding_links.begin(); i != colliding_links.end(); ++i){
         std::cout << *i;
     }
-    //ros::spin();
 }

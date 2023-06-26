@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 
 import rospy
-from moveit_commander import MoveGroupCommander, roscpp_initialize, roscpp_shutdown, PlanningSceneInterface, RobotCommander
+from moveit_commander import MoveGroupCommander, roscpp_initialize, roscpp_shutdown, PlanningSceneInterface, RobotCommander, MoveItCommanderException
 import sensor_msgs.point_cloud2 as pc2
 from sensor_msgs.msg import PointCloud2
 from visualization_msgs.msg import Marker
 from geometry_msgs.msg import PoseStamped, Quaternion
-from tf.transformations import quaternion_from_euler
+from tf.transformations import quaternion_from_euler, quaternion_from_matrix, quaternion_multiply
 import math
+from gpd_ros.msg import GraspConfigList, CloudIndexed, CloudSources
+from gpd_ros.srv import detect_grasps
+from std_msgs.msg import Int64
+from tf2_ros import TransformListener, Buffer
+from tf2_geometry_msgs import do_transform_pose
 
 class RobotSetupMover():
 
@@ -21,18 +26,55 @@ class RobotSetupMover():
         self.debug = debug
         self.pc = None
         self.pc_sub = rospy.Subscriber("/pc/pc_filtered", PointCloud2, self.update_pc)
+        rospy.wait_for_service('/gpd_service/detect_grasps')
+        self.gpd_service = rospy.ServiceProxy('/gpd_service/detect_grasps', detect_grasps)
+        self.debug_pose_pub = rospy.Publisher('debug_setup_pose', PoseStamped, queue_size = 1)
+        self.tf_buffer = Buffer()
+        TransformListener(self.tf_buffer)
 
     def update_pc(self, pc):
         self.pc = pc
-   
-    def move_fixed_pose_pc(self):
-        finished = False
-        while not finished:
-            finished = self.try_move_fixed_pose_pc()
 
-    def try_move_fixed_pose_pc(self):
-        if self.pc is None:
-            return False
+    def move_gpd_pose(self):
+        while self.pc is None:
+            rospy.sleep(1)
+        current_pc = self.pc
+        cloud_indexed = CloudIndexed()
+        cloud_sources = CloudSources()
+        cloud_sources.cloud = current_pc
+        cloud_sources.view_points = [self.robot.get_link('azure_kinect_rgb_camera_link_urdf').pose().pose.position]
+        cloud_sources.camera_source = [Int64(0) for i in range(current_pc.width)] 
+        cloud_indexed.cloud_sources = cloud_sources
+        cloud_indexed.indices = [Int64(i) for i in range(current_pc.width)]
+        response = self.gpd_service(cloud_indexed)
+        manipulator_transform = self.tf_buffer.lookup_transform('rh_manipulator', 'base_footprint', rospy.Time(0))
+        for i in range(len(response.grasp_configs.grasps)):
+            selected_grasp = response.grasp_configs.grasps[i]
+            grasp_point = selected_grasp.position
+            R = [[selected_grasp.approach.x, selected_grasp.binormal.x, selected_grasp.axis.x, 0], [selected_grasp.approach.y, selected_grasp.binormal.y, selected_grasp.axis.y, 0], [selected_grasp.approach.z, selected_grasp.binormal.z, selected_grasp.axis.z, 0], [0, 0, 0, 1]]
+            grasp_q = quaternion_from_matrix(R)
+            sh_q = quaternion_from_euler(math.pi/2, -math.pi/2, 0)
+            final_q = Quaternion(*quaternion_multiply(grasp_q, sh_q))
+            pose = PoseStamped()
+            pose.header.frame_id = "base_footprint"
+            pose.pose.position = grasp_point
+            pose.pose.orientation = final_q
+            transformed_pose = do_transform_pose(pose, manipulator_transform)
+            transformed_pose.pose.position.y += 0.02
+            transformed_pose.pose.position.z += - 0.02
+            self.debug_pose_pub.publish(transformed_pose)
+            try:
+                self.hand.set_pose_target(transformed_pose)
+                result = self.hand.go()
+                if result:
+                    print("hand moved")
+                    break
+            except MoveItCommanderException as e:
+                print(e)
+
+    def move_fixed_pose_pc(self):
+        while self.pc is None:
+            rospy.sleep(1)
         pub = rospy.Publisher("debug_marker", Marker, latch = True, queue_size = 1)
         hand_pub = rospy.Publisher("debug_hand_pose", PoseStamped, latch = True, queue_size = 1)
         gen = pc2.read_points(self.pc, field_names = ("x", "y", "z"), skip_nans = True)
@@ -109,4 +151,6 @@ if __name__ == "__main__":
     rospy.init_node('robot_setup_mover')
     mover = RobotSetupMover()
     mover.reset_fingers()
-    mover.move_fixed_pose_pc()
+    # mover.move_fixed_pose_pc()
+    mover.move_gpd_pose()
+

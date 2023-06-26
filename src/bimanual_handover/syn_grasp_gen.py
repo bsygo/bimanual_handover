@@ -10,25 +10,26 @@ from moveit_msgs.msg import DisplayRobotState
 class SynGraspGen():
 
     def __init__(self, display_state = False):
-        self.zero_pca_action = np.array([-1.5, -0.55, 0.25, 0.15, 0.05]) # offsets to center the 0 pose
+        # self.zero_pca_action = np.array([-1.5, -0.55, 0.25, 0.15, 0.05]) # offsets to center the 0 pose
         self.synergy = hs.HandSynergy(n_components = 5)
         self.hand = MoveGroupCommander("right_hand")
         self.display_state = display_state
-        self.initial_hand_joints = self.hand.get_current_joint_values()
+        # self.initial_hand_joints = self.hand.get_current_joint_values()
         self.display_state_pub = rospy.Publisher("synergies_debug", DisplayRobotState, latch = True, queue_size = 1)
 
-    def set_initial_hand_joints(self):
-       self.inital_hand_joints = self.hand.get_current_joint_values() 
+    # def set_initial_hand_joints(self):
+    #   self.inital_hand_joints = self.hand.get_current_joint_values() 
 
     def gen_joint_config(self, alphas):
-        sh_joints = self.initial_hand_joints # self.hand.get_current_joint_values()
+        #sh_joints = self.initial_hand_joints
+        sh_joints = self.hand.get_current_joint_values()
         sh_names = self.hand.get_active_joints()
         joint_names = ['WRJ2', 'WRJ1'] + hs.FINGER_JOINTS_ORDER
         order = []
         for name in joint_names:
             order.append(sh_names.index('rh_' + name))
         switched_sh_joints = np.array(sh_joints)[order]
-        joints = self.synergy.get_shadow_target_joints(switched_sh_joints, np.array([0, 0]), alphas + self.zero_pca_action)
+        joints = self.synergy.get_shadow_target_joints(switched_sh_joints, np.array([0, 0]), alphas)# + self.zero_pca_action)
         joint_dict = {}
         for i in range(len(joint_names)):
             joint_dict.update({'rh_' + joint_names[i] : joints[i]})

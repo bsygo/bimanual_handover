@@ -5,7 +5,7 @@ from moveit_commander import MoveGroupCommander, roscpp_initialize, roscpp_shutd
 import sensor_msgs.point_cloud2 as pc2
 from sensor_msgs.msg import PointCloud2
 from visualization_msgs.msg import Marker
-from geometry_msgs.msg import PoseStamped, Quaternion, Pose
+from geometry_msgs.msg import PoseStamped, Quaternion, Pose, Vector3
 from tf.transformations import quaternion_from_euler, quaternion_from_matrix, quaternion_multiply
 import math
 from gpd_ros.msg import GraspConfigList, CloudIndexed, CloudSources
@@ -14,6 +14,8 @@ from bimanual_handover.srv import CollisionChecking
 from std_msgs.msg import Int64
 from tf2_ros import TransformListener, Buffer
 from tf2_geometry_msgs import do_transform_pose
+from bimanual_handover.srv import CollisionChecking
+import random
 
 class RobotSetupMover():
 
@@ -21,6 +23,7 @@ class RobotSetupMover():
         self.hand = MoveGroupCommander("right_arm")
         self.fingers = MoveGroupCommander("right_fingers")
         self.arm = MoveGroupCommander("right_arm_pr2")
+        self.gripper = MoveGroupCommander("left_gripper")
         self.psi = PlanningSceneInterface()
         self.robot = RobotCommander()
         self.hand.set_end_effector_link("rh_manipulator")
@@ -40,6 +43,14 @@ class RobotSetupMover():
     def update_pc(self, pc):
         self.pc = pc
 
+    def sample_transformation(self):
+        translation = Vector3()
+        translation.x = random.randrange(-0.5, 0.5)
+        translation.y = random.randrange(0, 1)
+        translation.z = random.randrange(-0.5, 0.5)
+        rotation = *quaternion_from_euler(random.randrange(-math.pi/2, math.pi/2), random.randrange(-math.pi/2, math.pi/2), random.randrange(-math.pi/2, math.pi/2))
+        return translation, rotation
+
     def move_gpd_pose(self):
         while self.pc is None:
             rospy.sleep(1)
@@ -53,6 +64,8 @@ class RobotSetupMover():
         cloud_indexed.indices = [Int64(i) for i in range(current_pc.width)]
         response = self.gpd_service(cloud_indexed)
         manipulator_transform = self.tf_buffer.lookup_transform('rh_manipulator', 'base_footprint', rospy.Time(0))
+        checked_poses = []
+        gripper_pose = self.gripper.get_current_pose()
         for i in range(len(response.grasp_configs.grasps)):
             selected_grasp = response.grasp_configs.grasps[i]
             grasp_point = selected_grasp.position
@@ -68,11 +81,17 @@ class RobotSetupMover():
             transformed_pose.pose.position.y += 0.02
             transformed_pose.pose.position.z += - 0.02
             self.debug_pose_pub.publish(transformed_pose)
+            if self.collision_service(transformed_pose.pose, gripper_pose):
+                checked_poses.append(transformed_pose)
+        if not checked_poses:
+            rospy.loginfo("No valid pose was found.")
+            return
+        for pose in checked_poses:
             try:
-                self.hand.set_pose_target(transformed_pose)
+                self.hand.set_pose_target(pose)
                 result = self.hand.go()
                 if result:
-                    print("hand moved")
+                    rospy.loginfo("hand moved")
                     break
             except MoveItCommanderException as e:
                 print(e)

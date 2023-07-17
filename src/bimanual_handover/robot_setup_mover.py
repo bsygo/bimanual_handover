@@ -39,6 +39,16 @@ class RobotSetupMover():
         self.collision_service = rospy.ServiceProxy('/cc/collision_service', CollisionChecking)
         self.sh_pose_pub = rospy.Publisher('/cc/sh_pose', Pose)
         self.gripper_pose_pub = rospy.Publisher('/cc/gripper_pose', Pose)
+        rospy.Service('handover/move_handover_srv', MoveHandover, move_handover)
+        rospy.spin()
+
+    def move_handover(self, req):
+        if req.mode == "fixed":
+            self.move_fixed_pose_pc()
+        elif req.mode == "gpd":
+            self.move_gpd_pose()
+        else:
+            rospy.loginfo("Unknown mode {}".format(req.mode))
 
     def update_pc(self, pc):
         self.pc = pc

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import rospy 
+import rospy
 import numpy as np
 import random
 import bimanual_handover.syn_grasp_gen as sgg

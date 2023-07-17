@@ -59,7 +59,9 @@ public:
             acm->setEntry("gripper", *i, true);
             acm->setEntry("sh", *i, true);
         }
-        ros::ServiceServer collision_service = handle.advertiseService("collision_service", &CollisionDetector::collision_checking, this);
+        ros::ServiceServer collision_service = handle.advertiseService("/cc/collision_service", &CollisionDetector::collision_checking, this);
+        ros::Subscriber sh_pose_sub = handle.subscribe("/cc/sh_pose", 5, move_sh)
+        ros::Subscriber sh_pose_sub = handle.subscribe("/cc/gripper_pose", 5, move_gripper)
         ros::spin();
     }
 
@@ -69,6 +71,14 @@ public:
         new_sh.operation = moveit_msgs::CollisionObject::MOVE;
         new_sh.pose = new_pose;
         ps->processCollisionObjectMsg(new_sh);
+    }
+
+    void move_gripper(geometry_msgs::Pose new_pose){
+        moveit_msgs::AttachedCollisionObject new_gripper;
+        new_gripper.id = "gripper";
+        new_gripper.object.operation = moveit_msgs::CollisionObject::MOVE;
+        new_gripper.object.pose = new_pose;
+        ps->processAttachedCollisionObjectMsg(new_sh);
     }
 
     bool collision_checking(bimanual_handover::CollisionChecking::Request &req, bimanual_handover::CollisionChecking::Response &res){

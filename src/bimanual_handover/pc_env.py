@@ -70,7 +70,7 @@ class RealEnv(gym.Env):
         info = {}
         return observation, reward, terminated, info
 
-    def reset(self): 
+    def reset(self):
         self.reset_timer = 0
         self.log_file.close()
         self.log_file = open(rospkg.RosPack().get_path('bimanual_handover') + "/logs/log"+ self.time + ".txt", 'a')
@@ -169,7 +169,7 @@ class SimpleEnv(gym.Env):
                 #reward = 1
                 reward += 0.2
 #                terminated = True
-        self.last_joints = normalized_joints 
+        self.last_joints = normalized_joints
         truncated = False
         info = {}
         print(scaled_action)
@@ -218,7 +218,7 @@ class SimpleEnv(gym.Env):
         THJ4: 0 - 70/180*pi
         THJ5: -60/180pi - 60/180*pi
         '''
-        ranges = {'rh_FFJ1': [0, math.pi/2], 'rh_FFJ2': [0, math.pi/2], 'rh_FFJ3': [-15/180*math.pi, math.pi/2], 'rh_FFJ4': [-20/180 * math.pi, 20/180 * math.pi], 'rh_MFJ1': [0, math.pi/2], 'rh_MFJ2': [0, math.pi/2], 'rh_MFJ3': [-15/180*math.pi, math.pi/2], 'rh_MFJ4': [-20/180 * math.pi, 20/180 * math.pi], 'rh_RFJ1': [0, math.pi/2], 'rh_RFJ2': [0, math.pi/2], 'rh_RFJ3': [-15/180*math.pi, math.pi/2], 'rh_RFJ4': [-20/180 * math.pi, 20/180 * math.pi], 'rh_LFJ1': [0, math.pi/2], 'rh_LFJ2': [0, math.pi/2], 'rh_LFJ3': [-15/180*math.pi, math.pi/2], 'rh_LFJ4': [-20/180 * math.pi, 20/180 * math.pi], 'rh_LFJ5': [0, 45/180 * math.pi], 'rh_THJ1': [-15/180*math.pi, math.pi/2], 'rh_THJ2': [-40/180*math.pi, 40/180*math.pi], 'rh_THJ3': [-12/180*math.pi, 12/180*math.pi], 'rh_THJ4': [0, 80/180*math.pi], 'rh_THJ5': [-60/180*math.pi, 60/180*math.pi]} 
+        ranges = {'rh_FFJ1': [0, math.pi/2], 'rh_FFJ2': [0, math.pi/2], 'rh_FFJ3': [-15/180*math.pi, math.pi/2], 'rh_FFJ4': [-20/180 * math.pi, 20/180 * math.pi], 'rh_MFJ1': [0, math.pi/2], 'rh_MFJ2': [0, math.pi/2], 'rh_MFJ3': [-15/180*math.pi, math.pi/2], 'rh_MFJ4': [-20/180 * math.pi, 20/180 * math.pi], 'rh_RFJ1': [0, math.pi/2], 'rh_RFJ2': [0, math.pi/2], 'rh_RFJ3': [-15/180*math.pi, math.pi/2], 'rh_RFJ4': [-20/180 * math.pi, 20/180 * math.pi], 'rh_LFJ1': [0, math.pi/2], 'rh_LFJ2': [0, math.pi/2], 'rh_LFJ3': [-15/180*math.pi, math.pi/2], 'rh_LFJ4': [-20/180 * math.pi, 20/180 * math.pi], 'rh_LFJ5': [0, 45/180 * math.pi], 'rh_THJ1': [-15/180*math.pi, math.pi/2], 'rh_THJ2': [-40/180*math.pi, 40/180*math.pi], 'rh_THJ3': [-12/180*math.pi, 12/180*math.pi], 'rh_THJ4': [0, 80/180*math.pi], 'rh_THJ5': [-60/180*math.pi, 60/180*math.pi]}
         normalized_joints = []
         for i in range(len(self.joint_order)):
             limits = ranges[self.joint_order[i]]

@@ -5,6 +5,7 @@ from std_msgs.msg import Float64
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from sr_robot_msgs.msg import BiotacAll
+from bimanual_handover.srv import CCM, CCMResponse
 
 class CloseContactMover():
 
@@ -19,6 +20,8 @@ class CloseContactMover():
         self.initial_biotac_values = [0, 0, 0, 0]
         self.biotac_threshold = 5 # Value taken from biotac manual
         self.wait_for_initial_values()
+        rospy.Service('handover/ccm', CCM, move_until_contacts)
+        rospy.spin()
 
     def wait_for_initial_values(self):
         values_set = False
@@ -50,29 +53,34 @@ class CloseContactMover():
         msg.points = [point_msg]
         return msg
 
-    def move_until_contacts(self):
+    def move_until_contacts(self, req):
         print('start')
         contacts = [False, False, False, False]
-        finished = False
         targets = [1.57, 1.57, 1.57, 1.0]
-        for i in range(len(self.joint_names)):
-            msg = self.create_joint_trajectory_msg([self.joint_names[i]], [targets[i]])
+        steps = []
+        for x in range(len(targets)):
+            diff = targets[x] - self.current_joint_values[x]
+            steps_temp = [self.current_joint_values[x] + y * diff/100 for y in range(100)]
+            steps.append(steps_temp)
+        for x in range(len(steps[0])):
+            used_joints = []
+            used_steps = []
+            for i in range(len(self.joint_names)):
+                if not contacts[i]:
+                    used_joints.append(self.joint_names[i])
+                    used_steps.append(steps[i][x])
+            msg = self.create_joint_trajectory_msg(used_joints, used_steps)
             msg.header.stamp = rospy.Time.now()
             self.joint_publisher.publish(msg)
-        print('targets send')
-        while not finished:
+            print('targets send')
+            # wait until movement finished
             for i in range(len(self.joints)):
                 if not contacts[i]:
-                    for j in range(len(self.current_biotac_values[i])):
-                        if (self.current_biotac_values[i][j] > self.initial_biotac_values[i][j] + self.biotac_threshold) or (self.current_biotac_values[i][j] < self.initial_biotac_values[i][j] - self.biotac_threshold):
-                            contacts[i] = True
-                            print('contact {}', i)
-                            msg = self.create_joint_trajectory_msg()
-                            msg.points[0].positions[i] = self.current_joint_values[i]
-                            self.joint_publisher.publish(msg)
-                            break
+                    if (self.current_biotac_values[i] > self.initial_biotac_values[i] + self.biotac_threshold) or (self.current_biotac_values[i] < self.initial_biotac_values[i] - self.biotac_threshold):
+                        contacts[i] = True
             if sum(contacts) == 4:
-                finished = True
+                break
+        return CCMResponse(True)
 
 if __name__ == '__main__':
     rospy.init_node('close_contact_mover')

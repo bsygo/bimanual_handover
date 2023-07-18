@@ -5,11 +5,12 @@ from moveit_commander import MoveGroupCommander, roscpp_initialize, roscpp_shutd
 import sensor_msgs.point_cloud2 as pc2
 from sensor_msgs.msg import PointCloud2
 from visualization_msgs.msg import Marker
-from geometry_msgs.msg import PoseStamped, Quaternion, Vector3
+from geometry_msgs.msg import PoseStamped, Quaternion, Pose, Vector3
 from tf.transformations import quaternion_from_euler, quaternion_from_matrix, quaternion_multiply
 import math
 from gpd_ros.msg import GraspConfigList, CloudIndexed, CloudSources
 from gpd_ros.srv import detect_grasps
+from bimanual_handover.srv import CollisionChecking
 from std_msgs.msg import Int64
 from tf2_ros import TransformListener, Buffer
 from tf2_geometry_msgs import do_transform_pose
@@ -34,8 +35,20 @@ class RobotSetupMover():
         self.debug_pose_pub = rospy.Publisher('debug_setup_pose', PoseStamped, queue_size = 1)
         self.tf_buffer = Buffer()
         TransformListener(self.tf_buffer)
-        rospy.wait_for_service('collision_service')
-        self.collision_service = rospy.ServiceProxy('collision_service', CollisionChecking)
+        rospy.wait_for_service('/cc/collision_service')
+        self.collision_service = rospy.ServiceProxy('/cc/collision_service', CollisionChecking)
+        self.sh_pose_pub = rospy.Publisher('/cc/sh_pose', Pose)
+        self.gripper_pose_pub = rospy.Publisher('/cc/gripper_pose', Pose)
+        rospy.Service('handover/move_handover_srv', MoveHandover, move_handover)
+        rospy.spin()
+
+    def move_handover(self, req):
+        if req.mode == "fixed":
+            self.move_fixed_pose_pc()
+        elif req.mode == "gpd":
+            self.move_gpd_pose()
+        else:
+            rospy.loginfo("Unknown mode {}".format(req.mode))
 
     def update_pc(self, pc):
         self.pc = pc
@@ -56,7 +69,7 @@ class RobotSetupMover():
         cloud_sources = CloudSources()
         cloud_sources.cloud = current_pc
         cloud_sources.view_points = [self.robot.get_link('azure_kinect_rgb_camera_link_urdf').pose().pose.position]
-        cloud_sources.camera_source = [Int64(0) for i in range(current_pc.width)] 
+        cloud_sources.camera_source = [Int64(0) for i in range(current_pc.width)]
         cloud_indexed.cloud_sources = cloud_sources
         cloud_indexed.indices = [Int64(i) for i in range(current_pc.width)]
         response = self.gpd_service(cloud_indexed)

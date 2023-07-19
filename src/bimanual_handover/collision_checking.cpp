@@ -26,9 +26,9 @@ public:
         gripper.header.frame_id = "base_footprint";
         gripper.id = "gripper";
         geometry_msgs::Pose gripper_pose;
-        sh_pose.position.x = 0;
-        sh_pose.position.y = 0;
-        sh_pose.position.z = 0;
+        gripper_pose.position.x = 0;
+        gripper_pose.position.y = 0;
+        gripper_pose.position.z = 0;
         gripper.pose = gripper_pose;
         gripper.operation = moveit_msgs::CollisionObject::ADD;
         shape_msgs::SolidPrimitive gripper_primitive;
@@ -64,8 +64,8 @@ public:
             acm->setEntry("sh", *i, true);
         }
         ros::ServiceServer collision_service = handle.advertiseService("/cc/collision_service", &CollisionDetector::collision_checking, this);
-        ros::Subscriber sh_pose_sub = handle.subscribe("/cc/sh_pose", 5, move_sh)
-        ros::Subscriber sh_pose_sub = handle.subscribe("/cc/gripper_pose", 5, move_gripper)
+        //ros::Subscriber sh_pose_sub = handle.subscribe("/cc/sh_pose", 5, move_sh)
+        //ros::Subscriber sh_pose_sub = handle.subscribe("/cc/gripper_pose", 5, move_gripper)
         ros::spin();
     }
 
@@ -83,14 +83,6 @@ public:
         new_sh.operation = moveit_msgs::CollisionObject::MOVE;
         new_sh.pose = new_pose;
         ps->processCollisionObjectMsg(new_sh);
-    }
-
-    void move_gripper(geometry_msgs::Pose new_pose){
-        moveit_msgs::AttachedCollisionObject new_gripper;
-        new_gripper.id = "gripper";
-        new_gripper.object.operation = moveit_msgs::CollisionObject::MOVE;
-        new_gripper.object.pose = new_pose;
-        ps->processAttachedCollisionObjectMsg(new_sh);
     }
 
     bool collision_checking(bimanual_handover::CollisionChecking::Request &req, bimanual_handover::CollisionChecking::Response &res){

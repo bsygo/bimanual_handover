@@ -14,7 +14,7 @@ from bimanual_handover.srv import CollisionChecking
 from std_msgs.msg import Int64
 from tf2_ros import TransformListener, Buffer
 from tf2_geometry_msgs import do_transform_pose
-from bimanual_handover.srv import CollisionChecking
+from bimanual_handover.srv import CollisionChecking, MoveHandover
 import random
 
 class RobotSetupMover():
@@ -35,20 +35,24 @@ class RobotSetupMover():
         self.debug_pose_pub = rospy.Publisher('debug_setup_pose', PoseStamped, queue_size = 1)
         self.tf_buffer = Buffer()
         TransformListener(self.tf_buffer)
-        rospy.wait_for_service('/cc/collision_service')
-        self.collision_service = rospy.ServiceProxy('/cc/collision_service', CollisionChecking)
-        self.sh_pose_pub = rospy.Publisher('/cc/sh_pose', Pose)
-        self.gripper_pose_pub = rospy.Publisher('/cc/gripper_pose', Pose)
-        rospy.Service('handover/move_handover_srv', MoveHandover, move_handover)
+        #rospy.wait_for_service('/cc/collision_service')
+        #self.collision_service = rospy.ServiceProxy('/cc/collision_service', CollisionChecking)
+        #self.sh_pose_pub = rospy.Publisher('/cc/sh_pose', Pose)
+        #self.gripper_pose_pub = rospy.Publisher('/cc/gripper_pose', Pose)
+        rospy.Service('handover/move_handover_srv', MoveHandover, self.move_handover)
         rospy.spin()
 
     def move_handover(self, req):
+        rospy.loginfo('Request received.')
         if req.mode == "fixed":
             self.move_fixed_pose_pc()
+            return True
         elif req.mode == "gpd":
             self.move_gpd_pose()
+            return True
         else:
             rospy.loginfo("Unknown mode {}".format(req.mode))
+            return False
 
     def update_pc(self, pc):
         self.pc = pc
@@ -58,7 +62,7 @@ class RobotSetupMover():
         translation.x = random.randrange(-0.5, 0.5)
         translation.y = random.randrange(0, 1)
         translation.z = random.randrange(-0.5, 0.5)
-        rotation = *quaternion_from_euler(random.randrange(-math.pi/2, math.pi/2), random.randrange(-math.pi/2, math.pi/2), random.randrange(-math.pi/2, math.pi/2))
+        #rotation = *quaternion_from_euler(random.randrange(-math.pi/2, math.pi/2), random.randrange(-math.pi/2, math.pi/2), random.randrange(-math.pi/2, math.pi/2))
         return translation, rotation
 
     def move_gpd_pose(self):
@@ -107,6 +111,7 @@ class RobotSetupMover():
                 print(e)
 
     def move_fixed_pose_pc(self):
+        rospy.loginfo('Moving to fixed pose.')
         while self.pc is None:
             rospy.sleep(1)
         pub = rospy.Publisher("debug_marker", Marker, latch = True, queue_size = 1)

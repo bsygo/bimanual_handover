@@ -1,3 +1,4 @@
 geometry_msgs/Pose sh_pose
+geometry_msgs/Pose gripper_pose
 ---
 bool collision

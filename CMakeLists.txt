@@ -62,6 +62,11 @@ find_package(catkin REQUIRED COMPONENTS
 add_service_files(
   FILES
   CollisionChecking.srv
+  CCM.srv
+  GraspExec.srv
+  InitGripper.srv
+  MoveHandover.srv
+  ProcessPC.srv
 )
 
 ## Generate actions in the 'action' folder

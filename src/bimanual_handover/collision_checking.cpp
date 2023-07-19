@@ -16,7 +16,7 @@ public:
     planning_scene::PlanningScene* ps;
     collision_detection::AllowedCollisionMatrix* acm;
 
-    CollisionDetector(geometry_msgs::Pose gripper_pose){
+    CollisionDetector(){//geometry_msgs::Pose gripper_pose){
         ros::NodeHandle handle = ros::NodeHandle();
         robot_model_loader::RobotModelLoader loader = robot_model_loader::RobotModelLoader();
         moveit::core::RobotModelConstPtr robot_model = loader.getModel();
@@ -25,6 +25,10 @@ public:
         moveit_msgs::CollisionObject gripper;
         gripper.header.frame_id = "base_footprint";
         gripper.id = "gripper";
+        geometry_msgs::Pose gripper_pose;
+        gripper_pose.position.x = 0;
+        gripper_pose.position.y = 0;
+        gripper_pose.position.z = 0;
         gripper.pose = gripper_pose;
         gripper.operation = moveit_msgs::CollisionObject::ADD;
         shape_msgs::SolidPrimitive gripper_primitive;
@@ -59,8 +63,18 @@ public:
             acm->setEntry("gripper", *i, true);
             acm->setEntry("sh", *i, true);
         }
-        ros::ServiceServer collision_service = handle.advertiseService("collision_service", &CollisionDetector::collision_checking, this);
+        ros::ServiceServer collision_service = handle.advertiseService("/cc/collision_service", &CollisionDetector::collision_checking, this);
+        //ros::Subscriber sh_pose_sub = handle.subscribe("/cc/sh_pose", 5, move_sh)
+        //ros::Subscriber sh_pose_sub = handle.subscribe("/cc/gripper_pose", 5, move_gripper)
         ros::spin();
+    }
+
+    void move_gripper(geometry_msgs::Pose new_pose){
+        moveit_msgs::AttachedCollisionObject new_gripper;
+        new_gripper.object.id = "gripper";
+        new_gripper.object.operation = moveit_msgs::CollisionObject::MOVE;
+        new_gripper.object.pose = new_pose;
+        ps->processAttachedCollisionObjectMsg(new_gripper);
     }
 
     void move_sh(geometry_msgs::Pose new_pose){
@@ -73,6 +87,7 @@ public:
 
     bool collision_checking(bimanual_handover::CollisionChecking::Request &req, bimanual_handover::CollisionChecking::Response &res){
         this->move_sh(req.sh_pose);
+        this->move_gripper(req.gripper_pose);
         const collision_detection::CollisionRequest col_req = collision_detection::CollisionRequest();
         collision_detection::CollisionResult col_res = collision_detection::CollisionResult();
         ps->checkCollision(col_req, col_res, ps->getCurrentState(), *acm);
@@ -87,7 +102,7 @@ int main(int argc, char **argv){
     gripper.position.x = 0;
     gripper.position.y = 0;
     gripper.position.z = 0;
-    CollisionDetector cd = CollisionDetector(gripper);
+    CollisionDetector cd = CollisionDetector();//gripper);
     geometry_msgs::Pose sh;
     sh.position.x = 0;
     sh.position.y = 0;

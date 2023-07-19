@@ -110,7 +110,13 @@ class RobotSetupMover():
             except MoveItCommanderException as e:
                 print(e)
 
+    def setup_fingers(self):
+        joint_values = dict(rh_THJ4=1.13446)
+        self.fingers.set_joint_value_target(joint_values)
+        self.fingers.go()
+
     def move_fixed_pose_pc(self):
+        self.setup_fingers()
         rospy.loginfo('Moving to fixed pose.')
         while self.pc is None:
             rospy.sleep(1)

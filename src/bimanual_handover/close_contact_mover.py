@@ -10,16 +10,17 @@ from bimanual_handover.srv import CCM
 class CloseContactMover():
 
     def __init__(self):
-        self.joints = ['rh_FFJ2', 'rh_MFJ2', 'rh_RFJ2', 'rh_THJ5']
+        self.joints_dict = {'rh_FFJ2': 0, 'rh_FFJ3': 0, 'rh_MFJ2': 1, 'rh_MFJ3': 1, 'rh_RFJ2': 2, 'rh_RFJ3': 2, 'rh_THJ5': 3}
+        self.joints = list(self.joints_dict.keys())
         self.joint_publisher = rospy.Publisher('/hand/rh_trajectory_controller/command', JointTrajectory, queue_size = 10)
         self.biotac_sub = rospy.Subscriber('/hand/rh/tactile', BiotacAll, callback = self.biotac_callback, queue_size = 10)
         self.joint_state_sub = rospy.Subscriber('/hand/joint_states', JointState, callback = self.joint_callback, queue_size = 10)
         self.current_biotac_values = [0, 0, 0, 0]
-        self.current_joint_values = [0, 0, 0, 0]
+        self.current_joint_values = [0, 0, 0, 0, 0, 0, 0]
         self.current_joint_state = None
         self.initial_biotac_values = [0, 0, 0, 0]
         self.biotac_threshold = 5 # Value taken from biotac manual
-        self.wait_for_initial_values()
+        #self.wait_for_initial_values()
         rospy.Service('handover/ccm', CCM, self.move_until_contacts)
         rospy.spin()
 
@@ -27,8 +28,6 @@ class CloseContactMover():
         values_set = False
         while not values_set:
             values_set = 0 not in self.current_biotac_values 
-        print(values_set)
-        print(self.current_biotac_values)
         self.initial_biotac_values = self.current_biotac_values
         while self.current_joint_state is None:
             pass
@@ -40,7 +39,7 @@ class CloseContactMover():
         self.current_biotac_values[3] = sensor_data.tactiles[4].electrodes
 
     def joint_callback(self, joint_state):
-        indices = [joint_state.name.index('rh_FFJ2'), joint_state.name.index('rh_MFJ2'), joint_state.name.index('rh_RFJ2'), joint_state.name.index('rh_THJ5')]
+        indices = [joint_state.name.index(joint_name) for joint_name in self.joints]#joint_state.name.index('rh_FFJ2'), joint_state.name.index('rh_MFJ2'), joint_state.name.index('rh_RFJ2'), joint_state.name.index('rh_THJ5')]
         self.current_joint_values = [joint_state.position[x] for x in indices]
         self.current_joint_state = joint_state
 
@@ -54,26 +53,25 @@ class CloseContactMover():
         return msg
 
     def move_until_contacts(self, req):
-        print('start')
         contacts = [False, False, False, False]
-        targets = [1.57, 1.57, 1.57, 1.0]
+        targets = [1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.0]
         steps = []
         for x in range(len(targets)):
             diff = targets[x] - self.current_joint_values[x]
-            steps_temp = [self.current_joint_values[x] + y * diff/100 for y in range(100)]
+            steps_temp = [self.current_joint_values[x] + y * diff/30 for y in range(30)]
             steps.append(steps_temp)
         for x in range(len(steps[0])):
             used_joints = []
             used_steps = []
             for i in range(len(self.joints)):
-                if not contacts[i]:
+                if not contacts[self.joints_dict[self.joints[i]]]:
                     used_joints.append(self.joints[i])
                     used_steps.append(steps[i][x])
             msg = self.create_joint_trajectory_msg(used_joints, used_steps)
             msg.header.stamp = rospy.Time.now()
             self.joint_publisher.publish(msg)
             # wait until movement finished -> convert to action client?
-            for i in range(len(self.joints)):
+            for i in range(len(contacts)):
                 if not contacts[i]:
                     if (self.current_biotac_values[i] > self.initial_biotac_values[i] + self.biotac_threshold) or (self.current_biotac_values[i] < self.initial_biotac_values[i] - self.biotac_threshold):
                         contacts[i] = True

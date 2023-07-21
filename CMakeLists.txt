@@ -68,6 +68,7 @@ add_service_files(
   MoveHandover.srv
   ProcessPC.srv
   FinishHandoverSrv.srv
+  GraspTesterSrv.srv
 )
 
 ## Generate actions in the 'action' folder

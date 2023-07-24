@@ -29,7 +29,7 @@ class RobotSetupMover():
         self.hand.set_end_effector_link("rh_manipulator")
         self.debug = debug
         self.pc = None
-        self.pc_sub = rospy.Subscriber("/pc/pc_filtered", PointCloud2, self.update_pc)
+        self.pc_sub = rospy.Subscriber("handover/pc/pc_filtered", PointCloud2, self.update_pc)
         rospy.wait_for_service('/gpd_service/detect_grasps')
         self.gpd_service = rospy.ServiceProxy('/gpd_service/detect_grasps', detect_grasps)
         self.debug_pose_pub = rospy.Publisher('debug_setup_pose', PoseStamped, queue_size = 1)

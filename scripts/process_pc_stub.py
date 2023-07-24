@@ -10,13 +10,13 @@ global pub
 def process_pc(req):
     global pub
     pub.publish(req.publish)
-    rospy.wait_for_message('pc/pc_filtered', PointCloud2)
+    rospy.wait_for_message('handover/pc/pc_filtered', PointCloud2)
     return True
 
 def main():
     global pub
     rospy.init_node('process_pc_stub')
-    pub = rospy.Publisher('change_publish', Bool, queue_size = 5)
+    pub = rospy.Publisher('handover/pc/publish_pc', Bool, queue_size = 5)
     rospy.Service('handover/process_pc_srv', ProcessPC, process_pc)
     rospy.spin()
 

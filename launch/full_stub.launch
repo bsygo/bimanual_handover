@@ -7,5 +7,6 @@
     <node name="capture_pc" pkg="bimanual_handover" type="capture_pc.py" output="screen" />
     <node name="close_contact_mover" pkg="bimanual_handover" type="close_contact_mover.py" output="screen" />
     <node name="robot_setup_mover" pkg="bimanual_handover" type="robot_setup_mover.py" output="screen" />
+    <node name="finish_handover" pkg="bimanual_handover" type="finish_handover.py" output="screen" />
     <node name="handover_controller" pkg="bimanual_handover" type="handover_controller.py" output="screen" />
 </launch>

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import rospy
-from bimanual_handover.srv import InitGripper, ProcessPC, MoveHandover, GraspExec
+from bimanual_handover.srv import InitGripper, ProcessPC, MoveHandover, GraspExec, FinishHandoverSrv
 
 class HandoverCommander():
 
@@ -20,6 +20,8 @@ class HandoverCommander():
         rospy.wait_for_service('handover/grasp_exec_srv')
         self.grasp_exec_srv = rospy.ServiceProxy('handover/grasp_exec_srv', GraspExec)
         rospy.loginfo('grasp_exec_srv initialized.')
+        self.finish_handover_srv = rospy.ServiceProxy('handover/finish_handover_srv', FinishHandoverSrv)
+        rospy.loginfo('finish_handover_srv initialized.')
 
     def full_pipeline(self):
         rospy.loginfo('Sending service request to init_gripper_srv.')
@@ -32,6 +34,8 @@ class HandoverCommander():
         self.move_handover_srv('fixed')
         rospy.loginfo('Sending service request to grasp_exec_srv.')
         self.grasp_exec_srv('placeholder')
+        rospy.loginfo('Sending service request to finish_handover_srv.')
+        self.finish_handover_srv('placeholder')
         rospy.loginfo('Handover finished.')
 
 

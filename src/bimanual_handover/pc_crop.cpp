@@ -38,7 +38,7 @@ void crop_pc(const sensor_msgs::PointCloud2ConstPtr& input_cloud){
 int main(int argc, char **argv){
     ros::init(argc, argv, "pc_cropping");
     ros::NodeHandle n;
-    cropped_pub = n.advertise<sensor_msgs::PointCloud2>("pc/pc_cropped", 10, true);
+    cropped_pub = n.advertise<sensor_msgs::PointCloud2>("handover/pc/pc_cropped", 10, true);
     ros::Subscriber sub = n.subscribe("/cloud_pcd", 10, crop_pc);
     ros::spin();
     return 0;

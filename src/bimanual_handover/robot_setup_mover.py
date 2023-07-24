@@ -8,8 +8,8 @@ from visualization_msgs.msg import Marker
 from geometry_msgs.msg import PoseStamped, Quaternion, Pose, Vector3
 from tf.transformations import quaternion_from_euler, quaternion_from_matrix, quaternion_multiply
 import math
-from gpd_ros.msg import GraspConfigList, CloudIndexed, CloudSources
-from gpd_ros.srv import detect_grasps
+#from gpd_ros.msg import GraspConfigList, CloudIndexed, CloudSources
+#from gpd_ros.srv import detect_grasps
 from bimanual_handover.srv import CollisionChecking
 from std_msgs.msg import Int64
 from tf2_ros import TransformListener, Buffer
@@ -30,8 +30,8 @@ class RobotSetupMover():
         self.debug = debug
         self.pc = None
         self.pc_sub = rospy.Subscriber("handover/pc/pc_filtered", PointCloud2, self.update_pc)
-        rospy.wait_for_service('/gpd_service/detect_grasps')
-        self.gpd_service = rospy.ServiceProxy('/gpd_service/detect_grasps', detect_grasps)
+        #rospy.wait_for_service('/gpd_service/detect_grasps')
+        #self.gpd_service = rospy.ServiceProxy('/gpd_service/detect_grasps', detect_grasps)
         self.debug_pose_pub = rospy.Publisher('debug_setup_pose', PoseStamped, queue_size = 1)
         self.tf_buffer = Buffer()
         TransformListener(self.tf_buffer)
@@ -161,7 +161,7 @@ class RobotSetupMover():
         hand_pose = PoseStamped()
         hand_pose.header.frame_id = "base_footprint"
         hand_pose.pose.position.x = min_point[0] + math.dist([max_point[0]], [min_point[0]])/2
-        hand_pose.pose.position.y = min_point[1] + math.dist([max_point[1]], [min_point[1]])/2 - 0.05
+        hand_pose.pose.position.y = min_point[1] + math.dist([max_point[1]], [min_point[1]])/2 - 0.08
         hand_pose.pose.position.z = max_point[2] + 0.03
         hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(1.57, 0, 3).tolist())
 

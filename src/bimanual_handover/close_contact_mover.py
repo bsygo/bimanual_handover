@@ -22,8 +22,8 @@ class CloseContactMover():
         self.current_joint_values = [0, 0, 0, 0, 0, 0, 0]
         self.current_joint_state = None
         self.initial_biotac_values = [0, 0, 0, 0]
-        self.biotac_threshold = 5 # Value taken from biotac manual
-        #self.wait_for_initial_values()
+        self.biotac_threshold = 10 # Value taken from biotac manual
+        self.wait_for_initial_values()
         self.joint_client.wait_for_server()
         rospy.Service('handover/ccm', CCM, self.move_until_contacts)
         rospy.spin()
@@ -32,8 +32,6 @@ class CloseContactMover():
         values_set = False
         while not values_set:
             values_set = 0 not in self.current_biotac_values 
-        print(values_set)
-        print(self.current_biotac_values)
         self.initial_biotac_values = deepcopy(self.current_biotac_values)
         while self.current_joint_state is None:
             pass
@@ -85,13 +83,12 @@ class CloseContactMover():
             self.joint_client.wait_for_result()
             if not self.joint_client.get_result().error_code == 0:
                 rospy.loginfo(self.joint_client.get_result().error_code)
-            # wait until movement finished -> convert to action client?
             for i in range(len(contacts)):
                 if not contacts[i]:
                     for j in range(len(self.current_biotac_values[i])):
                         if (self.current_biotac_values[i][j] > self.initial_biotac_values[i][j] + self.biotac_threshold) or (self.current_biotac_values[i][j] < self.initial_biotac_values[i][j] - self.biotac_threshold):
                             contacts[i] = True
-                            rospy.loginfo('Contact found with joint {}.'.format(self.joints[i]))
+                            rospy.loginfo('Contact found with joint {}.'.format(i))
                             break
             if sum(contacts) == 4:
                 print('contacts reached')

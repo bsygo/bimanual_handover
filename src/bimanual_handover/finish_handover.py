@@ -23,6 +23,10 @@ class FinishHandover():
         self.psi.remove_world_object('can')
         self.gripper.set_named_target('open')
         self.gripper.go()
+        current_gripper_pose = self.left_arm.get_current_pose()
+        current_gripper_pose.pose.position.y += 0.5
+        self.left_arm.set_pose_target(current_gripper_pose)
+        self.left_arm.go()
         self.left_arm.set_named_target('left_arm_to_side')
         self.left_arm.go()
         self.right_arm.set_named_target('right_arm_to_side')

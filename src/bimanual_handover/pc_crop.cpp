@@ -32,6 +32,7 @@ void crop_pc(const sensor_msgs::PointCloud2ConstPtr& input_cloud){
     pcl::toPCLPointCloud2(*cloud_filtered, pcl_pc2);
     sensor_msgs::PointCloud2 cloud_filtered_msg;
     pcl_conversions::moveFromPCL(pcl_pc2, cloud_filtered_msg);
+    cloud_filtered_msg.header.stamp = ros::Time::now();
     cropped_pub.publish(cloud_filtered_msg);
 }
 int main(int argc, char **argv){

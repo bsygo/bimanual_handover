@@ -62,7 +62,7 @@ class RobotSetupMover():
         translation.x = random.randrange(-0.5, 0.5)
         translation.y = random.randrange(0, 1)
         translation.z = random.randrange(-0.5, 0.5)
-        #rotation = *quaternion_from_euler(random.randrange(-math.pi/2, math.pi/2), random.randrange(-math.pi/2, math.pi/2), random.randrange(-math.pi/2, math.pi/2))
+        #rotation = *quaternion_from_euler((random.randrange(-math.pi/2, math.pi/2), random.randrange(-math.pi/2, math.pi/2), random.randrange(-math.pi/2, math.pi/2)))
         return translation, rotation
 
     def move_gpd_pose(self):

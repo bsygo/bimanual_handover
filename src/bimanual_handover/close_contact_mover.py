@@ -6,6 +6,7 @@ from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from sr_robot_msgs.msg import BiotacAll
 from bimanual_handover.srv import CCM
+from moveit_msgs.msg import DisplayTrajectory, RobotTrajectory
 
 class CloseContactMover():
 
@@ -20,6 +21,7 @@ class CloseContactMover():
         self.current_joint_state = None
         self.initial_biotac_values = [0, 0, 0, 0]
         self.biotac_threshold = 5 # Value taken from biotac manual
+        self.debug_pub = rospy.Publisher('/handover/debug/ccm', DisplayTrajectory, latch = True, queue_size = 1)
         #self.wait_for_initial_values()
         rospy.Service('handover/ccm', CCM, self.move_until_contacts)
         rospy.spin()
@@ -46,10 +48,16 @@ class CloseContactMover():
     def create_joint_trajectory_msg(self, joint_names, targets):
         msg = JointTrajectory()
         msg.joint_names = joint_names
-        point_msg = JointTrajectoryPoint()
-        point_msg.time_from_start = rospy.Duration(1)
-        point_msg.positions = targets
-        msg.points = [point_msg]
+        point_msgs = []
+        if not type(targets[0]) is list:
+            for i in range(len(targets)):
+                targets[i] = [targets[i]]
+        for i in range(len(targets[0])):
+            point_msg = JointTrajectoryPoint()
+            point_msg.time_from_start = rospy.Duration(1)
+            point_msg.positions = [targets[j][i] for j in range(len(targets))]
+            point_msgs.append(point_msg)
+        msg.points = point_msgs
         return msg
 
     def move_until_contacts(self, req):
@@ -60,6 +68,14 @@ class CloseContactMover():
             diff = targets[x] - self.current_joint_values[x]
             steps_temp = [self.current_joint_values[x] + y * diff/30 for y in range(30)]
             steps.append(steps_temp)
+
+        # Publish trajectory for debugging
+        debug_traj = DisplayTrajectory()
+        debug_traj.trajectory = [RobotTrajectory()]
+        debug_traj.trajectory[0].joint_trajectory = self.create_joint_trajectory_msg(self.joints, steps)
+        debug_traj.trajectory_start.joint_state = rospy.wait_for_message('joint_states', JointState)
+        self.debug_pub.publish(debug_traj)
+
         for x in range(len(steps[0])):
             used_joints = []
             used_steps = []

@@ -22,7 +22,7 @@ class RealEnv(gym.Env):
 
     def __init__(self, fingers):
         super().__init__()
-        self.action_space = spaces.Box(low = -1, high = 1, shape = (5,), dtype = np.float32) # first 5 values for finger synergies, last value if grasp is final
+        self.action_space = spaces.Box(low = -1, high = 1, shape = (6,), dtype = np.float32) # first 5 values for finger synergies, last value if grasp is final
         self.observation_space = spaces.Dict({"pressure": spaces.Box(low = 0, high = 10000, shape = (44,), dtype = np.float32), "biotac": spaces.Box(low = 0, high = 10000, shape = (95,), dtype = np.float32), "ft": spaces.Box(low = -20, high = 20, shape = (6,), dtype = np.float32)})
         self.fingers = fingers
         self.pca_con = sgg.SynGraspGen()
@@ -50,8 +50,7 @@ class RealEnv(gym.Env):
     def step(self, action):
         reward = 0
         result = None
-        #terminated = False
-        self.ccm_srv('placeholder')
+        terminated = False
         scaled_action = np.array([action[0] * 0.15, action[1] * 0.065, action[2] * 0.125, action[3] * 0.095, action[4] * 0.045])
 #        scaled_action = np.array([action[0] * 1.5, action[1] * 0.65, action[2] * 1.25, action[3] * 0.95, action[4] * 0.45])
         try:
@@ -63,18 +62,20 @@ class RealEnv(gym.Env):
             #reward = -0.2
         pressure = deepcopy(self.current_pressure)
         biotac = deepcopy(self.current_tactile)
-        ft = deepcopy(elf.current_force)
+        ft = deepcopy(self.current_force)
         observation = {}
         observation['pressure'] = np.concatenate((pressure.l_finger_tip, pressure.r_finger_tip), dtype = np.float32)
         observation['biotac'] = np.concatenate((biotac.tactiles[0].electrodes, biotac.tactiles[1].electrodes, biotac.tactiles[2].electrodes, biotac.tactiles[3].electrodes, biotac.tactiles[4].electrodes), dtype = np.float32)
         observation['ft'] = np.concatenate(([ft.wrench.force.x, ft.wrench.force.y, ft.wrench.force.z], [ft.wrench.torque.x, ft.wrench.torque.y, ft.wrench.torque.z]), dtype = np.float32)
-        # test grasp, make reward force torque based, and end episode
-        terminated = True
-        if self.gt_srv('placeholder'):
-            reward = 1
-        else:
-            reward = 0
-        '''
+        # If grasping decision is reached, further close the hand, compute reward based on grasping stability, and terminate episode
+        if action[5] > 0:
+            self.ccm_srv('placeholder')
+            terminated = True
+            if self.gt_srv('placeholder'):
+                reward = 1
+            else:
+                reward = 0
+        # If grasping decision is not reached, compute reward based on how far the hand has closed itself
         elif reward >= 0:
             joint_diff = 0
             for joint in self.closing_joints:
@@ -84,7 +85,6 @@ class RealEnv(gym.Env):
                 else:
                     joint_diff += - math.dist([new_joints[index]], [self.last_joints[index]])
             reward = 0.03 * joint_diff
-        '''
         self.last_joints = np.array(self.fingers.get_current_joint_values())
         self.log_file.write("{}, {} \n".format(action, reward))
         #self.reset_timer += 1
@@ -101,12 +101,9 @@ class RealEnv(gym.Env):
         self.fingers.go()
         self.fingers.set_joint_value_target('rh_THJ4', 1.13446)
         observation = {}
-        print('waiting for pressure')
-        pressure = rospy.wait_for_message('/pressure/l_gripper_motor', PressureState)
-        print('waiting for biotac')
-        biotac = rospy.wait_for_message('/hand/rh/tactile', BiotacAll)
-        print('waiting for ft')
-        ft = rospy.wait_for_message('/ft/l_gripper_motor', WrenchStamped)
+        pressure = deepcopy(self.current_pressure)
+        biotac = deepcopy(self.current_tactile)
+        ft = deepcopy(self.current_force)
         observation = {}
         observation['pressure'] = np.concatenate((pressure.l_finger_tip, pressure.r_finger_tip), dtype = np.float32)
         observation['biotac'] = np.concatenate((biotac.tactiles[0].electrodes, biotac.tactiles[1].electrodes, biotac.tactiles[2].electrodes, biotac.tactiles[3].electrodes, biotac.tactiles[4].electrodes), dtype = np.float32)

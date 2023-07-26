@@ -68,6 +68,8 @@ class RobotSetupMover():
     def move_gpd_pose(self):
         while self.pc is None:
             rospy.sleep(1)
+        self.fingers.set_joint_value_target('rh_THJ4, 1.13446')
+        self.fingers.go()
         current_pc = self.pc
         cloud_indexed = CloudIndexed()
         cloud_sources = CloudSources()
@@ -80,6 +82,17 @@ class RobotSetupMover():
         manipulator_transform = self.tf_buffer.lookup_transform('rh_manipulator', 'base_footprint', rospy.Time(0))
         checked_poses = []
         gripper_pose = self.gripper.get_current_pose()
+        '''
+        # Use the middle point between thumb and middle finger as the grasp point for the hand
+        mf_pose = self.fingers.get_current_pose('rh_mf_biotac_link')
+        th_pose = self.fingers.get_current_pose('rh_th_biotac_link')
+        hand_grasp_point = PoseStamped()
+        hand_grasp_point.pose.position.x = (mf_pose.pose.position.x + th_pose.pose.position.x)/2
+        hand_grasp_point.pose.position.y = (mf_pose.pose.position.y + th_pose.pose.position.y)/2
+        hand_grasp_point.pose.position.z = (mf_pose.pose.position.z + th_pose.pose.position.z)/2
+        grasp_point_transform = self.tf_buffer.lookup_transform('base_footprint', 'rh_manipulator')
+        hand_grasp_point = do_transform_pose(hand_grasp_point, grasp_point_transform)
+        '''
         for i in range(len(response.grasp_configs.grasps)):
             selected_grasp = response.grasp_configs.grasps[i]
             grasp_point = selected_grasp.position
@@ -94,6 +107,12 @@ class RobotSetupMover():
             transformed_pose = do_transform_pose(pose, manipulator_transform)
             transformed_pose.pose.position.y += 0.02
             transformed_pose.pose.position.z += - 0.02
+            '''
+            # Adjust hand movement from rh_manipulator to the grasp point specified above
+            transformed_pose.pose.position.x += hand_grasp_point.pose.position.x
+            transformed_pose.pose.position.y += hand_grasp_point.pose.position.y
+            transformed_pose.pose.position.z += hand_grasp_point.pose.position.z
+            '''
             self.debug_pose_pub.publish(transformed_pose)
             if self.collision_service(transformed_pose.pose, gripper_pose):
                 checked_poses.append(transformed_pose)

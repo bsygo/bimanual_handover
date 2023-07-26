@@ -4,19 +4,20 @@ import rospy
 from sensor_msgs.msg import PointCloud2
 from std_msgs.msg import Bool
 
-global pub, pc
+global pub, publish
 
 def save_pc(new_pc):
-    global pc
-    pc = new_pc
+    global pub, publish
+    if publish:
+        pub.publish(new_pc)
+        publish = False
 
-def publish_pc(publish):
-    global pub, pc
-    if publish.data:
-        pub.publish(pc)
+def publish_pc(publish_pc):
+    global publish
+    publish = publish_pc
 
 def main():
-    global pub, pc
+    global pub, publish
     rospy.init_node('capture_pc')
     publish = False
     pc = rospy.wait_for_message('/azure_kinect/points2', PointCloud2)

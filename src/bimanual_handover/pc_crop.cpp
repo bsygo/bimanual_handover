@@ -19,11 +19,6 @@ void crop_pc(const sensor_msgs::PointCloud2ConstPtr& input_cloud){
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::fromPCLPointCloud2(pcl_pc2, *cloud);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_filtered (new pcl::PointCloud<pcl::PointXYZRGB>);
-    //pcl::PassThrough<pcl::PointXYZRGB> pass;
-    //pass.setInputCloud(cloud);
-    //pass.setFilterFieldName("z");
-    //pass.setFilterLimits(0.0,1.0);
-    //pass.filter(*cloud_filtered);
     pcl::CropBox<pcl::PointXYZRGB> box;
     box.setMin(Eigen::Vector4f(-0.3, -0.3, 0.0, 1.0));
     box.setMax(Eigen::Vector4f(0.3, 0.3, 1.0, 1.0));
@@ -37,8 +32,8 @@ void crop_pc(const sensor_msgs::PointCloud2ConstPtr& input_cloud){
 int main(int argc, char **argv){
     ros::init(argc, argv, "pc_cropping");
     ros::NodeHandle n;
-    cropped_pub = n.advertise<sensor_msgs::PointCloud2>("handover/pc/pc_cropped", 10, true);
-    ros::Subscriber sub = n.subscribe("/cloud_pcd", 10, crop_pc);
+    cropped_pub = n.advertise<sensor_msgs::PointCloud2>("pc_cropped", 10, true);
+    ros::Subscriber sub = n.subscribe("pc_raw", 10, crop_pc);
     ros::spin();
     return 0;
 }

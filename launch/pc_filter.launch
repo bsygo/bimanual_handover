@@ -1,14 +1,17 @@
 <?xml version="1.0"?>
 <launch>
-    <node name="pc_pub" pkg="bimanual_handover" type="pub_pcl.sh" output="screen" />
+    <arg name="demo_pc" />
+    <group ns="pc">
+    <node name="pc_pub" pkg="bimanual_handover" type="pub_pcl.sh" output="screen" if="$(eval arg('demo_pc'))"/>
     <node name="pc_crop" pkg="bimanual_handover" type="pc_cropper_node" output="screen" />
     <node name="pc_filter" pkg="sensor_filters" type="pointcloud2_filter_chain" output="screen">
         <rosparam command="load" file="$(find bimanual_handover)/config/pc_filter.yaml" />
-            <remap from="~input" to="handover/pc/pc_cropped" />
-            <remap from="~output" to="handover/pc/pc_filtered" />
+            <remap from="~input" to="pc_cropped" />
+            <remap from="~output" to="pc_filtered" />
     </node>
     <node name="gpd_service" pkg="gpd_ros" type="detect_grasps_server" output="screen">
         <param name="config_file" type="str" value="/homeL/6sygo/master/src/gpd/cfg/ros_eigen_params.cfg" />
         <param name="rviz_topic" type="str" value="plot_grasps" />
     </node>
+    </group>
 </launch>

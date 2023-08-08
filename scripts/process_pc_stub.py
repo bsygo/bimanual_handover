@@ -15,7 +15,7 @@ def process_pc(req):
     received = False
     return True
 
-def pc_recevied(pc):
+def pc_received(pc):
     global received
     received = True
 
@@ -23,9 +23,9 @@ def main():
     global pub, received
     rospy.init_node('process_pc_stub')
     received = False
-    pub = rospy.Publisher('handover/pc/publish_pc', Bool, queue_size = 5)
-    sub = rospy.Subscriber('handover/pc/pc_filtered', PointCloud2, pc_received)
-    rospy.Service('handover/process_pc_srv', ProcessPC, process_pc)
+    pub = rospy.Publisher('publish_pc', Bool, queue_size = 5)
+    sub = rospy.Subscriber('pc/pc_filtered', PointCloud2, pc_received)
+    rospy.Service('process_pc_srv', ProcessPC, process_pc)
     rospy.spin()
 
 if __name__ == "__main__":

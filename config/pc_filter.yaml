@@ -2,6 +2,7 @@ cloud_filter_chain:
     - name: robot_body_filter_containment
       type: robot_body_filter/RobotBodyFilterPointCloud2
       params:
+        body_model/robot_description_param: "/robot_description"
         frames/fixed: "base_footprint"
         frames/sensor: "azure_kinect_rgb_sensor"
         filter/model_pose_update_interval: 1.0

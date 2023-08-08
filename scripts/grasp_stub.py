@@ -11,9 +11,9 @@ def grasp_exec(req):
 def main():
     global ccm_srv
     rospy.init_node('grasp_stub')
-    rospy.wait_for_service('handover/ccm')
-    ccm_srv = rospy.ServiceProxy('handover/ccm', CCM)
-    rospy.Service('handover/grasp_exec_srv', GraspExec, grasp_exec)
+    rospy.wait_for_service('ccm')
+    ccm_srv = rospy.ServiceProxy('ccm', CCM)
+    rospy.Service('grasp_exec_srv', GraspExec, grasp_exec)
     rospy.spin()
 
 if __name__ == "__main__":

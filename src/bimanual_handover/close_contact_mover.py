@@ -10,7 +10,8 @@ from moveit_msgs.msg import DisplayTrajectory, RobotTrajectory
 
 class CloseContactMover():
 
-    def __init__(self):
+    def __init__(self, debug = False):
+        rospy.init_node('close_contact_mover')
         self.joints_dict = {'rh_FFJ2': 0, 'rh_FFJ3': 0, 'rh_MFJ2': 1, 'rh_MFJ3': 1, 'rh_RFJ2': 2, 'rh_RFJ3': 2, 'rh_THJ5': 3}
         self.joints = list(self.joints_dict.keys())
         self.joint_publisher = rospy.Publisher('/hand/rh_trajectory_controller/command', JointTrajectory, queue_size = 10)
@@ -21,9 +22,11 @@ class CloseContactMover():
         self.current_joint_state = None
         self.initial_biotac_values = [0, 0, 0, 0]
         self.biotac_threshold = 5 # Value taken from biotac manual
-        self.debug_pub = rospy.Publisher('/handover/debug/ccm', DisplayTrajectory, latch = True, queue_size = 1)
+        self.debug = debug
+        if self.debug:
+            self.debug_pub = rospy.Publisher('debug/ccm', DisplayTrajectory, latch = True, queue_size = 1)
         #self.wait_for_initial_values()
-        rospy.Service('handover/ccm', CCM, self.move_until_contacts)
+        rospy.Service('ccm', CCM, self.move_until_contacts)
         rospy.spin()
 
     def wait_for_initial_values(self):
@@ -69,12 +72,13 @@ class CloseContactMover():
             steps_temp = [self.current_joint_values[x] + y * diff/30 for y in range(30)]
             steps.append(steps_temp)
 
-        # Publish trajectory for debugging
-        debug_traj = DisplayTrajectory()
-        debug_traj.trajectory = [RobotTrajectory()]
-        debug_traj.trajectory[0].joint_trajectory = self.create_joint_trajectory_msg(self.joints, steps)
-        debug_traj.trajectory_start.joint_state = rospy.wait_for_message('joint_states', JointState)
-        self.debug_pub.publish(debug_traj)
+        if self.debug:
+            # Publish trajectory for debugging
+            debug_traj = DisplayTrajectory()
+            debug_traj.trajectory = [RobotTrajectory()]
+            debug_traj.trajectory[0].joint_trajectory = self.create_joint_trajectory_msg(self.joints, steps)
+            debug_traj.trajectory_start.joint_state = rospy.wait_for_message('joint_states', JointState)
+            self.debug_pub.publish(debug_traj)
 
         for x in range(len(steps[0])):
             used_joints = []
@@ -96,6 +100,4 @@ class CloseContactMover():
         return True
 
 if __name__ == '__main__':
-    rospy.init_node('close_contact_mover')
     ccm = CloseContactMover()
-    ccm.move_until_contacts()

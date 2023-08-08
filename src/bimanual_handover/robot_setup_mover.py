@@ -16,31 +16,38 @@ from tf2_ros import TransformListener, Buffer
 from tf2_geometry_msgs import do_transform_pose
 from bimanual_handover.srv import CollisionChecking, MoveHandover
 import random
+import sys
 
 class RobotSetupMover():
 
     def __init__(self, debug = False):
-        self.hand = MoveGroupCommander("right_arm")
-        self.fingers = MoveGroupCommander("right_fingers")
-        self.arm = MoveGroupCommander("right_arm_pr2")
-        self.gripper = MoveGroupCommander("left_gripper")
-        self.psi = PlanningSceneInterface()
+        rospy.init_node('robot_setup_mover')
+        roscpp_initialize('')
+        rospy.on_shutdown(self.shutdown)
+        self.hand = MoveGroupCommander("right_arm", ns = "/")
+        self.fingers = MoveGroupCommander("right_fingers", ns = "/")
+        self.arm = MoveGroupCommander("right_arm_pr2", ns = "/")
+        self.gripper = MoveGroupCommander("left_gripper", ns = "/")
+        self.psi = PlanningSceneInterface(ns = "/")
         self.robot = RobotCommander()
         self.hand.set_end_effector_link("rh_manipulator")
         self.debug = debug
         self.pc = None
-        self.pc_sub = rospy.Subscriber("handover/pc/pc_filtered", PointCloud2, self.update_pc)
-        rospy.wait_for_service('/gpd_service/detect_grasps')
-        self.gpd_service = rospy.ServiceProxy('/gpd_service/detect_grasps', detect_grasps)
-        self.debug_pose_pub = rospy.Publisher('debug_setup_pose', PoseStamped, queue_size = 1)
+        self.pc_sub = rospy.Subscriber("pc/pc_filtered", PointCloud2, self.update_pc)
+        rospy.wait_for_service('pc/gpd_service/detect_grasps')
+        self.gpd_service = rospy.ServiceProxy('pc/gpd_service/detect_grasps', detect_grasps)
+        self.debug_pose_pub = rospy.Publisher('debug/rsm_setup_pose', PoseStamped, queue_size = 1)
         self.tf_buffer = Buffer()
         TransformListener(self.tf_buffer)
         #rospy.wait_for_service('/cc/collision_service')
         #self.collision_service = rospy.ServiceProxy('/cc/collision_service', CollisionChecking)
         #self.sh_pose_pub = rospy.Publisher('/cc/sh_pose', Pose)
         #self.gripper_pose_pub = rospy.Publisher('/cc/gripper_pose', Pose)
-        rospy.Service('handover/move_handover_srv', MoveHandover, self.move_handover)
+        rospy.Service('move_handover_srv', MoveHandover, self.move_handover)
         rospy.spin()
+
+    def shutdown(self):
+        roscpp_shutdown()
 
     def move_handover(self, req):
         rospy.loginfo('Request received.')
@@ -212,9 +219,5 @@ class RobotSetupMover():
         self.arm.go()
 
 if __name__ == "__main__":
-    rospy.init_node('robot_setup_mover')
     mover = RobotSetupMover()
-    mover.reset_fingers()
-    # mover.move_fixed_pose_pc()
-    mover.move_gpd_pose()
 

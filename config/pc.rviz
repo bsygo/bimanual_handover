@@ -1430,7 +1430,7 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.009999999776482582
       Style: Points
-      Topic: /pc/pc_filtered
+      Topic: /handover/pc/pc_filtered
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
@@ -1451,7 +1451,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 0.868156373500824
+      Distance: 1.9762017726898193
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -1459,17 +1459,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.75
       Focal Point:
-        X: 0.284971684217453
-        Y: 0.17533807456493378
-        Z: 1.1134902238845825
+        X: 0.37909454107284546
+        Y: -0.03623518347740173
+        Z: 0.9807794094085693
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.7649994492530823
+      Pitch: 0.5499993562698364
       Target Frame: base_footprint
-      Yaw: 2.59675931930542
+      Yaw: 6.089944362640381
     Saved: ~
 Window Geometry:
   Displays:

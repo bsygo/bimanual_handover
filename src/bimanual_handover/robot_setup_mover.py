@@ -16,31 +16,38 @@ from tf2_ros import TransformListener, Buffer
 from tf2_geometry_msgs import do_transform_pose
 from bimanual_handover.srv import CollisionChecking, MoveHandover
 import random
+import sys
 
 class RobotSetupMover():
 
     def __init__(self, debug = False):
-        self.hand = MoveGroupCommander("right_arm")
-        self.fingers = MoveGroupCommander("right_fingers")
-        self.arm = MoveGroupCommander("right_arm_pr2")
-        self.gripper = MoveGroupCommander("left_gripper")
-        self.psi = PlanningSceneInterface()
+        rospy.init_node('robot_setup_mover')
+        roscpp_initialize('')
+        rospy.on_shutdown(self.shutdown)
+        self.hand = MoveGroupCommander("right_arm", ns = "/")
+        self.fingers = MoveGroupCommander("right_fingers", ns = "/")
+        self.arm = MoveGroupCommander("right_arm_pr2", ns = "/")
+        self.gripper = MoveGroupCommander("left_gripper", ns = "/")
+        self.psi = PlanningSceneInterface(ns = "/")
         self.robot = RobotCommander()
         self.hand.set_end_effector_link("rh_manipulator")
         self.debug = debug
         self.pc = None
-        self.pc_sub = rospy.Subscriber("handover/pc/pc_filtered", PointCloud2, self.update_pc)
-        #rospy.wait_for_service('/gpd_service/detect_grasps')
-        #self.gpd_service = rospy.ServiceProxy('/gpd_service/detect_grasps', detect_grasps)
-        self.debug_pose_pub = rospy.Publisher('debug_setup_pose', PoseStamped, queue_size = 1)
+        self.pc_sub = rospy.Subscriber("pc/pc_filtered", PointCloud2, self.update_pc)
+        rospy.wait_for_service('pc/gpd_service/detect_grasps')
+        self.gpd_service = rospy.ServiceProxy('pc/gpd_service/detect_grasps', detect_grasps)
+        self.debug_pose_pub = rospy.Publisher('debug/rsm_setup_pose', PoseStamped, queue_size = 1)
         self.tf_buffer = Buffer()
         TransformListener(self.tf_buffer)
         #rospy.wait_for_service('/cc/collision_service')
         #self.collision_service = rospy.ServiceProxy('/cc/collision_service', CollisionChecking)
         #self.sh_pose_pub = rospy.Publisher('/cc/sh_pose', Pose)
         #self.gripper_pose_pub = rospy.Publisher('/cc/gripper_pose', Pose)
-        rospy.Service('handover/move_handover_srv', MoveHandover, self.move_handover)
+        rospy.Service('move_handover_srv', MoveHandover, self.move_handover)
         rospy.spin()
+
+    def shutdown(self):
+        roscpp_shutdown()
 
     def move_handover(self, req):
         rospy.loginfo('Request received.')
@@ -68,6 +75,8 @@ class RobotSetupMover():
     def move_gpd_pose(self):
         while self.pc is None:
             rospy.sleep(1)
+        self.fingers.set_joint_value_target('rh_THJ4, 1.13446')
+        self.fingers.go()
         current_pc = self.pc
         cloud_indexed = CloudIndexed()
         cloud_sources = CloudSources()
@@ -80,6 +89,17 @@ class RobotSetupMover():
         manipulator_transform = self.tf_buffer.lookup_transform('rh_manipulator', 'base_footprint', rospy.Time(0))
         checked_poses = []
         gripper_pose = self.gripper.get_current_pose()
+        '''
+        # Use the middle point between thumb and middle finger as the grasp point for the hand
+        mf_pose = self.fingers.get_current_pose('rh_mf_biotac_link')
+        th_pose = self.fingers.get_current_pose('rh_th_biotac_link')
+        hand_grasp_point = PoseStamped()
+        hand_grasp_point.pose.position.x = (mf_pose.pose.position.x + th_pose.pose.position.x)/2
+        hand_grasp_point.pose.position.y = (mf_pose.pose.position.y + th_pose.pose.position.y)/2
+        hand_grasp_point.pose.position.z = (mf_pose.pose.position.z + th_pose.pose.position.z)/2
+        grasp_point_transform = self.tf_buffer.lookup_transform('base_footprint', 'rh_manipulator')
+        hand_grasp_point = do_transform_pose(hand_grasp_point, grasp_point_transform)
+        '''
         for i in range(len(response.grasp_configs.grasps)):
             selected_grasp = response.grasp_configs.grasps[i]
             grasp_point = selected_grasp.position
@@ -94,6 +114,12 @@ class RobotSetupMover():
             transformed_pose = do_transform_pose(pose, manipulator_transform)
             transformed_pose.pose.position.y += 0.02
             transformed_pose.pose.position.z += - 0.02
+            '''
+            # Adjust hand movement from rh_manipulator to the grasp point specified above
+            transformed_pose.pose.position.x += hand_grasp_point.pose.position.x
+            transformed_pose.pose.position.y += hand_grasp_point.pose.position.y
+            transformed_pose.pose.position.z += hand_grasp_point.pose.position.z
+            '''
             self.debug_pose_pub.publish(transformed_pose)
             if self.collision_service(transformed_pose.pose, gripper_pose):
                 checked_poses.append(transformed_pose)
@@ -193,9 +219,5 @@ class RobotSetupMover():
         self.arm.go()
 
 if __name__ == "__main__":
-    rospy.init_node('robot_setup_mover')
     mover = RobotSetupMover()
-    mover.reset_fingers()
-    # mover.move_fixed_pose_pc()
-    mover.move_gpd_pose()
 

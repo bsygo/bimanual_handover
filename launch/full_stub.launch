@@ -1,10 +1,14 @@
 <?xml version="1.0"?>
 <launch>
-    <include file="$(find bimanual_handover)/launch/pc_filter.launch" />
+    <arg name="demo" default="false" />
+    <group ns="handover" >
+    <include file="$(find bimanual_handover)/launch/pc_filter.launch" >
+        <arg name="demo_pc" value="$(arg demo)" />
+    </include>
     <node name="init_gripper_stub" pkg="bimanual_handover" type="init_gripper_stub.py" output="screen" />
     <node name="process_pc_stub" pkg="bimanual_handover" type="process_pc_stub.py" output="screen" />
     <node name="grasp_stub" pkg="bimanual_handover" type="grasp_stub.py" output="screen" />
-    <node name="capture_pc" pkg="bimanual_handover" type="capture_pc.py" output="screen" />
+    <node name="capture_pc" pkg="bimanual_handover" type="capture_pc.py" output="screen" args="$(arg demo)"/>
     <node name="close_contact_mover" pkg="bimanual_handover" type="close_contact_mover.py" output="screen" />
     <node name="grasp_tester" pkg="bimanual_handover" type="grasp_tester.py" output="screen" />
     <node name="robot_setup_mover" pkg="bimanual_handover" type="robot_setup_mover.py" output="screen" />

@@ -5,19 +5,27 @@ from bimanual_handover.srv import ProcessPC
 from std_msgs.msg import Bool
 from sensor_msgs.msg import PointCloud2
 
-global pub
+global pub, received
 
 def process_pc(req):
-    global pub
+    global pub, received
     pub.publish(req.publish)
-    rospy.wait_for_message('handover/pc/pc_filtered', PointCloud2)
+    while not received:
+        rospy.sleep(0.1)
+    received = False
     return True
 
+def pc_received(pc):
+    global received
+    received = True
+
 def main():
-    global pub
+    global pub, received
     rospy.init_node('process_pc_stub')
-    pub = rospy.Publisher('handover/pc/publish_pc', Bool, queue_size = 5)
-    rospy.Service('handover/process_pc_srv', ProcessPC, process_pc)
+    received = False
+    pub = rospy.Publisher('publish_pc', Bool, queue_size = 5)
+    sub = rospy.Subscriber('pc/pc_filtered', PointCloud2, pc_received)
+    rospy.Service('process_pc_srv', ProcessPC, process_pc)
     rospy.spin()
 
 if __name__ == "__main__":

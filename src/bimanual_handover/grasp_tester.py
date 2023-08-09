@@ -8,6 +8,7 @@ from geometry_msgs.msg import WrenchStamped
 class GraspTester():
 
     def __init__(self):
+        rospy.init_node('grasp_tester')
         self.right_arm = MoveGroupCommander('right_arm')
         rospy.Service('handover/grasp_tester', GraspTesterSrv, self.test_grasp)
         rospy.spin()

@@ -3,15 +3,17 @@
 import rospy
 from bimanual_handover.srv import GraspExec, CCM, GraspTesterSrv
 
-global ccm_srv
+global ccm_srv, grasp_tester_srv
 
 def grasp_exec(req):
-    if ccm_srv(req.placeholder).finished:
+    close_grasp = ccm_srv(req.placeholder).finished
+    rospy.loginfo("Closing grasp result: {}".format(close_grasp))
+    if close_grasp:
         return grasp_tester_srv('placeholder').success
     return False
 
 def main():
-    global ccm_srv
+    global ccm_srv, grasp_tester_srv
     rospy.init_node('grasp_stub')
     rospy.wait_for_service('ccm')
     ccm_srv = rospy.ServiceProxy('ccm', CCM)

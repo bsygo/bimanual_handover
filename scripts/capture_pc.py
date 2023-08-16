@@ -15,6 +15,7 @@ def save_pc(new_pc):
 
 def publish_pc(publish_pc):
     global publish
+    rospy.loginfo("Publish_pc request received.")
     publish = publish_pc
 
 def main():
@@ -23,10 +24,13 @@ def main():
     if len(sys.argv) < 2:
         rospy.logerr("Missing argument for capture_pc.")
         return
-    elif sys.argv[1]:
+    elif sys.argv[1] == "true":
+        rospy.loginfo(sys.argv[1])
         input_topic = 'pc/cloud_pcd'
-    else:
+    elif sys.argv[1] == "false":
         input_topic = '/azure_kinect/points2'
+    else:
+        rospy.logerr("Unknown argument {} for capture_pc.".format(sys.argv[1]))
     publish = False
     rospy.Subscriber(input_topic, PointCloud2, save_pc, queue_size = 1)
     rospy.Subscriber('publish_pc', Bool, publish_pc, queue_size = 1)

@@ -45,7 +45,9 @@ class HandoverCommander():
         rospy.loginfo('Sending service request to move_handover_srv.')
         self.move_handover_srv('fixed')
         rospy.loginfo('Sending service request to grasp_exec_srv.')
-        self.grasp_exec_srv('placeholder')
+        grasp_response = self.grasp_exec_srv('placeholder')
+        rospy.loginfo('Grasp response: {}'.format(grasp_response))
+        return
         rospy.loginfo('Sending service request to finish_handover_srv.')
         self.finish_handover_srv('placeholder')
         rospy.loginfo('Handover finished.')

@@ -19,6 +19,7 @@ class GraspTester():
         self.bio_ik_srv = rospy.ServiceProxy('/bio_ik/get_bio_ik', GetIK)
         self.current_force = None
         self.right_arm = MoveGroupCommander('right_arm', ns = "/")
+        self.right_arm.get_current_pose() # To initiate state monitor: see moveit issue #2715
         self.robot = RobotCommander()
         rospy.Service('grasp_tester', GraspTesterSrv, self.test_grasp)
         self.debug_pub_current = rospy.Publisher('debug/pre_cartesian', PoseStamped, queue_size = 1, latch = True)
@@ -94,8 +95,8 @@ class GraspTester():
         rospy.loginfo("Initial force value: {}".format(prev_ft))
 
         # For some reason, this needs to happen twice or otherwise the orientation is messed up
-        current_pose = deepcopy(self.right_arm.get_current_pose()) 
-        rospy.sleep(1)
+        #current_pose = self.right_arm.get_current_pose()
+        #rospy.sleep(1)
         current_pose = self.right_arm.get_current_pose()
 
         request = self.prepare_bio_ik_request('right_arm')
@@ -110,8 +111,6 @@ class GraspTester():
         plan = self.right_arm.go()
         if not plan:
             raise Exception("Moving to pose \n {} \n failed. No path was found to the joint state \n {}.".format(current_pose, filtered_joint_state))
-        after_pose = self.right_arm.get_current_pose()
-        print(after_pose)
 
         cur_ft = deepcopy(self.current_force)
         rospy.loginfo("Afterwards force value: {}".format(cur_ft))

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import rospy
+import rospkg
+from datetime import datetime
 from std_msgs.msg import Float64
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
@@ -10,10 +12,13 @@ import actionlib
 from control_msgs.msg import FollowJointTrajectoryAction, FollowJointTrajectoryGoal
 from copy import deepcopy
 from moveit_msgs.msg import DisplayTrajectory, RobotTrajectory
+from sr_robot_msgs.msg import BiotacAll
+from pr2_msgs.msg import PressureState
+from geometry_msgs.msg import WrenchStamped
 
 class CloseContactMover():
 
-    def __init__(self, debug = False):
+    def __init__(self, debug = False, collect = False):
         rospy.init_node('close_contact_mover')
         self.joints_dict = {'rh_FFJ2': 0, 'rh_FFJ3': 0, 'rh_MFJ2': 1, 'rh_MFJ3': 1, 'rh_RFJ2': 2, 'rh_RFJ3': 2, 'rh_LFJ2': 3, 'rh_LFJ3': 3, 'rh_THJ5': 4}
         self.joints = list(self.joints_dict.keys())
@@ -26,8 +31,16 @@ class CloseContactMover():
         self.initial_biotac_values = [0, 0, 0, 0, 0]
         self.biotac_threshold = 20 # Value taken from biotac manual
         self.debug = debug
+        self.collect = collect
         if self.debug:
             self.debug_pub = rospy.Publisher('debug/ccm', DisplayTrajectory, latch = True, queue_size = 1)
+        if self.collect:
+            rospack = rospkg.RosPack()
+            pkg_path = rospack.get_path('bimanual_handover')
+            now = datetime.now()
+            current_date = now.strftime("%d-%m-%Y:%H-%M-%S")
+            name = "closing_attempt_" + current_date + ".txt"
+            self.data_file = open(pkg_path + "/data/" + name, "w")
         self.joint_client.wait_for_server()
         rospy.Service('ccm', CCM, self.move_until_contacts)
         rospy.spin()
@@ -35,7 +48,7 @@ class CloseContactMover():
     def wait_for_initial_values(self):
         values_set = False
         while not values_set:
-            values_set = 0 not in self.current_biotac_values 
+            values_set = 0 not in self.current_biotac_values
         self.initial_biotac_values = deepcopy(self.current_biotac_values)
         while self.current_joint_state is None:
             pass
@@ -91,10 +104,24 @@ class CloseContactMover():
             debug_traj = DisplayTrajectory()
             debug_traj.trajectory = [RobotTrajectory()]
             debug_traj.trajectory[0].joint_trajectory = self.create_joint_trajectory_msg(self.joints, steps)
-            debug_traj.trajectory_start.joint_state = rospy.wait_for_message('joint_states', JointState)
+            debug_traj.trajectory_start.joint_state = rospy.wait_for_message('/joint_states', JointState)
             self.debug_pub.publish(debug_traj)
 
         for x in range(len(steps[0])):
+            if self.collect:
+                self.data_file.write("Observation: ")
+                pressure = rospy.wait_for_message('/pressure/l_gripper_motor', PressureState)
+                tactile = rospy.wait_for_message('/hand/rh/tactile', BiotacAll)
+                force = rospy.wait_for_message('/ft/l_gripper_motor', WrenchStamped)
+                joints = rospy.wait_for_message('/joint_state', JointState)
+                self.data_file.write(pressure)
+                self.data_file.write(" ")
+                self.data_file.write(tactile)
+                self.data_file.write(" ")
+                self.data_file.write(force)
+                self.data_file.write(" ")
+                self.data_file.write(joints)
+                self.data_file.write(" ")
             used_joints = []
             used_steps = []
             for i in range(len(self.joints)):
@@ -115,9 +142,15 @@ class CloseContactMover():
                             if i == 3:
                                 rospy.loginfo('Index: {}, Initial: {}, Contact: {}'.format(j, self.current_biotac_values[i][j], self.initial_biotac_values[i][j]))
                             break
+            if self.collect:
+                self.data_file.write("Result:  ")
+                joints = rospy.wait_for_message('/joint_state', JointState)
+                self.data_file.write("\n")
             if sum(contacts) == 5:
                 print('contacts reached')
                 return True
+        if self.collect:
+            self.data_file.close()
         print(contacts)
         return False
 

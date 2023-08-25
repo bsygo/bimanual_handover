@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import rospy
+import random
 from datetime import datetime
 import rospkg
 from geometry_msgs.msg import PoseStamped, WrenchStamped
@@ -33,9 +34,9 @@ class RealEnv(gym.Env):
         self.closing_joints = ['rh_FFJ2', 'rh_FFJ3', 'rh_MFJ2', 'rh_MFJ3', 'rh_RFJ2', 'rh_RFJ3', 'rh_LFJ2', 'rh_LFJ3', 'rh_THJ2']
         self.joint_order = self.fingers.get_active_joints()
         self.ccm_srv = rospy.ServiceProxy('handover/ccm', CCM)
-        self.pressure_sub = rospy.Subscriber('/pressure/l_gripper_motor', PressureState, pressure_callback)
+        self.pressure_sub = rospy.Subscriber('/pressure/l_gripper_motor', PressureState, self.pressure_callback)
         self.tactile_sub = rospy.Subscriber('/hand/rh/tactile', BiotacAll, self.tactile_callback)
-        self.force_sub = rospy.Subscriber('ft/l_gripper_motor', WrenchStamped, force_callback)
+        self.force_sub = rospy.Subscriber('/ft/l_gripper_motor', WrenchStamped, self.force_callback)
         self.gt_srv = rospy.ServiceProxy('handover/grasp_tester', GraspTesterSrv)
 
     def pressure_callback(self, pressure):
@@ -60,6 +61,7 @@ class RealEnv(gym.Env):
             #reward = -0.2
         if not result is MoveItErrorCodes.SUCCESS:
             #reward = -0.2
+            pass
         pressure = deepcopy(self.current_pressure)
         biotac = deepcopy(self.current_tactile)
         ft = deepcopy(self.current_force)
@@ -109,6 +111,67 @@ class RealEnv(gym.Env):
         observation['biotac'] = np.concatenate((biotac.tactiles[0].electrodes, biotac.tactiles[1].electrodes, biotac.tactiles[2].electrodes, biotac.tactiles[3].electrodes, biotac.tactiles[4].electrodes), dtype = np.float32)
         observation['ft'] = np.concatenate(([ft.wrench.force.x, ft.wrench.force.y, ft.wrench.force.z], [ft.wrench.torque.x, ft.wrench.torque.y, ft.wrench.torque.z]), dtype = np.float32)
         self.last_joints = np.array(self.fingers.get_current_joint_values())
+        return observation
+
+    def render(self):
+        return
+
+    def close(self):
+        self.log_file.close()
+        return
+
+class MimicEnv(gym.env):
+
+    def __init__(self):
+        super.__init__()
+        self.action_space = spaces.Box(low = -1, high = 1, shape = (6,), dtype = np.float32) # first 5 values for finger synergies, last value if grasp is final
+        self.observation_space = spaces.Dict({"pressure": spaces.Box(low = 0, high = 10000, shape = (44,), dtype = np.float32),
+                                              "biotac": spaces.Box(low = 0, high = 10000, shape = (95,), dtype = np.float32),
+                                              "ft": spaces.Box(low = -20, high = 20, shape = (6,), dtype = np.float32),
+                                              "joints": spaces.Box(low = -100, high = 100, shape = (22,), dtype = np.float32)}) # Fix joints
+        self.fingers = fingers
+        self.pca_con = sgg.SynGraspGen()
+        self.closing_joints = ['rh_FFJ2', 'rh_FFJ3', 'rh_MFJ2', 'rh_MFJ3', 'rh_RFJ2', 'rh_RFJ3', 'rh_LFJ2', 'rh_LFJ3', 'rh_THJ2']
+        self.joint_order = self.fingers.get_active_joints()
+
+    def step(self, action):
+        result = self.pca_con.gen_joint_config(action)
+        pressure =
+        biotac =
+        ft =
+        joints =
+        observation = {}
+        '''
+        observation['pressure'] = np.concatenate((pressure.l_finger_tip, pressure.r_finger_tip), dtype = np.float32)
+        observation['biotac'] = np.concatenate((biotac.tactiles[0].electrodes, biotac.tactiles[1].electrodes, biotac.tactiles[2].electrodes, biotac.tactiles[3].electrodes, biotac.tactiles[4].electrodes), dtype = np.float32)
+        observation['ft'] = np.concatenate(([ft.wrench.force.x, ft.wrench.force.y, ft.wrench.force.z], [ft.wrench.torque.x, ft.wrench.torque.y, ft.wrench.torque.z]), dtype = np.float32)
+        observation['joints']
+        '''
+
+        if action[5] > 0:
+            if finished:
+                reward = 0
+            else:
+                reward = -10
+        else:
+            reward = -math.dist(current_joints, planned_joints)
+
+        info = {}
+        terminated = True
+        return observation, reward, terminated, info
+
+    def reset(self):
+        observation = {}
+        # get data from random data entry
+        pressure =
+        biotac =
+        ft =
+        joints =
+        observation = {}
+        observation['pressure'] = np.concatenate((pressure.l_finger_tip, pressure.r_finger_tip), dtype = np.float32)
+        observation['biotac'] = np.concatenate((biotac.tactiles[0].electrodes, biotac.tactiles[1].electrodes, biotac.tactiles[2].electrodes, biotac.tactiles[3].electrodes, biotac.tactiles[4].electrodes), dtype = np.float32)
+        observation['ft'] = np.concatenate(([ft.wrench.force.x, ft.wrench.force.y, ft.wrench.force.z], [ft.wrench.torque.x, ft.wrench.torque.y, ft.wrench.torque.z]), dtype = np.float32)
+        observation['joints'] =
         return observation
 
     def render(self):

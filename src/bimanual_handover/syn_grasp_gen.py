@@ -39,6 +39,9 @@ class SynGraspGen():
         joint_dict['rh_THJ4'] = joint_dict['rh_THJ5']
         joint_dict['rh_THJ5'] = temp
 
+        joint_dict = self.min_max_joints(joint_dict)
+        joint_dict = self.limit_joints(joint_dict)
+
         if self.display_state:
             robot = RobotCommander()
             robot_state = robot.get_current_state()
@@ -53,6 +56,12 @@ class SynGraspGen():
             display_state.state = robot_state
             self.display_state_pub.publish(display_state)
 
+        return joint_dict
+
+    def min_max_joints(self, joint_dict):
+        return joint_dict
+
+    def limit_joints(self, joint_dict):
         return joint_dict
 
     def exec_joint_config(self, joint_dict):

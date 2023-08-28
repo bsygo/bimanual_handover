@@ -6,7 +6,13 @@ from bimanual_handover.srv import GraspExec, CCM
 global ccm_srv
 
 def grasp_exec(req):
-    return ccm_srv(req.placeholder).finished
+    if req.mode == "ccm":
+        return ccm_srv(req.placeholder).finished
+    elif req.mode == "pca":
+        return False
+    else:
+        rospy.logerr("Unknown grasping mode {}.".format(req.mode))
+        return False
 
 def main():
     global ccm_srv

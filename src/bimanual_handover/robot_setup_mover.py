@@ -8,8 +8,8 @@ from visualization_msgs.msg import Marker
 from geometry_msgs.msg import PoseStamped, Quaternion, Pose, Vector3
 from tf.transformations import quaternion_from_euler, quaternion_from_matrix, quaternion_multiply
 import math
-from gpd_ros.msg import GraspConfigList, CloudIndexed, CloudSources
-from gpd_ros.srv import detect_grasps
+#from gpd_ros.msg import GraspConfigList, CloudIndexed, CloudSources
+#from gpd_ros.srv import detect_grasps
 from bimanual_handover.srv import CollisionChecking
 from std_msgs.msg import Int64
 from tf2_ros import TransformListener, Buffer
@@ -34,8 +34,8 @@ class RobotSetupMover():
         self.debug = debug
         self.pc = None
         self.pc_sub = rospy.Subscriber("pc/pc_filtered", PointCloud2, self.update_pc)
-        rospy.wait_for_service('pc/gpd_service/detect_grasps')
-        self.gpd_service = rospy.ServiceProxy('pc/gpd_service/detect_grasps', detect_grasps)
+        #rospy.wait_for_service('pc/gpd_service/detect_grasps')
+        #self.gpd_service = rospy.ServiceProxy('pc/gpd_service/detect_grasps', detect_grasps)
         self.debug_pose_pub = rospy.Publisher('debug/rsm_setup_pose', PoseStamped, queue_size = 1)
         self.tf_buffer = Buffer()
         TransformListener(self.tf_buffer)
@@ -137,7 +137,8 @@ class RobotSetupMover():
                 print(e)
 
     def setup_fingers(self):
-        joint_values = dict(rh_THJ4=1.13446)
+        # Values except for thumb taken from spread hand.
+        joint_values = dict(rh_THJ4=1.13446, rh_LFJ4=-0.31699402670752413, rh_FFJ4=-0.23131151280059523, rh_MFJ4=0.008929532157657268, rh_RFJ4=-0.11378487918959583) 
         self.fingers.set_joint_value_target(joint_values)
         self.fingers.go()
 
@@ -209,14 +210,6 @@ class RobotSetupMover():
         self.psi.disable_collision_detections('can', self.robot.get_link_names("right_fingers"))
         self.psi.disable_collision_detections('can', ['rh_ff_biotac_link', 'rh_mf_biotac_link', 'rh_rf_biotac_link', 'rh_lf_biotac_link', 'rh_th_biotac_link', 'rh_ffdistal', 'rh_mfdistal', 'rh_rfdistal', 'rh_lfdistal', 'rh_thdistal'])
         return True
-
-    def reset_fingers(self):
-        self.fingers.set_named_target('open')
-        self.fingers.go()
-
-    def reset_arm(self):
-        self.arm.set_named_target('right_arm_to_side')
-        self.arm.go()
 
 if __name__ == "__main__":
     mover = RobotSetupMover()

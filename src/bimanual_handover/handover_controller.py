@@ -47,9 +47,12 @@ class HandoverCommander():
             rospy.logerr('Moving to handover pose failed.')
             return
         rospy.loginfo('Sending service request to grasp_exec_srv.')
-        if not self.grasp_exec_srv('ccm'):
+        grasp_response = self.grasp_exec_srv('ccm')
+        rospy.loginfo('Grasp response: {}'.format(grasp_response))
+        if not grasp_response:
             rospy.logerr('Executing grasp failed.')
             return
+        return
         rospy.loginfo('Sending service request to finish_handover_srv.')
         self.finish_handover_srv('placeholder')
         rospy.loginfo('Handover finished.')

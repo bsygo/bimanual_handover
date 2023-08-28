@@ -10,11 +10,10 @@
     <node name="grasp_stub" pkg="bimanual_handover" type="grasp_stub.py" output="screen" />
     <node name="capture_pc" pkg="bimanual_handover" type="capture_pc.py" output="screen" args="$(arg demo)"/>
     <node name="close_contact_mover" pkg="bimanual_handover" type="close_contact_mover.py" output="screen" />
-    <node name="robot_setup_mover" pkg="bimanual_handover" type="robot_setup_mover.py" output="screen" >
-    </node>
-    <node name="finish_handover" pkg="bimanual_handover" type="finish_handover.py" output="screen" >
-        <remap from="move_group" to="/move_group" />
-    </node>
-    <node name="handover_controller" pkg="bimanual_handover" type="handover_controller.py" args="full" output="screen" />
+    <node name="grasp_tester" pkg="bimanual_handover" type="grasp_tester.py" output="screen" />
+    <node name="robot_setup_mover" pkg="bimanual_handover" type="robot_setup_mover.py" output="screen" />
+    <node name="finish_handover" pkg="bimanual_handover" type="finish_handover.py" output="screen" />
+    <node name="handover_controller" pkg="bimanual_handover" type="handover_controller.py" output="screen" args="full"/>
     </group>
+    <node name="bio_ik_srv" pkg="bio_ik_service" type="bio_ik_service" output="screen" />
 </launch>

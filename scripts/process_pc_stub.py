@@ -9,6 +9,7 @@ global pub, received
 
 def process_pc(req):
     global pub, received
+    rospy.loginfo("Process_pc service request received.")
     pub.publish(req.publish)
     while not received:
         rospy.sleep(0.1)

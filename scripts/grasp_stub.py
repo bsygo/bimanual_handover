@@ -7,7 +7,7 @@ global ccm_srv, grasp_tester_srv
 
 def grasp_exec(req):
     if req.mode == "ccm":
-        close_grasp = ccm_srv(req.placeholder).finished
+        close_grasp = ccm_srv(req.mode).finished
         rospy.loginfo("Closing grasp result: {}".format(close_grasp))
         if close_grasp:
             return grasp_tester_srv('placeholder').success

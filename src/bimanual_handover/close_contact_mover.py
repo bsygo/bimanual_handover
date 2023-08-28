@@ -2,6 +2,7 @@
 
 import rospy
 import rospkg
+from rosbag import Bag
 from datetime import datetime
 from std_msgs.msg import Float64
 from sensor_msgs.msg import JointState
@@ -18,7 +19,7 @@ from geometry_msgs.msg import WrenchStamped
 
 class CloseContactMover():
 
-    def __init__(self, debug = False, collect = False):
+    def __init__(self, debug = False, collect = True):
         rospy.init_node('close_contact_mover')
         self.joints_dict = {'rh_FFJ2': 0, 'rh_FFJ3': 0, 'rh_MFJ2': 1, 'rh_MFJ3': 1, 'rh_RFJ2': 2, 'rh_RFJ3': 2, 'rh_LFJ2': 3, 'rh_LFJ3': 3, 'rh_THJ5': 4}
         self.joints = list(self.joints_dict.keys())
@@ -38,9 +39,9 @@ class CloseContactMover():
             rospack = rospkg.RosPack()
             pkg_path = rospack.get_path('bimanual_handover')
             now = datetime.now()
-            current_date = now.strftime("%d-%m-%Y:%H-%M-%S")
-            name = "closing_attempt_" + current_date + ".txt"
-            self.data_file = open(pkg_path + "/data/" + name, "w")
+            current_date = now.strftime("%d-%m-%Y-%H-%M-%S")
+            name = "closing_attempt_" + current_date + ".bag"
+            self.data_bag = Bag(pkg_path + "/data/" + name, 'w')
         self.joint_client.wait_for_server()
         rospy.Service('ccm', CCM, self.move_until_contacts)
         rospy.spin()
@@ -89,8 +90,6 @@ class CloseContactMover():
     def move_until_contacts(self, req):
         rospy.sleep(2)
         self.wait_for_initial_values()
-        rospy.loginfo(self.initial_biotac_values[2])
-        rospy.loginfo(self.initial_biotac_values[3])
         contacts = [False, False, False, False, False]
         targets = [1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.0]
         steps = []
@@ -109,19 +108,14 @@ class CloseContactMover():
 
         for x in range(len(steps[0])):
             if self.collect:
-                self.data_file.write("Observation: ")
                 pressure = rospy.wait_for_message('/pressure/l_gripper_motor', PressureState)
                 tactile = rospy.wait_for_message('/hand/rh/tactile', BiotacAll)
                 force = rospy.wait_for_message('/ft/l_gripper_motor', WrenchStamped)
-                joints = rospy.wait_for_message('/joint_state', JointState)
-                self.data_file.write(pressure)
-                self.data_file.write(" ")
-                self.data_file.write(tactile)
-                self.data_file.write(" ")
-                self.data_file.write(force)
-                self.data_file.write(" ")
-                self.data_file.write(joints)
-                self.data_file.write(" ")
+                joints = rospy.wait_for_message('/joint_states', JointState)
+                self.data_bag.write('obs_pressure', pressure)
+                self.data_bag.write('obs_tactile', tactile)
+                self.data_bag.write('obs_force', force)
+                self.data_bag.write('obs_joints', joints)
             used_joints = []
             used_steps = []
             for i in range(len(self.joints)):
@@ -143,14 +137,15 @@ class CloseContactMover():
                                 rospy.loginfo('Index: {}, Initial: {}, Contact: {}'.format(j, self.current_biotac_values[i][j], self.initial_biotac_values[i][j]))
                             break
             if self.collect:
-                self.data_file.write("Result:  ")
-                joints = rospy.wait_for_message('/joint_state', JointState)
-                self.data_file.write("\n")
+                joints = rospy.wait_for_message('/joint_states', JointState)
+                self.data_bag.write('res_joints', joints)
             if sum(contacts) == 5:
                 print('contacts reached')
+                if self.collect:
+                    self.data_bag.close()
                 return True
         if self.collect:
-            self.data_file.close()
+            self.data_bag.close()
         print(contacts)
         return False
 

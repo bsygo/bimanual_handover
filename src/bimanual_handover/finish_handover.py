@@ -25,7 +25,8 @@ class FinishHandover():
         roscpp_shutdown()
 
     def finish_handover(self, req):
-        self.psi.remove_world_object('can')
+        # Currently not used, maybe later for collision checking/visualization
+        #self.psi.remove_world_object('can')
         self.gripper.set_named_target('open')
         self.gripper.go()
         gripper_pose = self.left_arm.get_current_pose()

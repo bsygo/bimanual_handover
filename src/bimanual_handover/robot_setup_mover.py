@@ -202,6 +202,8 @@ class RobotSetupMover():
         self.hand.stop()
 
         # spawn a collision object in the rough shape of the pointloud
+        # Unused, maybe later for visualization or collision checking
+        '''
         can_pose = hand_pose
         can_pose.pose.position.y += 0.05
         can_pose.pose.position.z = min_point[2] + math.dist([max_point[2]], [min_point[2]])/2
@@ -209,6 +211,7 @@ class RobotSetupMover():
         self.psi.add_cylinder('can', can_pose, math.dist([max_point[2]],[min_point[2]]), math.dist([max_point[0]], [min_point[0]])/2)
         self.psi.disable_collision_detections('can', self.robot.get_link_names("right_fingers"))
         self.psi.disable_collision_detections('can', ['rh_ff_biotac_link', 'rh_mf_biotac_link', 'rh_rf_biotac_link', 'rh_lf_biotac_link', 'rh_th_biotac_link', 'rh_ffdistal', 'rh_mfdistal', 'rh_rfdistal', 'rh_lfdistal', 'rh_thdistal'])
+        '''
         return True
 
 if __name__ == "__main__":

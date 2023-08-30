@@ -18,6 +18,9 @@ from moveit_commander import MoveItCommanderException
 from pr2_msgs.msg import PressureState
 from sr_robot_msgs.msg import BiotacAll
 from copy import deepcopy
+import os
+import glob
+import rosbag
 
 class RealEnv(gym.Env):
 
@@ -133,13 +136,49 @@ class MimicEnv(gym.env):
         self.pca_con = sgg.SynGraspGen()
         self.closing_joints = ['rh_FFJ2', 'rh_FFJ3', 'rh_MFJ2', 'rh_MFJ3', 'rh_RFJ2', 'rh_RFJ3', 'rh_LFJ2', 'rh_LFJ3', 'rh_THJ2']
         self.joint_order = self.fingers.get_active_joints()
+        self.load_bags()
+        self.current_index = None
+
+    def load_bags(self):
+        pkg_path = rospkg.RosPack().get_path('bimanual_handover')
+        path = pkg_path + "/data/"
+        obs_force_arr = []
+        obs_joints_arr = []
+        obs_pressure_arr = []
+        obs_tactile_arr = []
+        res_joints_arr = []
+        for file_name in glob.iglob(f'{path}/closing_attempt_*.bag'):
+            bag = rosbag.Bag(file_name)
+            for topic, msg, t in bag.read_messages():
+                match topic:
+                    case obs_force:
+                        obs_force_arr.append(msg)
+                        break
+                    case obs_joints:
+                        obs_joints_arr.append(msg)
+                        break
+                    case obs_pressure:
+                        obs_pressure_arr.append(msg)
+                        break
+                    case obs_tactile:
+                        obs_tactile_arr.append(msg)
+                        break
+                    case res_joints:
+                        res_joints_arr.append(msg)
+                        break
+                    case other:
+                        pass
+            bag.close()
+        self.obs = [obs_force_arr, obs_joints_arr, obs_pressure_arr, obs_tactile_arr]
+        self.res = [force_joints_arr]
+        return
 
     def step(self, action):
         result = self.pca_con.gen_joint_config(action)
-        pressure =
-        biotac =
-        ft =
-        joints =
+        pressure = None
+        biotac = None
+        ft = None
+        joints = None
         observation = {}
         '''
         observation['pressure'] = np.concatenate((pressure.l_finger_tip, pressure.r_finger_tip), dtype = np.float32)
@@ -147,14 +186,14 @@ class MimicEnv(gym.env):
         observation['ft'] = np.concatenate(([ft.wrench.force.x, ft.wrench.force.y, ft.wrench.force.z], [ft.wrench.torque.x, ft.wrench.torque.y, ft.wrench.torque.z]), dtype = np.float32)
         observation['joints']
         '''
-
+        planned_joints = self.res[0][self.current_index]
         if action[5] > 0:
             if finished:
                 reward = 0
             else:
                 reward = -10
         else:
-            reward = -math.dist(current_joints, planned_joints)
+            reward = -math.dist(result, planned_joints)
 
         info = {}
         terminated = True
@@ -163,14 +202,17 @@ class MimicEnv(gym.env):
     def reset(self):
         observation = {}
         # get data from random data entry
-        pressure =
-        biotac =
-        ft =
-        joints =
+        self.current_index = random.randint(0, len(self.res[0]))
+        pressure = self.obs[1][self.current_index]
+        biotac = self.obs[3][self.current_index]
+        ft = self.obs[0][self.current_index]
+        joints = self.obs[2][self.current_index]
         observation = {}
         observation['pressure'] = np.concatenate((pressure.l_finger_tip, pressure.r_finger_tip), dtype = np.float32)
         observation['biotac'] = np.concatenate((biotac.tactiles[0].electrodes, biotac.tactiles[1].electrodes, biotac.tactiles[2].electrodes, biotac.tactiles[3].electrodes, biotac.tactiles[4].electrodes), dtype = np.float32)
         observation['ft'] = np.concatenate(([ft.wrench.force.x, ft.wrench.force.y, ft.wrench.force.z], [ft.wrench.torque.x, ft.wrench.torque.y, ft.wrench.torque.z]), dtype = np.float32)
+        joint_indices = [joints.name.index(joint) for joint in ]
+        filtered_joints = [joints.position[index] for index in joint_indices]
         observation['joints'] =
         return observation
 

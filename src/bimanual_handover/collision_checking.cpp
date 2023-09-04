@@ -9,7 +9,7 @@
 #include <trajectory_msgs/JointTrajectory.h>
 #include <Eigen/Geometry>
 #include <iostream>
-#include <bimanual_handover/CollisionChecking.h>
+#include <bimanual_handover_msgs/CollisionChecking.h>
 
 class CollisionDetector{
 public:
@@ -85,7 +85,7 @@ public:
         ps->processCollisionObjectMsg(new_sh);
     }
 
-    bool collision_checking(bimanual_handover::CollisionChecking::Request &req, bimanual_handover::CollisionChecking::Response &res){
+    bool collision_checking(bimanual_handover_msgs::CollisionChecking::Request &req, bimanual_handover_msgs::CollisionChecking::Response &res){
         this->move_sh(req.sh_pose);
         this->move_gripper(req.gripper_pose);
         const collision_detection::CollisionRequest col_req = collision_detection::CollisionRequest();

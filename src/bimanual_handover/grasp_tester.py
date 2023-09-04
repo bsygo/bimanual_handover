@@ -2,7 +2,7 @@
 
 import rospy
 from moveit_commander import roscpp_initialize, roscpp_shutdown, MoveGroupCommander, RobotCommander
-from bimanual_handover.srv import GraspTesterSrv
+from bimanual_handover_msgs.srv import GraspTesterSrv
 from geometry_msgs.msg import WrenchStamped, PoseStamped
 from copy import deepcopy
 from bio_ik_msgs.msg import PoseGoal, IKRequest

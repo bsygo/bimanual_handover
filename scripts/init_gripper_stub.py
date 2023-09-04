@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import rospy
-from bimanual_handover.srv import InitGripper
+from bimanual_handover_msgs.srv import InitGripper
 from moveit_commander import MoveGroupCommander, roscpp_initialize, roscpp_shutdown
 
 def init_gripper(req):

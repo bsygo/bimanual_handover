@@ -11,7 +11,7 @@ import numpy as np
 import math
 from gym import spaces
 import bimanual_handover.syn_grasp_gen as sgg
-from bimanual_handover.srv import CCM, GraspTesterSrv
+from bimanual_handover_msgs.srv import CCM, GraspTesterSrv
 import sensor_msgs.point_cloud2 as pc2
 from moveit_msgs.msg import MoveItErrorCodes
 from moveit_commander import MoveItCommanderException
@@ -125,13 +125,13 @@ class RealEnv(gym.Env):
 
 class MimicEnv(gym.env):
 
-    def __init__(self):
+    def __init__(self, fingers):
         super.__init__()
         self.action_space = spaces.Box(low = -1, high = 1, shape = (6,), dtype = np.float32) # first 5 values for finger synergies, last value if grasp is final
         self.observation_space = spaces.Dict({"pressure": spaces.Box(low = 0, high = 10000, shape = (44,), dtype = np.float32),
                                               "biotac": spaces.Box(low = 0, high = 10000, shape = (95,), dtype = np.float32),
                                               "ft": spaces.Box(low = -20, high = 20, shape = (6,), dtype = np.float32),
-                                              "joints": spaces.Box(low = -100, high = 100, shape = (22,), dtype = np.float32)}) # Fix joints
+                                              "joints": spaces.Box(low = -10, high = 10, shape = (22,), dtype = np.float32)}) # Fix joints range
         self.fingers = fingers
         self.pca_con = sgg.SynGraspGen()
         self.closing_joints = ['rh_FFJ2', 'rh_FFJ3', 'rh_MFJ2', 'rh_MFJ3', 'rh_RFJ2', 'rh_RFJ3', 'rh_LFJ2', 'rh_LFJ3', 'rh_THJ2']
@@ -150,24 +150,16 @@ class MimicEnv(gym.env):
         for file_name in glob.iglob(f'{path}/closing_attempt_*.bag'):
             bag = rosbag.Bag(file_name)
             for topic, msg, t in bag.read_messages():
-                match topic:
-                    case obs_force:
-                        obs_force_arr.append(msg)
-                        break
-                    case obs_joints:
-                        obs_joints_arr.append(msg)
-                        break
-                    case obs_pressure:
-                        obs_pressure_arr.append(msg)
-                        break
-                    case obs_tactile:
-                        obs_tactile_arr.append(msg)
-                        break
-                    case res_joints:
-                        res_joints_arr.append(msg)
-                        break
-                    case other:
-                        pass
+                if topic == 'obs_force':
+                    obs_force_arr.append(msg)
+                elif topic == 'obs_joints':
+                    obs_joints_arr.append(msg)
+                elif topic == 'obs_pressure':
+                    obs_pressure_arr.append(msg)
+                elif topic == 'obs_tactile':
+                    obs_tactile_arr.append(msg)
+                elif topic == 'res_joints':
+                    res_joints_arr.append(msg)
             bag.close()
         self.obs = [obs_force_arr, obs_joints_arr, obs_pressure_arr, obs_tactile_arr]
         self.res = [force_joints_arr]
@@ -211,9 +203,7 @@ class MimicEnv(gym.env):
         observation['pressure'] = np.concatenate((pressure.l_finger_tip, pressure.r_finger_tip), dtype = np.float32)
         observation['biotac'] = np.concatenate((biotac.tactiles[0].electrodes, biotac.tactiles[1].electrodes, biotac.tactiles[2].electrodes, biotac.tactiles[3].electrodes, biotac.tactiles[4].electrodes), dtype = np.float32)
         observation['ft'] = np.concatenate(([ft.wrench.force.x, ft.wrench.force.y, ft.wrench.force.z], [ft.wrench.torque.x, ft.wrench.torque.y, ft.wrench.torque.z]), dtype = np.float32)
-        joint_indices = [joints.name.index(joint) for joint in ]
-        filtered_joints = [joints.position[index] for index in joint_indices]
-        observation['joints'] =
+        observation['joints'] = np.array(joints.position, dtype = np.float32)
         return observation
 
     def render(self):

@@ -14,7 +14,7 @@ from bimanual_handover.srv import CollisionChecking
 from std_msgs.msg import Int64
 from tf2_ros import TransformListener, Buffer
 from tf2_geometry_msgs import do_transform_pose
-from bimanual_handover.srv import CollisionChecking, MoveHandover
+from bimanual_handover_msgs.srv import CollisionChecking, MoveHandover
 import random
 import sys
 

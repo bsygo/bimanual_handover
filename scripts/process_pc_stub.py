@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import rospy
-from bimanual_handover.srv import ProcessPC
+from bimanual_handover_msgs.srv import ProcessPC
 from std_msgs.msg import Bool
 from sensor_msgs.msg import PointCloud2
 

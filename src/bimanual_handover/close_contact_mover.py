@@ -8,7 +8,7 @@ from std_msgs.msg import Float64
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from sr_robot_msgs.msg import BiotacAll
-from bimanual_handover.srv import CCM
+from bimanual_handover_msgs.srv import CCM
 import actionlib
 from control_msgs.msg import FollowJointTrajectoryAction, FollowJointTrajectoryGoal
 from copy import deepcopy

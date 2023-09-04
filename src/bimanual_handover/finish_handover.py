@@ -2,7 +2,7 @@
 
 import rospy
 from moveit_commander import MoveGroupCommander, roscpp_initialize, roscpp_shutdown, PlanningSceneInterface
-from bimanual_handover.srv import FinishHandoverSrv
+from bimanual_handover_msgs.srv import FinishHandoverSrv
 from geometry_msgs.msg import PoseStamped, Quaternion
 from tf.transformations import quaternion_multiply, quaternion_from_euler
 

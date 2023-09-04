@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import rospy
-from bimanual_handover.srv import GraspExec, CCM, GraspTesterSrv
+from bimanual_handover_msgs.srv import GraspExec, CCM, GraspTesterSrv
 
 global ccm_srv, grasp_tester_srv
 

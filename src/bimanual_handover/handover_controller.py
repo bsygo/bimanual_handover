@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import rospy
-from bimanual_handover.srv import InitGripper, ProcessPC, MoveHandover, GraspExec, FinishHandoverSrv
+from bimanual_handover_msgs.srv import InitGripper, ProcessPC, MoveHandover, GraspExec, FinishHandoverSrv
 import sys
 
 class HandoverCommander():

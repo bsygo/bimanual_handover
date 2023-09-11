@@ -31,6 +31,7 @@ def main():
         input_topic = '/azure_kinect/points2'
     else:
         rospy.logerr("Unknown argument {} for capture_pc.".format(sys.argv[1]))
+        return
     publish = False
     rospy.Subscriber(input_topic, PointCloud2, save_pc, queue_size = 1)
     rospy.Subscriber('publish_pc', Bool, publish_pc, queue_size = 1)

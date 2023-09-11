@@ -123,15 +123,15 @@ class RealEnv(gym.Env):
         self.log_file.close()
         return
 
-class MimicEnv(gym.env):
+class MimicEnv(gym.Env):
 
     def __init__(self, fingers):
-        super.__init__()
+        super().__init__()
         self.action_space = spaces.Box(low = -1, high = 1, shape = (6,), dtype = np.float32) # first 5 values for finger synergies, last value if grasp is final
-        self.observation_space = spaces.Dict({"pressure": spaces.Box(low = 0, high = 10000, shape = (44,), dtype = np.float32),
-                                              "biotac": spaces.Box(low = 0, high = 10000, shape = (95,), dtype = np.float32),
-                                              "ft": spaces.Box(low = -20, high = 20, shape = (6,), dtype = np.float32),
-                                              "joints": spaces.Box(low = -10, high = 10, shape = (22,), dtype = np.float32)}) # Fix joints range
+        self.observation_space = spaces.Dict({#"pressure": spaces.Box(low = 0, high = 10000, shape = (44,), dtype = np.float32),
+                                              #"biotac": spaces.Box(low = 0, high = 10000, shape = (95,), dtype = np.float32),
+                                              #"ft": spaces.Box(low = -20, high = 20, shape = (6,), dtype = np.float32),
+                                              "joints": spaces.Box(low = -10, high = 10, shape = (24,), dtype = np.float32)}) # Fix joints range
         self.fingers = fingers
         self.pca_con = sgg.SynGraspGen()
         self.closing_joints = ['rh_FFJ2', 'rh_FFJ3', 'rh_MFJ2', 'rh_MFJ3', 'rh_RFJ2', 'rh_RFJ3', 'rh_LFJ2', 'rh_LFJ3', 'rh_THJ2']
@@ -146,6 +146,7 @@ class MimicEnv(gym.env):
         obs_joints_arr = []
         obs_pressure_arr = []
         obs_tactile_arr = []
+        finished_indices = []
         res_joints_arr = []
         for file_name in glob.iglob(f'{path}/closing_attempt_*.bag'):
             bag = rosbag.Bag(file_name)
@@ -160,32 +161,36 @@ class MimicEnv(gym.env):
                     obs_tactile_arr.append(msg)
                 elif topic == 'res_joints':
                     res_joints_arr.append(msg)
+            finished_indices.append(len(res_joints_arr))
             bag.close()
-        self.obs = [obs_force_arr, obs_joints_arr, obs_pressure_arr, obs_tactile_arr]
-        self.res = [force_joints_arr]
+        finished_arr = [0] * len(res_joints_arr)
+        for index in finished_indices:
+            finished_arr[index-1] = 1
+        self.obs = [obs_force_arr, obs_joints_arr, obs_pressure_arr, obs_tactile_arr, finished_arr]
+        self.res = [res_joints_arr]
         return
 
     def step(self, action):
-        result = self.pca_con.gen_joint_config(action)
-        pressure = None
-        biotac = None
-        ft = None
-        joints = None
-        observation = {}
-        '''
-        observation['pressure'] = np.concatenate((pressure.l_finger_tip, pressure.r_finger_tip), dtype = np.float32)
-        observation['biotac'] = np.concatenate((biotac.tactiles[0].electrodes, biotac.tactiles[1].electrodes, biotac.tactiles[2].electrodes, biotac.tactiles[3].electrodes, biotac.tactiles[4].electrodes), dtype = np.float32)
-        observation['ft'] = np.concatenate(([ft.wrench.force.x, ft.wrench.force.y, ft.wrench.force.z], [ft.wrench.torque.x, ft.wrench.torque.y, ft.wrench.torque.z]), dtype = np.float32)
-        observation['joints']
-        '''
+        result = self.pca_con.gen_joint_config(action[:5])
         planned_joints = self.res[0][self.current_index]
-        if action[5] > 0:
-            if finished:
-                reward = 0
-            else:
-                reward = -10
+        current_joints = [result[joint] for joint in planned_joints.name]
+        pressure = np.zeros((44,), np.float32)
+        biotac = np.zeros((95,), np.float32)
+        ft = np.zeros((6,), np.float32)
+        joints = np.array(current_joints, np.float32)
+        observation = {}
+        #observation['pressure'] = pressure
+        #observation['biotac'] = biotac
+        #observation['ft'] = ft
+        observation['joints'] = joints
+        '''
+        if action[5] > 0 and self.obs[4][self.current_index] == 1:
+            reward = 0
+        elif self.obs[4][self.current_index] == 1 or action[5] > 0:
+            reward = -10
         else:
-            reward = -math.dist(result, planned_joints)
+        '''
+        reward = -math.dist(current_joints, planned_joints.position)
 
         info = {}
         terminated = True
@@ -194,15 +199,15 @@ class MimicEnv(gym.env):
     def reset(self):
         observation = {}
         # get data from random data entry
-        self.current_index = random.randint(0, len(self.res[0]))
-        pressure = self.obs[1][self.current_index]
+        self.current_index = random.randint(0, len(self.res[0])-1)
+        pressure = self.obs[2][self.current_index]
         biotac = self.obs[3][self.current_index]
         ft = self.obs[0][self.current_index]
-        joints = self.obs[2][self.current_index]
+        joints = self.obs[1][self.current_index]
         observation = {}
-        observation['pressure'] = np.concatenate((pressure.l_finger_tip, pressure.r_finger_tip), dtype = np.float32)
-        observation['biotac'] = np.concatenate((biotac.tactiles[0].electrodes, biotac.tactiles[1].electrodes, biotac.tactiles[2].electrodes, biotac.tactiles[3].electrodes, biotac.tactiles[4].electrodes), dtype = np.float32)
-        observation['ft'] = np.concatenate(([ft.wrench.force.x, ft.wrench.force.y, ft.wrench.force.z], [ft.wrench.torque.x, ft.wrench.torque.y, ft.wrench.torque.z]), dtype = np.float32)
+        #observation['pressure'] = np.concatenate((pressure.l_finger_tip, pressure.r_finger_tip), dtype = np.float32)
+        #observation['biotac'] = np.concatenate((biotac.tactiles[0].electrodes, biotac.tactiles[1].electrodes, biotac.tactiles[2].electrodes, biotac.tactiles[3].electrodes, biotac.tactiles[4].electrodes), dtype = np.float32)
+        #observation['ft'] = np.concatenate(([ft.wrench.force.x, ft.wrench.force.y, ft.wrench.force.z], [ft.wrench.torque.x, ft.wrench.torque.y, ft.wrench.torque.z]), dtype = np.float32)
         observation['joints'] = np.array(joints.position, dtype = np.float32)
         return observation
 

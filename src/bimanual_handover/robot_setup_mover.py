@@ -10,7 +10,6 @@ from tf.transformations import quaternion_from_euler, quaternion_from_matrix, qu
 import math
 #from gpd_ros.msg import GraspConfigList, CloudIndexed, CloudSources
 #from gpd_ros.srv import detect_grasps
-from bimanual_handover.srv import CollisionChecking
 from std_msgs.msg import Int64
 from tf2_ros import TransformListener, Buffer
 from tf2_geometry_msgs import do_transform_pose

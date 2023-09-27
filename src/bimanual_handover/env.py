@@ -127,7 +127,7 @@ class MimicEnv(gym.Env):
 
     def __init__(self, fingers):
         super().__init__()
-        self.action_space = spaces.Box(low = -1, high = 1, shape = (6,), dtype = np.float32) # first 5 values for finger synergies, last value if grasp is final
+        self.action_space = spaces.Box(low = -1, high = 1, shape = (4,), dtype = np.float32) # first 3 values for finger synergies, last value if grasp is final
         self.observation_space = spaces.Dict({#"pressure": spaces.Box(low = 0, high = 10000, shape = (44,), dtype = np.float32),
                                               #"biotac": spaces.Box(low = 0, high = 10000, shape = (95,), dtype = np.float32),
                                               #"biotac_init": spaces.Box(low = 0, high = 10000, shape = (95,), dtype = np.float32),
@@ -178,7 +178,7 @@ class MimicEnv(gym.Env):
         return
 
     def step(self, action):
-        result = self.pca_con.gen_joint_config(action[:5])
+        result = self.pca_con.gen_joint_config(action[:3])
         planned_joints = self.res[0][self.current_index]
         current_joints = [result[joint] for joint in planned_joints.name]
         pressure = np.zeros((44,), np.float32)
@@ -193,9 +193,9 @@ class MimicEnv(gym.Env):
         #observation['ft'] = ft
         observation['joints'] = joints
         '''
-        if action[5] > 0 and self.obs[4][self.current_index] == 1:
+        if action[3] > 0 and self.obs[4][self.current_index] == 1:
             reward = 0
-        elif self.obs[4][self.current_index] == 1 or action[5] > 0:
+        elif self.obs[4][self.current_index] == 1 or action[3] > 0:
             reward = -10
         else:
         '''

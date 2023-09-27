@@ -130,6 +130,8 @@ class MimicEnv(gym.Env):
         self.action_space = spaces.Box(low = -1, high = 1, shape = (6,), dtype = np.float32) # first 5 values for finger synergies, last value if grasp is final
         self.observation_space = spaces.Dict({#"pressure": spaces.Box(low = 0, high = 10000, shape = (44,), dtype = np.float32),
                                               #"biotac": spaces.Box(low = 0, high = 10000, shape = (95,), dtype = np.float32),
+                                              #"biotac_init": spaces.Box(low = 0, high = 10000, shape = (95,), dtype = np.float32),
+                                              #"biotac_diff": spaces.Box(low = 0, high = 10000, shape = (95,), dtype = np.float32),
                                               #"ft": spaces.Box(low = -20, high = 20, shape = (6,), dtype = np.float32),
                                               "joints": spaces.Box(low = -10, high = 10, shape = (24,), dtype = np.float32)}) # Fix joints range
         self.fingers = fingers
@@ -146,10 +148,12 @@ class MimicEnv(gym.Env):
         obs_joints_arr = []
         obs_pressure_arr = []
         obs_tactile_arr = []
+        obs_tactile_init_arr = []
         finished_indices = []
         res_joints_arr = []
         for file_name in glob.iglob(f'{path}/closing_attempt_*.bag'):
             bag = rosbag.Bag(file_name)
+            #init_tactile = None
             for topic, msg, t in bag.read_messages():
                 if topic == 'obs_force':
                     obs_force_arr.append(msg)
@@ -158,7 +162,10 @@ class MimicEnv(gym.Env):
                 elif topic == 'obs_pressure':
                     obs_pressure_arr.append(msg)
                 elif topic == 'obs_tactile':
+                    #if init_tactile is None:
+                    #    init_tactile = msg
                     obs_tactile_arr.append(msg)
+                    #obs_tactile_init_arr.append(init_tactile)
                 elif topic == 'res_joints':
                     res_joints_arr.append(msg)
             finished_indices.append(len(res_joints_arr))
@@ -166,7 +173,7 @@ class MimicEnv(gym.Env):
         finished_arr = [0] * len(res_joints_arr)
         for index in finished_indices:
             finished_arr[index-1] = 1
-        self.obs = [obs_force_arr, obs_joints_arr, obs_pressure_arr, obs_tactile_arr, finished_arr]
+        self.obs = [obs_force_arr, obs_joints_arr, obs_pressure_arr, obs_tactile_arr, finished_arr]#, obs_tactile_init_arr]
         self.res = [res_joints_arr]
         return
 
@@ -181,6 +188,8 @@ class MimicEnv(gym.Env):
         observation = {}
         #observation['pressure'] = pressure
         #observation['biotac'] = biotac
+        #observation['biotac_init'] = biotac
+        #observation['biotac_diff'] = biotac
         #observation['ft'] = ft
         observation['joints'] = joints
         '''
@@ -202,11 +211,15 @@ class MimicEnv(gym.Env):
         self.current_index = random.randint(0, len(self.res[0])-1)
         pressure = self.obs[2][self.current_index]
         biotac = self.obs[3][self.current_index]
+        #biotac_init = self.obs[5][self.current_index]
+        #biotac_diff = [self.obs[3][self.current_index][x] - self.obs[5][self.current_index][x] for x in range(len(self.obs[3][self.current_index]] # Difference between current and initial biotac values
         ft = self.obs[0][self.current_index]
         joints = self.obs[1][self.current_index]
         observation = {}
         #observation['pressure'] = np.concatenate((pressure.l_finger_tip, pressure.r_finger_tip), dtype = np.float32)
         #observation['biotac'] = np.concatenate((biotac.tactiles[0].electrodes, biotac.tactiles[1].electrodes, biotac.tactiles[2].electrodes, biotac.tactiles[3].electrodes, biotac.tactiles[4].electrodes), dtype = np.float32)
+        #observation['biotac_init'] = np.concatenate((biotac_init.tactiles[0].electrodes, biotac_init.tactiles[1].electrodes, biotac_init.tactiles[2].electrodes, biotac_init.tactiles[3].electrodes, biotac_init.tactiles[4].electrodes), dtype = np.float32)
+        #observation['biotac_diff'] = np.concatenate((biotac_diff.tactiles[0].electrodes, biotac_diff.tactiles[1].electrodes, biotac_diff.tactiles[2].electrodes, biotac_diff.tactiles[3].electrodes, biotac_diff.tactiles[4].electrodes), dtype = np.float32)
         #observation['ft'] = np.concatenate(([ft.wrench.force.x, ft.wrench.force.y, ft.wrench.force.z], [ft.wrench.torque.x, ft.wrench.torque.y, ft.wrench.torque.z]), dtype = np.float32)
         observation['joints'] = np.array(joints.position, dtype = np.float32)
         return observation

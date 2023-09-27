@@ -2,7 +2,7 @@
 
 import gym
 from datetime import datetime
-import bimanual_handover.pc_env as pc_env
+import bimanual_handover.env as handover_env
 import rospy
 import rospkg
 import sys
@@ -58,8 +58,8 @@ def main(argv):
     rospy.loginfo('Waiting for pc.')
     pc = rospy.wait_for_message('pc/pc_filtered', PointCloud2, 20)
     rospy.loginfo('Setting up env.')
-    env = pc_env.RealEnv(fingers)
-#    env = pc_env.SimpleEnv(fingers, pc, ps)
+    env = handover_env.RealEnv(fingers)
+#    env = handover_env.SimpleEnv(fingers, pc, ps)
 
     if not test:
         if check:

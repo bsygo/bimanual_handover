@@ -190,7 +190,9 @@ class MimicEnv(gym.Env):
             reward = -10
         else:
         '''
-        reward = -math.dist(current_joints, planned_joints.position)
+        reward = 0
+        for i in range(len(current_joints)):
+            reward += -math.dist(current_joints[i], planned_joints.position[i])
 
         info = {}
         terminated = True

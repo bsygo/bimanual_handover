@@ -12,7 +12,8 @@ class SynGraspGen():
     def __init__(self, display_state = False):
         # self.zero_pca_action = np.array([-1.5, -0.55, 0.25, 0.15, 0.05]) # offsets to center the 0 pose
         self.synergy = hs.HandSynergy(n_components = 5)
-        self.hand = MoveGroupCommander("right_hand")
+        self.hand = MoveGroupCommander("right_hand", ns = "/")
+        self.robot = RobotCommander()
         self.display_state = display_state
         # self.initial_hand_joints = self.hand.get_current_joint_values()
         self.display_state_pub = rospy.Publisher("synergies_debug", DisplayRobotState, latch = True, queue_size = 1)
@@ -39,7 +40,7 @@ class SynGraspGen():
         joint_dict['rh_THJ4'] = joint_dict['rh_THJ5']
         joint_dict['rh_THJ5'] = temp
 
-        joint_dict = self.min_max_joints(joint_dict)
+        joint_dict = self.enforce_bounds(joint_dict)
         joint_dict = self.limit_joints(joint_dict)
 
         if self.display_state:
@@ -58,7 +59,14 @@ class SynGraspGen():
 
         return joint_dict
 
-    def min_max_joints(self, joint_dict):
+    def enforce_bounds(self, joint_dict):
+        for joint in joint_dict:
+            joint_object = self.robot.get_joint(joint)
+            bounds = joint_object.bounds()
+            if joint_dict[joint] < bounds[0]:
+                joint_dict[joint] = bounds[0]
+            elif joint_dict[joint] > bounds[1]:
+                joint_dict[joint] = bounds[1]
         return joint_dict
 
     def limit_joints(self, joint_dict):
@@ -76,4 +84,3 @@ class SynGraspGen():
 
 if __name__ == "__main__":
     syn_grasp_gen = SynGraspGen()
-    syn_grasp_gen.move_joint_config()

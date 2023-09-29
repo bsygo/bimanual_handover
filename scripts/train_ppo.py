@@ -2,7 +2,7 @@
 
 import gym
 from datetime import datetime
-import bimanual_handover.pc_env as pc_env
+import bimanual_handover.env as handover_env
 import rospy
 import rospkg
 import sys

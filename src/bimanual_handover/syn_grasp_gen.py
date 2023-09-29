@@ -19,7 +19,7 @@ class SynGraspGen():
         self.display_state_pub = rospy.Publisher("synergies_debug", DisplayRobotState, latch = True, queue_size = 1)
 
     # def set_initial_hand_joints(self):
-    #   self.inital_hand_joints = self.hand.get_current_joint_values() 
+    #   self.inital_hand_joints = self.hand.get_current_joint_values()
 
     def gen_joint_config(self, alphas):
         #sh_joints = self.initial_hand_joints

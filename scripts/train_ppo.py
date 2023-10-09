@@ -31,7 +31,7 @@ def main(argv):
     fingers.set_max_velocity_scaling_factor(1.0)
     fingers.set_max_acceleration_scaling_factor(1.0)
 
-    args_pattern = re.compile(r"(((?:--check)\s(?P<CHECK>True|False))?\s?((?:--test)\s(?P<TEST>True|False))?\s?((?:--model)\s(?P<MODEL>.*))?)")
+    args_pattern = re.compile(r"(((?:--check)\s(?P<CHECK>True|False))?\s?((?:--checkpoint)\s(?P<CHECKPOINT>True|False))?\s?((?:--model)\s(?P<MODEL>.*))?)")
     args = {}
     if len(argv) > 1:
         argv = " ".join(argv[1:])
@@ -44,11 +44,11 @@ def main(argv):
     else:
         check = False
         rospy.loginfo('No check parameter specified, defaulting to False.')
-    if 'TEST' in args:
-        test = args['TEST']
+    if 'CHECKPOINT' in args:
+        checkpoint = args['CHECKPOINT']
     else:
-        test = False
-        rospy.loginfo('No test parameter specified, defaulting to False.')
+        checkpoint = False
+        rospy.loginfo('No checkpoint parameter specified, defaulting to False.')
     if 'MODEL' in args:
         model_path = path + args['MODEL']
     else:
@@ -62,31 +62,32 @@ def main(argv):
     env = handover_env.MimicEnv(fingers)
 #    env = handover_env.SimpleEnv(fingers, pc, ps)
 
-    if not test:
-        if check:
-            check_env(env)
-            rospy.loginfo('Env check completed.')
-        date = datetime.now()
-        str_date = date.strftime("%d_%m_%Y_%H_%M")
-        checkpoint_callback = CheckpointCallback(save_freq = 500, save_path = path + "/models/checkpoints/", name_prefix = "ppo_checkpoint_" + str_date, save_replay_buffer = True, save_vecnormalize = True)
-        if model_path is None:
-            model = PPO("MlpPolicy", env, n_steps = 500, batch_size = 50, n_epochs = 500, verbose = 1, tensorboard_log=path + "/logs/tensorboard")
-        else:
-            model = PPO.load(model_path, env = env)
-        rospy.loginfo('Start learning.')
-        model.learn(total_timesteps=100000, progress_bar = True, callback = checkpoint_callback, tb_log_name = "PPO_" + str_date, reset_num_timesteps = False)
-        rospy.loginfo('Learning complete.')
-        model.save(path + "/models/ppo_model_" + str_date)
-    else:
-        model = PPO.load(model_path)
+    date = datetime.now()
+    str_date = date.strftime("%d_%m_%Y_%H_%M")
+    timesteps = 100000
+    log_name = "PPO_" + str_date
 
-    '''
-    rospy.loginfo('Execute sample motion.')
-    obs = env.reset()
-    action, _states = model.predict(obs)
-    obs, reward, terminated, info = env.step(action)
-    print(reward)
-    '''
+    if check:
+        check_env(env)
+        rospy.loginfo('Env check completed.')
+    checkpoint_callback = CheckpointCallback(save_freq = 500, save_path = path + "/models/checkpoints/", name_prefix = "ppo_checkpoint_" + str_date, save_replay_buffer = True, save_vecnormalize = True)
+    if model_path is None:
+        model = PPO("MlpPolicy", env, n_steps = 500, batch_size = 50, n_epochs = 500, verbose = 1, tensorboard_log=path + "/logs/tensorboard")
+    else:
+        model = PPO.load(model_path, env = env, print_system_info = True)
+        if checkpoint:
+            steps_pattern = re.compile(r".*_(?P<steps>\d+)_steps.*")
+            matches = steps_pattern.match(model_path)
+            steps = int(matches.group('steps'))
+            timesteps = timesteps - steps
+            log_pattern = re.compile(r".*ppo_checkpoint_(?P<date>\d\d_\d\d_\d\d\d\d_\d\d_\d\d)_.*")
+            matches = log_pattern.match(model_path)
+            date = matches.group('date')
+            log_name = "PPO_" + date
+    rospy.loginfo('Start learning.')
+    model.learn(total_timesteps=timesteps, progress_bar = True, callback = checkpoint_callback, tb_log_name = log_name, reset_num_timesteps = False)
+    rospy.loginfo('Learning complete.')
+    model.save(path + "/models/ppo_model_" + str_date)
     roscpp_shutdown()
 
 if __name__ == "__main__":

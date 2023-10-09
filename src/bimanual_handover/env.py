@@ -5,6 +5,7 @@ import random
 from datetime import datetime
 import rospkg
 from geometry_msgs.msg import PoseStamped, WrenchStamped
+from std_msgs.msg import Bool
 from copy import deepcopy
 import gymnasium as gym
 from gymnasium import spaces
@@ -42,6 +43,8 @@ class RealEnv(gym.Env):
         self.tactile_sub = rospy.Subscriber('/hand/rh/tactile', BiotacAll, self.tactile_callback)
         #self.force_sub = rospy.Subscriber('/ft/l_gripper_motor', WrenchStamped, self.force_callback)
         self.gt_srv = rospy.ServiceProxy('handover/grasp_tester', GraspTesterSrv)
+        self.interrupt_sub = rospy.Subscriber('handover/interrupt_learning', Bool, self.interrupt_callback)
+        self.interrupted = False
 
     '''
     def pressure_callback(self, pressure):
@@ -56,7 +59,12 @@ class RealEnv(gym.Env):
         self.current_force = force
     '''
 
+    def interrupt_callback(self, command):
+        self.interrupted = command.data
+
     def step(self, action):
+        while self.interrupted:
+            rospy.sleep(1)
         result = self.pca_con.gen_joint_config(action[:3])
 
         self.fingers.set_joint_value_target(result)
@@ -167,6 +175,8 @@ class RealEnv(gym.Env):
     def reset(self, seed):
         super().reset(seed=seed)
         self.log_file.close()
+        while self.interrupted:
+            rospy.sleep(1)
         self.log_file = open(rospkg.RosPack().get_path('bimanual_handover') + "/logs/log"+ self.time + ".txt", 'a')
         self.fingers.set_named_target('open')
         self.fingers.go()
@@ -203,6 +213,11 @@ class MimicEnv(gym.Env):
         self.joint_order = self.fingers.get_active_joints()
         self.load_bags()
         self.current_index = None
+        self.interrupt_sub = rospy.Subscriber('handover/interrupt_learning', Bool, self.interrupt_callback)
+        self.interrupted = False
+
+    def interrupt_callback(self, command):
+        self.interrupted = command.data
 
     def load_bags(self):
         pkg_path = rospkg.RosPack().get_path('bimanual_handover')
@@ -241,6 +256,8 @@ class MimicEnv(gym.Env):
         return
 
     def step(self, action):
+        while self.interrupted:
+            rospy.sleep(1)
         result = self.pca_con.gen_joint_config(action)
         planned_joints = self.res[0][self.current_index]
         current_joints = [result[joint] for joint in planned_joints.name]
@@ -256,6 +273,8 @@ class MimicEnv(gym.Env):
 
     def reset(self, seed=None):
         super().reset(seed=seed)
+        while self.interrupted:
+            rospy.sleep(1)
         observation = {}
         # get data from random data entry
         self.current_index = random.randint(0, len(self.res[0])-1)

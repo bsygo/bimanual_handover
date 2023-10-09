@@ -6,10 +6,10 @@ from datetime import datetime
 import rospkg
 from geometry_msgs.msg import PoseStamped, WrenchStamped
 from copy import deepcopy
-import gym
+import gymnasium as gym
+from gymnasium import spaces
 import numpy as np
 import math
-from gym import spaces
 import bimanual_handover.syn_grasp_gen as sgg
 from bimanual_handover_msgs.srv import CCM, GraspTesterSrv
 import sensor_msgs.point_cloud2 as pc2
@@ -26,31 +26,76 @@ class RealEnv(gym.Env):
 
     def __init__(self, fingers):
         super().__init__()
-        self.action_space = spaces.Box(low = -1, high = 1, shape = (6,), dtype = np.float32) # first 5 values for finger synergies, last value if grasp is final
-        self.observation_space = spaces.Dict({"pressure": spaces.Box(low = 0, high = 10000, shape = (44,), dtype = np.float32), "biotac": spaces.Box(low = 0, high = 10000, shape = (95,), dtype = np.float32), "ft": spaces.Box(low = -20, high = 20, shape = (6,), dtype = np.float32)})
+        self.action_space = spaces.Box(low = -1, high = 1, shape = (4,), dtype = np.float32) # first 3 values for finger synergies, last value if grasp is final
+        self.observation_space = spaces.Box(low = -100, high = 100, shape = (8,), dtype = np.float32) # First 5 values for biotac diff, last 3 values for current joint config in pca space
         self.fingers = fingers
         self.pca_con = sgg.SynGraspGen()
         self.time = datetime.now().strftime("%d_%m_%Y_%H_%M")
         self.log_file = open(rospkg.RosPack().get_path('bimanual_handover') + "/logs/log" + self.time + ".txt", 'w')
         self.last_joints = None
+        self.initial_biotac = None
         #self.reset_timer = 0
         self.closing_joints = ['rh_FFJ2', 'rh_FFJ3', 'rh_MFJ2', 'rh_MFJ3', 'rh_RFJ2', 'rh_RFJ3', 'rh_LFJ2', 'rh_LFJ3', 'rh_THJ2']
         self.joint_order = self.fingers.get_active_joints()
         self.ccm_srv = rospy.ServiceProxy('handover/ccm', CCM)
-        self.pressure_sub = rospy.Subscriber('/pressure/l_gripper_motor', PressureState, self.pressure_callback)
+        #self.pressure_sub = rospy.Subscriber('/pressure/l_gripper_motor', PressureState, self.pressure_callback)
         self.tactile_sub = rospy.Subscriber('/hand/rh/tactile', BiotacAll, self.tactile_callback)
-        self.force_sub = rospy.Subscriber('/ft/l_gripper_motor', WrenchStamped, self.force_callback)
+        #self.force_sub = rospy.Subscriber('/ft/l_gripper_motor', WrenchStamped, self.force_callback)
         self.gt_srv = rospy.ServiceProxy('handover/grasp_tester', GraspTesterSrv)
 
+    '''
     def pressure_callback(self, pressure):
         self.current_pressure = pressure
+    '''
 
     def tactile_callback(self, tactile):
         self.current_tactile = tactile
 
+    '''
     def force_callback(self, force):
         self.current_force = force
+    '''
 
+    def step(self, action):
+        result = self.pca_con.gen_joint_config(action[:3])
+
+        self.fingers.set_joint_value_target(result)
+        self.fingers.go()
+
+        if action[4] > 0:
+            success = self.gt_srv('placeholder')
+
+            if success:
+                reward = 1
+                terminated = True
+            else:
+                reward = -1
+                terminated = False
+                fingers.set_named_target('open')
+        else:
+            reward = 0
+            terminated = False
+            joint_diff = 0
+            current_joints = self.fingers.get_current_joint_values()
+            for joint in self.closing_joints:
+                index = self.joint_order.index(joint)
+                if current_joints[index] >= self.last_joints[index]:
+                    joint_diff += math.dist([current_joints[index]], [self.last_joints[index]])
+                else:
+                    joint_diff += - math.dist([current_joints[index]], [self.last_joints[index]])
+            reward = joint_diff
+
+        current_biotac = deepcopy(self.current_tactile)
+        current_observation = [current_biotac[x] - self.initial_biotac[x] for x in range(len(current_biotac))]
+        current_pca = self.pca_con.get_pca_config()
+        current_observation.append(x for x in current_pca)
+        observation = np.array(current_observation, dtype = np.float32)
+
+        info = {}
+        truncated = False
+        return observation, reward, terminated, truncated, info
+
+    '''
     def step(self, action):
         reward = 0
         result = None
@@ -97,8 +142,10 @@ class RealEnv(gym.Env):
         #    terminated = True
         info = {}
         return observation, reward, terminated, info
+    '''
 
-    def reset(self):
+    '''
+    def reset(self, seed):
         #self.reset_timer = 0
         self.log_file.close()
         self.log_file = open(rospkg.RosPack().get_path('bimanual_handover') + "/logs/log"+ self.time + ".txt", 'a')
@@ -115,6 +162,27 @@ class RealEnv(gym.Env):
         observation['ft'] = np.concatenate(([ft.wrench.force.x, ft.wrench.force.y, ft.wrench.force.z], [ft.wrench.torque.x, ft.wrench.torque.y, ft.wrench.torque.z]), dtype = np.float32)
         self.last_joints = np.array(self.fingers.get_current_joint_values())
         return observation
+    '''
+
+    def reset(self, seed):
+        super().reset(seed=seed)
+        self.log_file.close()
+        self.log_file = open(rospkg.RosPack().get_path('bimanual_handover') + "/logs/log"+ self.time + ".txt", 'a')
+        self.fingers.set_named_target('open')
+        self.fingers.go()
+        self.fingers.set_joint_value_target('rh_THJ4', 1.13446)
+
+        self.initial_biotac = deepcopy(self.current_tactile)
+        self.last_joints = deepcopy(self.fingers.get_current_joint_values())
+
+        current_biotac = deepcopy(self.current_tactile)
+        current_observation = [current_biotac[x] - self.initial_biotac[x] for x in range(len(current_biotac))]
+        current_pca = self.pca_con.get_pca_config()
+        current_observation.append(x for x in current_pca)
+        observation = np.array(current_observation, dtype = np.float32)
+
+        info = {}
+        return (observation, info)
 
     def render(self):
         return
@@ -127,13 +195,8 @@ class MimicEnv(gym.Env):
 
     def __init__(self, fingers):
         super().__init__()
-        self.action_space = spaces.Box(low = -1, high = 1, shape = (6,), dtype = np.float32) # first 5 values for finger synergies, last value if grasp is final
-        self.observation_space = spaces.Dict({#"pressure": spaces.Box(low = 0, high = 10000, shape = (44,), dtype = np.float32),
-                                              #"biotac": spaces.Box(low = 0, high = 10000, shape = (95,), dtype = np.float32),
-                                              #"biotac_init": spaces.Box(low = 0, high = 10000, shape = (95,), dtype = np.float32),
-                                              #"biotac_diff": spaces.Box(low = 0, high = 10000, shape = (95,), dtype = np.float32),
-                                              #"ft": spaces.Box(low = -20, high = 20, shape = (6,), dtype = np.float32),
-                                              "joints": spaces.Box(low = -10, high = 10, shape = (24,), dtype = np.float32)}) # Fix joints range
+        self.action_space = spaces.Box(low = -1, high = 1, shape = (3,), dtype = np.float32) # 3 values for finger synergies
+        self.observation_space = spaces.Box(low = -10, high = 10, shape = (3,), dtype = np.float32) # Joint values encoded in pca space
         self.fingers = fingers
         self.pca_con = sgg.SynGraspGen()
         self.closing_joints = ['rh_FFJ2', 'rh_FFJ3', 'rh_MFJ2', 'rh_MFJ3', 'rh_RFJ2', 'rh_RFJ3', 'rh_LFJ2', 'rh_LFJ3', 'rh_THJ2']
@@ -178,53 +241,29 @@ class MimicEnv(gym.Env):
         return
 
     def step(self, action):
-        result = self.pca_con.gen_joint_config(action[:5])
+        result = self.pca_con.gen_joint_config(action)
         planned_joints = self.res[0][self.current_index]
         current_joints = [result[joint] for joint in planned_joints.name]
-        pressure = np.zeros((44,), np.float32)
-        biotac = np.zeros((95,), np.float32)
-        ft = np.zeros((6,), np.float32)
-        joints = np.array(current_joints, np.float32)
-        observation = {}
-        #observation['pressure'] = pressure
-        #observation['biotac'] = biotac
-        #observation['biotac_init'] = biotac
-        #observation['biotac_diff'] = biotac
-        #observation['ft'] = ft
-        observation['joints'] = joints
-        '''
-        if action[5] > 0 and self.obs[4][self.current_index] == 1:
-            reward = 0
-        elif self.obs[4][self.current_index] == 1 or action[5] > 0:
-            reward = -10
-        else:
-        '''
+        observation = np.zeros((3,), dtype = np.float32)
         reward = 0
         for i in range(len(current_joints)):
-            reward += -math.dist(current_joints[i], planned_joints.position[i])
+            reward += -math.dist([current_joints[i]], [planned_joints.position[i]])
 
         info = {}
         terminated = True
-        return observation, reward, terminated, info
+        truncated = False
+        return observation, reward, terminated, truncated, info
 
-    def reset(self):
+    def reset(self, seed=None):
+        super().reset(seed=seed)
         observation = {}
         # get data from random data entry
         self.current_index = random.randint(0, len(self.res[0])-1)
-        pressure = self.obs[2][self.current_index]
-        biotac = self.obs[3][self.current_index]
-        #biotac_init = self.obs[5][self.current_index]
-        #biotac_diff = [self.obs[3][self.current_index][x] - self.obs[5][self.current_index][x] for x in range(len(self.obs[3][self.current_index]] # Difference between current and initial biotac values
-        ft = self.obs[0][self.current_index]
         joints = self.obs[1][self.current_index]
-        observation = {}
-        #observation['pressure'] = np.concatenate((pressure.l_finger_tip, pressure.r_finger_tip), dtype = np.float32)
-        #observation['biotac'] = np.concatenate((biotac.tactiles[0].electrodes, biotac.tactiles[1].electrodes, biotac.tactiles[2].electrodes, biotac.tactiles[3].electrodes, biotac.tactiles[4].electrodes), dtype = np.float32)
-        #observation['biotac_init'] = np.concatenate((biotac_init.tactiles[0].electrodes, biotac_init.tactiles[1].electrodes, biotac_init.tactiles[2].electrodes, biotac_init.tactiles[3].electrodes, biotac_init.tactiles[4].electrodes), dtype = np.float32)
-        #observation['biotac_diff'] = np.concatenate((biotac_diff.tactiles[0].electrodes, biotac_diff.tactiles[1].electrodes, biotac_diff.tactiles[2].electrodes, biotac_diff.tactiles[3].electrodes, biotac_diff.tactiles[4].electrodes), dtype = np.float32)
-        #observation['ft'] = np.concatenate(([ft.wrench.force.x, ft.wrench.force.y, ft.wrench.force.z], [ft.wrench.torque.x, ft.wrench.torque.y, ft.wrench.torque.z]), dtype = np.float32)
-        observation['joints'] = np.array(joints.position, dtype = np.float32)
-        return observation
+        pca_config = self.pca_con.get_pca_config(joints.position)[0][:3]
+        observation = np.array(pca_config, dtype = np.float32)
+        info = {}
+        return (observation, info)
 
     def render(self):
         return
@@ -233,6 +272,61 @@ class MimicEnv(gym.Env):
         self.log_file.close()
         return
 
+class InitialEnv(gym.Env):
+
+    def __init__(self, fingers):
+        super().__init__()
+        self.action_space = spaces.Box(low = -1, high = 1, shape = (3,), dtype = np.float32) # 3 values for finger synergies
+        self.observation_space = spaces.Box(low = np.array(-100, -100, -100, -100, -100, -1, -1, -1),
+                                            high = np.array(100, 100, 100, 100, 100, 1, 1, 1),
+                                            dtype = np.flaot32) # First 5 values previous biotac diffs, last 3 values previous actions
+        self.fingers = fingers
+        self.pca_con = sgg.SynGraspGen()
+        self.ccm_srv = rospy.ServiceProxy('handover/ccm', CCM)
+        self.gt_srv = rospy.ServiceProxy('handover/grasp_tester', GraspTesterSrv)
+        self.tactile_sub = rospy.Subscriber('/hand/rh/tactile', BiotacAll, self.tactile_callback)
+
+    def tactile_callback(self, tactile):
+        self.current_tactile = [x.pdc for x in tactile.tactiles]
+
+    def step(self, action):
+        result = self.pca_con.gen_joint_config(action[:3])
+
+        self.fingers.set_joint_value_target(result)
+        self.fingers.go()
+
+        self.ccm_srv('placeholder')
+        success = self.gt_srv('placeholder')
+
+        if success:
+            reward = 1
+            terminated = True
+        else:
+            reward = -1
+            terminated = False
+            fingers.set_named_target('open')
+
+        current_biotac = deepcopy(self.current_tactile)
+        current_observation = [current_biotac[x] - self.initial_biotac[x] for x in range(len(current_biotac))]
+        current_observation.append(x for x in action)
+        observation = np.array(current_observation, dtype = np.float32)
+
+        info = {}
+        truncated = False
+        return observation, reward, terminated, truncated, info
+
+    def reset(self, seed=None):
+        super().reset(seed=seed)
+        observation = np.zeros((8,), dtype.float32)
+        self.initial_biotac = deepcopy(self.current_tactile)
+        info = {}
+        return (observation, info)
+
+    def render(self):
+        return
+
+    def close(self):
+        return
 
 class SimpleEnv(gym.Env):
 
@@ -314,7 +408,8 @@ class SimpleEnv(gym.Env):
             terminated = True
         return observation, reward, terminated, info
 
-    def reset(self):
+    def reset(self, seed=None, options=None):
+        super().reset(seed=seed)
         self.log_file.close()
         self.log_file = open(rospkg.RosPack().get_path('bimanual_handover') + "/logs/log"+ self.time + ".txt", 'a')
         self.reset_timer = 0

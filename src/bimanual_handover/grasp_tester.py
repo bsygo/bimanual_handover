@@ -11,7 +11,7 @@ from bio_ik_msgs.srv import GetIK
 class GraspTester():
 
     def __init__(self):
-        rospy.init_node('grasp_tester')
+        rospy.init_node('grasp_tester_node')
         roscpp_initialize('')
         rospy.on_shutdown(self.shutdown)
         force_sub = rospy.Subscriber('/ft/l_gripper_motor', WrenchStamped, self.update_force)
@@ -90,19 +90,9 @@ class GraspTester():
             filtered_joint_state.effort = [joint_state.effort[x] for x in indices]
         return filtered_joint_state
 
-    def test_grasp(self, req):
-        prev_ft = deepcopy(self.current_force)
-        rospy.loginfo("Initial force value: {}".format(prev_ft))
-
-        # For some reason, this needs to happen twice or otherwise the orientation is messed up
-        #current_pose = self.right_arm.get_current_pose()
-        #rospy.sleep(1)
-        current_pose = self.right_arm.get_current_pose()
-
+    def move_bio_ik(self, target_pose):
         request = self.prepare_bio_ik_request('right_arm')
-        current_pose.pose.position.z += 0.005
-        self.debug_pub_plan.publish(current_pose)
-        request = self.add_goals(request, current_pose.pose)
+        request = self.add_goals(request, target_pose.pose)
         response = self.bio_ik_srv(request).ik_response
         if not response.error_code.val == 1:
             raise Exception("Bio_ik planning failed with error code {}.".format(response.error_code.val))
@@ -112,8 +102,23 @@ class GraspTester():
         if not plan:
             raise Exception("Moving to pose \n {} \n failed. No path was found to the joint state \n {}.".format(current_pose, filtered_joint_state))
 
+    def test_grasp(self, req):
+        prev_ft = deepcopy(self.current_force)
+        #rospy.loginfo("Initial force value: {}".format(prev_ft))
+
+        current_pose = self.right_arm.get_current_pose()
+        old_joint_values = deepcopy(self.right_arm.get_current_joint_values())
+        current_pose.pose.position.z += 0.005
+        self.debug_pub_plan.publish(current_pose)
+        self.move_bio_ik(current_pose)
+
         cur_ft = deepcopy(self.current_force)
-        rospy.loginfo("Afterwards force value: {}".format(cur_ft))
+        #rospy.loginfo("Afterwards force value: {}".format(cur_ft))
+
+        # Reset previous upwards movement
+        self.right_arm.set_joint_value_target(old_joint_values)
+        self.right_arm.go()
+
         if prev_ft + 2 <= cur_ft:
             return True
         else:

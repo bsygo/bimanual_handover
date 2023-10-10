@@ -38,11 +38,12 @@ class RealEnv(gym.Env):
         #self.reset_timer = 0
         self.closing_joints = ['rh_FFJ2', 'rh_FFJ3', 'rh_MFJ2', 'rh_MFJ3', 'rh_RFJ2', 'rh_RFJ3', 'rh_LFJ2', 'rh_LFJ3', 'rh_THJ2']
         self.joint_order = self.fingers.get_active_joints()
-        self.ccm_srv = rospy.ServiceProxy('handover/ccm', CCM)
+        self.ccm_srv = rospy.ServiceProxy('ccm', CCM)
         #self.pressure_sub = rospy.Subscriber('/pressure/l_gripper_motor', PressureState, self.pressure_callback)
         self.tactile_sub = rospy.Subscriber('/hand/rh/tactile', BiotacAll, self.tactile_callback)
         #self.force_sub = rospy.Subscriber('/ft/l_gripper_motor', WrenchStamped, self.force_callback)
-        self.gt_srv = rospy.ServiceProxy('handover/grasp_tester', GraspTesterSrv)
+        rospy.wait_for_service('grasp_tester')
+        self.gt_srv = rospy.ServiceProxy('grasp_tester', GraspTesterSrv)
         self.interrupt_sub = rospy.Subscriber('handover/interrupt_learning', Bool, self.interrupt_callback)
         self.interrupted = False
 
@@ -52,7 +53,7 @@ class RealEnv(gym.Env):
     '''
 
     def tactile_callback(self, tactile):
-        self.current_tactile = tactile
+        self.current_tactile = [x.pdc for x in tactile.tactiles]
 
     '''
     def force_callback(self, force):
@@ -65,22 +66,26 @@ class RealEnv(gym.Env):
     def step(self, action):
         while self.interrupted:
             rospy.sleep(1)
-        result = self.pca_con.gen_joint_config(action[:3])
 
-        self.fingers.set_joint_value_target(result)
-        self.fingers.go()
-
-        if action[4] > 0:
+        # Check if networked determined to have a finished grasped
+        if action[3] > 0:
             success = self.gt_srv('placeholder')
-
+            terminated = True
+            # Give reward if the previous decision was correct or not
             if success:
                 reward = 1
-                terminated = True
             else:
                 reward = -1
-                terminated = False
-                fingers.set_named_target('open')
         else:
+            # Move into the desired config
+            result = self.pca_con.gen_joint_config(action[:3])
+            # Remove wrist joints
+            del result['rh_WRJ1']
+            del result['rh_WRJ2']
+            self.fingers.set_joint_value_target(result)
+            self.fingers.go()
+
+            # Determine reward based on how much the fingers closed compared to the previous configuration
             reward = 0
             terminated = False
             joint_diff = 0
@@ -93,10 +98,12 @@ class RealEnv(gym.Env):
                     joint_diff += - math.dist([current_joints[index]], [self.last_joints[index]])
             reward = joint_diff
 
+        # Update observation for next step
         current_biotac = deepcopy(self.current_tactile)
         current_observation = [current_biotac[x] - self.initial_biotac[x] for x in range(len(current_biotac))]
-        current_pca = self.pca_con.get_pca_config()
-        current_observation.append(x for x in current_pca)
+        current_pca = self.pca_con.get_pca_config()[0][:3]
+        for pca in current_pca:
+            current_observation.append(pca)
         observation = np.array(current_observation, dtype = np.float32)
 
         info = {}
@@ -172,23 +179,27 @@ class RealEnv(gym.Env):
         return observation
     '''
 
-    def reset(self, seed):
+    def reset(self, seed=None):
         super().reset(seed=seed)
         self.log_file.close()
         while self.interrupted:
             rospy.sleep(1)
         self.log_file = open(rospkg.RosPack().get_path('bimanual_handover') + "/logs/log"+ self.time + ".txt", 'a')
+
+        # Reset hand into default position
         self.fingers.set_named_target('open')
+        joint_values = dict(rh_THJ4 = 1.13446, rh_LFJ4 = -0.31699402670752413, rh_FFJ4 = -0.23131151280059523, rh_MFJ4 = 0.008929532157657268, rh_RFJ4 = -0.11378487918959583)
+        self.fingers.set_joint_value_target(joint_values)
         self.fingers.go()
-        self.fingers.set_joint_value_target('rh_THJ4', 1.13446)
 
         self.initial_biotac = deepcopy(self.current_tactile)
         self.last_joints = deepcopy(self.fingers.get_current_joint_values())
 
         current_biotac = deepcopy(self.current_tactile)
         current_observation = [current_biotac[x] - self.initial_biotac[x] for x in range(len(current_biotac))]
-        current_pca = self.pca_con.get_pca_config()
-        current_observation.append(x for x in current_pca)
+        current_pca = self.pca_con.get_pca_config()[0][:3]
+        for pca in current_pca:
+            current_observation.append(pca)
         observation = np.array(current_observation, dtype = np.float32)
 
         info = {}

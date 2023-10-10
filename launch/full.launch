@@ -1,6 +1,8 @@
 <?xml version="1.0"?>
 <launch>
     <arg name="demo" default="true" />
+    <!-- Choose between full and train -->
+    <arg name="handover_type" default="full" />
     <!-- Choose grasp mode between "ccm" and "pca". -->
     <arg name="grasp_mode" default="pca" /> 
     <group ns="handover" >
@@ -16,7 +18,7 @@
     <node name="grasp_tester" pkg="bimanual_handover" type="grasp_tester.py" output="screen" />
     <node name="robot_setup_mover" pkg="bimanual_handover" type="robot_setup_mover.py" output="screen" />
     <node name="finish_handover" pkg="bimanual_handover" type="finish_handover.py" output="screen" />
-    <node name="handover_controller" pkg="bimanual_handover" type="handover_controller.py" output="screen" args="full $(arg grasp_mode)"/>
+    <node name="handover_controller" pkg="bimanual_handover" type="handover_controller.py" output="screen" args="$(arg handover_type) $(arg grasp_mode)"/>
     </group>
     <node name="bio_ik_srv" pkg="bio_ik_service" type="bio_ik_service" output="screen" />
 </launch>

@@ -17,17 +17,16 @@ from stable_baselines3.common.callbacks import CheckpointCallback
 import re
 
 
-def end_moveit():
+def shutdown():
     roscpp_shutdown()
 
 def main(argv):
     rospy.init_node('ppo_trainer')
     roscpp_initialize('')
-    rospy.on_shutdown(end_moveit)
+    rospy.on_shutdown(shutdown)
     rospack = rospkg.RosPack()
     path = rospack.get_path('bimanual_handover')
-    fingers = MoveGroupCommander('right_fingers')
-    ps = PlanningSceneInterface()
+    fingers = MoveGroupCommander('right_fingers', ns="/")
     fingers.set_max_velocity_scaling_factor(1.0)
     fingers.set_max_acceleration_scaling_factor(1.0)
 
@@ -61,21 +60,20 @@ def main(argv):
 #    rospy.loginfo('Waiting for pc.')
 #    pc = rospy.wait_for_message('pc/pc_filtered', PointCloud2, 20)
     rospy.loginfo('Setting up env.')
-#    env = handover_env.RealEnv(fingers)
-    env = handover_env.MimicEnv(fingers)
-#    env = handover_env.SimpleEnv(fingers, pc, ps)
+    env = handover_env.RealEnv(fingers)
+#    env = handover_env.MimicEnv(fingers)
 
     date = datetime.now()
     str_date = date.strftime("%d_%m_%Y_%H_%M")
-    timesteps = 100000
+    timesteps = 10000#100000
     log_name = "PPO_" + str_date
 
     if check:
         check_env(env)
         rospy.loginfo('Env check completed.')
-    checkpoint_callback = CheckpointCallback(save_freq = 500, save_path = path + "/models/checkpoints/", name_prefix = "ppo_checkpoint_" + str_date, save_replay_buffer = True, save_vecnormalize = True)
+    checkpoint_callback = CheckpointCallback(save_freq = 100, save_path = path + "/models/checkpoints/", name_prefix = "ppo_checkpoint_" + str_date, save_replay_buffer = True, save_vecnormalize = True)
     if model_path is None:
-        model = PPO("MlpPolicy", env, n_steps = 500, batch_size = 50, n_epochs = 500, verbose = 1, tensorboard_log=path + "/logs/tensorboard")
+        model = PPO("MlpPolicy", env, n_steps = 50, batch_size = 5, n_epochs = 50, verbose = 1, tensorboard_log=path + "/logs/tensorboard")
     else:
         model = PPO.load(model_path, env = env, print_system_info = True)
         if checkpoint:

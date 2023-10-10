@@ -50,7 +50,10 @@ def main(argv):
         checkpoint = False
         rospy.loginfo('No checkpoint parameter specified, defaulting to False.')
     if 'MODEL' in args:
-        model_path = path + args['MODEL']
+        if args['MODEL'] == 'None':
+            model_path = None
+        else:
+            model_path = path + args['MODEL']
     else:
         model_path = None #path + "/models/ppo_model"
         rospy.loginfo('No model parameter specified, defaulting to new model.')

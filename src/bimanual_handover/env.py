@@ -68,7 +68,12 @@ class RealEnv(gym.Env):
             rospy.sleep(1)
 
         # Check if networked determined to have a finished grasped
-        if action[3] > 0:
+        #if action[3] >= 0.0:
+
+        current_biotac = deepcopy(self.current_tactile)
+        current_biotac_diff = [current_biotac[x] - self.initial_biotac[x] for x in range(len(current_biotac))]
+        if sum([True if diff >=20 else False for diff in current_biotac_diff]) >= 2:
+            print(current_biotac_diff)
             success = self.gt_srv('placeholder')
             terminated = True
             # Give reward if the previous decision was correct or not
@@ -77,11 +82,13 @@ class RealEnv(gym.Env):
             else:
                 reward = -1
         else:
-            # Move into the desired config
-            result = self.pca_con.gen_joint_config(action[:3])
+            # Get new config
+            result = self.pca_con.gen_joint_config(action[:3], normalize = True)
             # Remove wrist joints
             del result['rh_WRJ1']
             del result['rh_WRJ2']
+            
+            # Move into desired config
             self.fingers.set_joint_value_target(result)
             self.fingers.go()
 

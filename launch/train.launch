@@ -2,7 +2,11 @@
 <launch>
         <arg name="check" default="True" />
         <arg name="checkpoint" default="False" />
-                <!-- <arg name="model_type" value="None" /> -->
-        <arg name="model_type" value="/models/checkpoints/ppo_checkpoint_10_10_2023_12_25_4500_steps" />
-        <node name="trainer" pkg="bimanual_handover" type="train_ppo.py" output="screen" args="--check $(arg check) --checkpoint $(arg checkpoint)--model $(arg model_type)"/>
+        <arg name="model_type" value="None" />
+        <!-- <arg name="model_type" value="/models/checkpoints/ppo_checkpoint_10_10_2023_12_25_4500_steps" /> -->
+        <group ns="handover">
+                <node name="trainer" pkg="bimanual_handover" type="train_ppo.py" output="screen" args="--check $(arg check) --checkpoint $(arg checkpoint)--model $(arg model_type)"/>
+                <node name="grasp_tester" pkg="bimanual_handover" type="grasp_tester.py" output="screen" />
+        </group>
+        <node name="bio_ik_srv" pkg="bio_ik_service" type="bio_ik_service" output="screen" />
 </launch>

@@ -8,7 +8,7 @@ import rospkg
 import sys
 from moveit_commander import MoveGroupCommander, roscpp_initialize, roscpp_shutdown, PlanningSceneInterface
 from stable_baselines3.common.env_checker import check_env
-from stable_baselines3 import PPO
+from stable_baselines3 import PPO, SAC
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.logger import configure
 from sensor_msgs.msg import PointCloud2
@@ -21,7 +21,7 @@ def shutdown():
     roscpp_shutdown()
 
 def main(argv):
-    rospy.init_node('ppo_trainer')
+    rospy.init_node('model_trainer')
     roscpp_initialize('')
     rospy.on_shutdown(shutdown)
     rospack = rospkg.RosPack()
@@ -29,6 +29,13 @@ def main(argv):
     fingers = MoveGroupCommander('right_fingers', ns="/")
     fingers.set_max_velocity_scaling_factor(1.0)
     fingers.set_max_acceleration_scaling_factor(1.0)
+    model_type = "SAC"
+    if model_type == "SAC":
+        model_type_small = "sac"
+    elif model_type == "PPO":
+        model_type_small = "ppo"
+    else:
+        rospy.logerr("Unknown model type {}.".format(model_type))
 
     args_pattern = re.compile(r"(((?:--check)\s(?P<CHECK>True|False))?\s?((?:--checkpoint)\s(?P<CHECKPOINT>True|False))?\s?((?:--model)\s(?P<MODEL>.*))?)")
     args = {}
@@ -54,7 +61,7 @@ def main(argv):
         else:
             model_path = path + args['MODEL']
     else:
-        model_path = None #path + "/models/ppo_model"
+        model_path = None
         rospy.loginfo('No model parameter specified, defaulting to new model.')
 
 #    rospy.loginfo('Waiting for pc.')
@@ -66,29 +73,35 @@ def main(argv):
     date = datetime.now()
     str_date = date.strftime("%d_%m_%Y_%H_%M")
     timesteps = 10000#100000
-    log_name = "PPO_" + str_date
+    log_name = model_type + "_" + str_date
 
     if check:
         check_env(env)
         rospy.loginfo('Env check completed.')
-    checkpoint_callback = CheckpointCallback(save_freq = 100, save_path = path + "/models/checkpoints/", name_prefix = "ppo_checkpoint_" + str_date, save_replay_buffer = True, save_vecnormalize = True)
+    checkpoint_callback = CheckpointCallback(save_freq = 100, save_path = path + "/models/checkpoints/", name_prefix = model_type_small + "_checkpoint_" + str_date, save_replay_buffer = True, save_vecnormalize = True)
     if model_path is None:
-        model = PPO("MlpPolicy", env, n_steps = 50, batch_size = 5, n_epochs = 50, verbose = 1, tensorboard_log=path + "/logs/tensorboard")
+        if model_type == "PPO":
+            model = PPO("MlpPolicy", env, n_steps = 50, batch_size = 5, n_epochs = 50, verbose = 1, tensorboard_log=path + "/logs/tensorboard")
+        elif model_type == "SAC":
+            model = SAC("MlpPolicy", env, batch_size = 50, buffer_size = 10000, verbose = 1, tensorboard_log=path + "/logs/tensorboard")
     else:
-        model = PPO.load(model_path, env = env, print_system_info = True)
+        if model_type == "PPO":
+            model = PPO.load(model_path, env = env)
+        elif model_type == "SAC":
+            model = SAC.load(model_path, env = env)
         if checkpoint:
             steps_pattern = re.compile(r".*_(?P<steps>\d+)_steps.*")
             matches = steps_pattern.match(model_path)
             steps = int(matches.group('steps'))
             timesteps = timesteps - steps
-            log_pattern = re.compile(r".*ppo_checkpoint_(?P<date>\d\d_\d\d_\d\d\d\d_\d\d_\d\d)_.*")
+            log_pattern = re.compile(r".*_checkpoint_(?P<date>\d\d_\d\d_\d\d\d\d_\d\d_\d\d)_.*")
             matches = log_pattern.match(model_path)
             date = matches.group('date')
-            log_name = "PPO_" + date
+            log_name = model_type + "_" + date
     rospy.loginfo('Start learning.')
     model.learn(total_timesteps=timesteps, progress_bar = True, callback = checkpoint_callback, tb_log_name = log_name, reset_num_timesteps = False)
     rospy.loginfo('Learning complete.')
-    model.save(path + "/models/ppo_model_" + str_date)
+    model.save(path + "/models/" + model_type_small + "_model_" + str_date)
     roscpp_shutdown()
 
 if __name__ == "__main__":

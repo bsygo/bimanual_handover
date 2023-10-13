@@ -35,7 +35,6 @@ class RealEnv(gym.Env):
         self.log_file = open(rospkg.RosPack().get_path('bimanual_handover') + "/logs/log" + self.time + ".txt", 'w')
         self.last_joints = None
         self.initial_biotac = None
-        #self.reset_timer = 0
         self.closing_joints = ['rh_FFJ2', 'rh_FFJ3', 'rh_MFJ2', 'rh_MFJ3', 'rh_RFJ2', 'rh_RFJ3', 'rh_LFJ2', 'rh_LFJ3', 'rh_THJ2']
         self.joint_order = self.fingers.get_active_joints()
         self.ccm_srv = rospy.ServiceProxy('ccm', CCM)
@@ -70,9 +69,11 @@ class RealEnv(gym.Env):
         # Check if networked determined to have a finished grasped
         #if action[3] >= 0.0:
 
+        # Stop moving if enough contacts have been made
         current_biotac = deepcopy(self.current_tactile)
         current_biotac_diff = [current_biotac[x] - self.initial_biotac[x] for x in range(len(current_biotac))]
-        if sum([True if diff >=20 else False for diff in current_biotac_diff]) >= 2:
+        contacts = [True if diff >=20 else False for diff in current_biotac_diff]
+        if sum(contacts) >= 5:
             print(current_biotac_diff)
             success = self.gt_srv('placeholder')
             terminated = True
@@ -82,11 +83,36 @@ class RealEnv(gym.Env):
             else:
                 reward = -1
         else:
+            # Reduce normalized actions
+            action[0] = (action[0] - 1)/2 
+            action[1] = (action[1] - 1)/2
             # Get new config
             result = self.pca_con.gen_joint_config(action[:3], normalize = True)
             # Remove wrist joints
             del result['rh_WRJ1']
             del result['rh_WRJ2']
+
+            # Remove fingers with contact (optional, testing) -> Mabe switch to not close anymore instead of no movement at all
+            if contacts[0]:
+                for key in result.keys():
+                    if 'rh_FFJ' in key:
+                        del result[key]
+            if contacts[1]:
+                for key in result.keys():
+                    if 'rh_MFJ' in key:
+                        del result[key]
+            if contacts[2]:
+                for key in result.keys():
+                    if 'rh_RFJ' in key:
+                        del result[key]
+            if contacts[3]:
+                for key in result.keys():
+                    if 'rh_LFJ' in key:
+                        del result[key]
+            if contacts[4]:
+                for key in result.keys():
+                    if 'rh_THJ' in key:
+                        del result[key]
             
             # Move into desired config
             self.fingers.set_joint_value_target(result)
@@ -116,75 +142,6 @@ class RealEnv(gym.Env):
         info = {}
         truncated = False
         return observation, reward, terminated, truncated, info
-
-    '''
-    def step(self, action):
-        reward = 0
-        result = None
-        terminated = False
-        scaled_action = np.array([action[0] * 0.15, action[1] * 0.065, action[2] * 0.125, action[3] * 0.095, action[4] * 0.045])
-#        scaled_action = np.array([action[0] * 1.5, action[1] * 0.65, action[2] * 1.25, action[3] * 0.95, action[4] * 0.45])
-        try:
-            result = self.pca_con.move_joint_config(scaled_action)
-        except MoveItCommanderException as e:
-            print(e)
-            #reward = -0.2
-        if not result is MoveItErrorCodes.SUCCESS:
-            #reward = -0.2
-            pass
-        pressure = deepcopy(self.current_pressure)
-        biotac = deepcopy(self.current_tactile)
-        ft = deepcopy(self.current_force)
-        observation = {}
-        observation['pressure'] = np.concatenate((pressure.l_finger_tip, pressure.r_finger_tip), dtype = np.float32)
-        observation['biotac'] = np.concatenate((biotac.tactiles[0].electrodes, biotac.tactiles[1].electrodes, biotac.tactiles[2].electrodes, biotac.tactiles[3].electrodes, biotac.tactiles[4].electrodes), dtype = np.float32)
-        observation['ft'] = np.concatenate(([ft.wrench.force.x, ft.wrench.force.y, ft.wrench.force.z], [ft.wrench.torque.x, ft.wrench.torque.y, ft.wrench.torque.z]), dtype = np.float32)
-        # If grasping decision is reached, further close the hand, compute reward based on grasping stability, and terminate episode
-        if action[5] > 0:
-            self.ccm_srv('placeholder')
-            terminated = True
-            if self.gt_srv('placeholder'):
-                reward = 1
-            else:
-                reward = 0
-        # If grasping decision is not reached, compute reward based on how far the hand has closed itself
-        elif reward >= 0:
-            joint_diff = 0
-            for joint in self.closing_joints:
-                index = self.joint_order.index(joint)
-                if new_joints[index] >= self.last_joints[index]:
-                    joint_diff += math.dist([new_joints[index]], [self.last_joints[index]])
-                else:
-                    joint_diff += - math.dist([new_joints[index]], [self.last_joints[index]])
-            reward = 0.03 * joint_diff
-        self.last_joints = np.array(self.fingers.get_current_joint_values())
-        self.log_file.write("{}, {} \n".format(action, reward))
-        #self.reset_timer += 1
-        #if self.reset_timer == 100:
-        #    terminated = True
-        info = {}
-        return observation, reward, terminated, info
-    '''
-
-    '''
-    def reset(self, seed):
-        #self.reset_timer = 0
-        self.log_file.close()
-        self.log_file = open(rospkg.RosPack().get_path('bimanual_handover') + "/logs/log"+ self.time + ".txt", 'a')
-        self.fingers.set_named_target('open')
-        self.fingers.go()
-        self.fingers.set_joint_value_target('rh_THJ4', 1.13446)
-        observation = {}
-        pressure = deepcopy(self.current_pressure)
-        biotac = deepcopy(self.current_tactile)
-        ft = deepcopy(self.current_force)
-        observation = {}
-        observation['pressure'] = np.concatenate((pressure.l_finger_tip, pressure.r_finger_tip), dtype = np.float32)
-        observation['biotac'] = np.concatenate((biotac.tactiles[0].electrodes, biotac.tactiles[1].electrodes, biotac.tactiles[2].electrodes, biotac.tactiles[3].electrodes, biotac.tactiles[4].electrodes), dtype = np.float32)
-        observation['ft'] = np.concatenate(([ft.wrench.force.x, ft.wrench.force.y, ft.wrench.force.z], [ft.wrench.torque.x, ft.wrench.torque.y, ft.wrench.torque.z]), dtype = np.float32)
-        self.last_joints = np.array(self.fingers.get_current_joint_values())
-        return observation
-    '''
 
     def reset(self, seed=None):
         super().reset(seed=seed)

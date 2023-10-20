@@ -2,6 +2,7 @@
 
 import rospy
 from moveit_commander import roscpp_initialize, roscpp_shutdown, MoveGroupCommander, RobotCommander
+from std_msgs.msg import Bool
 from bimanual_handover_msgs.srv import GraspTesterSrv
 from geometry_msgs.msg import WrenchStamped, PoseStamped
 from copy import deepcopy
@@ -10,7 +11,7 @@ from bio_ik_msgs.srv import GetIK
 
 class GraspTester():
 
-    def __init__(self):
+    def __init__(self, debug = True):
         rospy.init_node('grasp_tester_node')
         roscpp_initialize('')
         rospy.on_shutdown(self.shutdown)
@@ -22,8 +23,12 @@ class GraspTester():
         self.right_arm.get_current_pose() # To initiate state monitor: see moveit issue #2715
         self.robot = RobotCommander()
         rospy.Service('grasp_tester', GraspTesterSrv, self.test_grasp)
+        self.debug = debug
         self.debug_pub_current = rospy.Publisher('debug/pre_cartesian', PoseStamped, queue_size = 1, latch = True)
         self.debug_pub_plan = rospy.Publisher('debug/plan_cartesian', PoseStamped, queue_size = 1, latch = True)
+        if self.debug:
+            self.debug_snapshot_pub = rospy.Publisher('debug/debug_snapshot', Bool, queue_size = 1, latch = True)
+            self.debug_snapshot_pub.publish(False)
         rospy.spin()
 
     def shutdown(self):
@@ -103,6 +108,8 @@ class GraspTester():
             raise Exception("Moving to pose \n {} \n failed. No path was found to the joint state \n {}.".format(current_pose, filtered_joint_state))
 
     def test_grasp(self, req):
+        if self.debug:
+            self.debug_snapshot_pub.publish(True)
         prev_ft = deepcopy(self.current_force)
         #rospy.loginfo("Initial force value: {}".format(prev_ft))
 
@@ -112,6 +119,8 @@ class GraspTester():
         self.debug_pub_plan.publish(current_pose)
         self.move_bio_ik(current_pose)
 
+        if self.debug:
+            self.debug_snapshot_pub.publish(False)
         cur_ft = deepcopy(self.current_force)
         #rospy.loginfo("Afterwards force value: {}".format(cur_ft))
 
@@ -119,7 +128,8 @@ class GraspTester():
         self.right_arm.set_joint_value_target(old_joint_values)
         self.right_arm.go()
 
-        if prev_ft + 2 <= cur_ft:
+        print("Force diff: {}".format(abs(prev_ft - cur_ft)))
+        if abs(prev_ft - cur_ft) >= 2:
             return True
         else:
             return False

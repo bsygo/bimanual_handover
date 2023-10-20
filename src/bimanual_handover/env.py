@@ -27,7 +27,7 @@ class RealEnv(gym.Env):
 
     def __init__(self, fingers):
         super().__init__()
-        self.action_space = spaces.Box(low = -1, high = 1, shape = (4,), dtype = np.float32) # first 3 values for finger synergies, last value if grasp is final
+        self.action_space = spaces.Box(low = -1, high = 1, shape = (3,), dtype = np.float32) # first 3 values for finger synergies, last value if grasp is final
         self.observation_space = spaces.Box(low = -100, high = 100, shape = (8,), dtype = np.float32) # First 5 values for biotac diff, last 3 values for current joint config in pca space
         self.fingers = fingers
         self.pca_con = sgg.SynGraspGen()
@@ -45,6 +45,8 @@ class RealEnv(gym.Env):
         self.gt_srv = rospy.ServiceProxy('grasp_tester', GraspTesterSrv)
         self.interrupt_sub = rospy.Subscriber('handover/interrupt_learning', Bool, self.interrupt_callback)
         self.interrupted = False
+        self.max_steps = 20
+        self.current_step = 0
 
     '''
     def pressure_callback(self, pressure):
@@ -73,15 +75,21 @@ class RealEnv(gym.Env):
         current_biotac = deepcopy(self.current_tactile)
         current_biotac_diff = [current_biotac[x] - self.initial_biotac[x] for x in range(len(current_biotac))]
         contacts = [True if diff >=20 else False for diff in current_biotac_diff]
-        if sum(contacts) >= 5:
+        if sum(contacts) >= 5 or self.current_step >= self.max_steps:
             print(current_biotac_diff)
-            success = self.gt_srv('placeholder')
+            success = self.gt_srv('placeholder').success
             terminated = True
             # Give reward if the previous decision was correct or not
             if success:
                 reward = 1
             else:
                 reward = -1
+            reward += 0.1 * sum(contacts)
+            if self.current_step >= self.max_steps:
+                terminated_reason = "Max steps"
+            else:
+                terminated_reason = "Contacts"
+            print("Reward: {}, Terminated Reason: {}".format(reward, terminated_reason))
         else:
             # Reduce normalized actions
             action[0] = (action[0] - 1)/2 
@@ -93,43 +101,54 @@ class RealEnv(gym.Env):
             del result['rh_WRJ2']
 
             # Remove fingers with contact (optional, testing) -> Mabe switch to not close anymore instead of no movement at all
+            del_keys = []
             if contacts[0]:
                 for key in result.keys():
                     if 'rh_FFJ' in key:
-                        del result[key]
+                        del_keys.append(key)
             if contacts[1]:
                 for key in result.keys():
                     if 'rh_MFJ' in key:
-                        del result[key]
+                        del_keys.append(key)
             if contacts[2]:
                 for key in result.keys():
                     if 'rh_RFJ' in key:
-                        del result[key]
+                        del_keys.append(key)
             if contacts[3]:
                 for key in result.keys():
                     if 'rh_LFJ' in key:
-                        del result[key]
+                        del_keys.append(key)
             if contacts[4]:
                 for key in result.keys():
                     if 'rh_THJ' in key:
-                        del result[key]
+                        del_keys.append(key)
+            for key in del_keys:
+                del result[key]
             
             # Move into desired config
-            self.fingers.set_joint_value_target(result)
-            self.fingers.go()
+            try:
+                self.fingers.set_joint_value_target(result)
+                self.fingers.go()
 
-            # Determine reward based on how much the fingers closed compared to the previous configuration
-            reward = 0
-            terminated = False
-            joint_diff = 0
-            current_joints = self.fingers.get_current_joint_values()
-            for joint in self.closing_joints:
-                index = self.joint_order.index(joint)
-                if current_joints[index] >= self.last_joints[index]:
-                    joint_diff += math.dist([current_joints[index]], [self.last_joints[index]])
-                else:
-                    joint_diff += - math.dist([current_joints[index]], [self.last_joints[index]])
-            reward = joint_diff
+                # Determine reward based on how much the fingers closed compared to the previous configuration
+                reward = 0
+                terminated = False
+                joint_diff = 0
+                current_joints = self.fingers.get_current_joint_values()
+                for joint in self.closing_joints:
+                    index = self.joint_order.index(joint)
+                    if current_joints[index] >= self.last_joints[index]:
+                        joint_diff += math.dist([current_joints[index]], [self.last_joints[index]])
+                    else:
+                        joint_diff += - math.dist([current_joints[index]], [self.last_joints[index]])
+                reward = joint_diff
+                print("Reward: {}".format(reward))
+            except MoveItCommanderException as e:
+                rospy.logerr("Exception encountered: {}".format(e))
+                terminated = True
+                terminated_reason = "Exception {} encountered".format(e)
+                reward = -1
+
 
         # Update observation for next step
         current_biotac = deepcopy(self.current_tactile)
@@ -138,6 +157,13 @@ class RealEnv(gym.Env):
         for pca in current_pca:
             current_observation.append(pca)
         observation = np.array(current_observation, dtype = np.float32)
+
+        self.current_step += 1
+        self.last_joints = deepcopy(self.fingers.get_current_joint_values())
+
+        if not terminated:
+            terminated_reason = "False"
+        self.log_file.write("Action: {}, Observation:  {}, Reward: {}, Terminated: {}".format(action, observation, reward, terminated_reason))
 
         info = {}
         truncated = False
@@ -165,6 +191,8 @@ class RealEnv(gym.Env):
         for pca in current_pca:
             current_observation.append(pca)
         observation = np.array(current_observation, dtype = np.float32)
+
+        self.current_step = 0
 
         info = {}
         return (observation, info)

@@ -46,12 +46,15 @@ def main(argv):
     if match_object := args_pattern.match(argv):
         args = {k: v for k, v in match_object.groupdict().items() if v is not None}
     if 'CHECK' in args:
-        check = args ['CHECK']
+        check = args['CHECK']
+        print(args['CHECK'])
+        rospy.loginfo('Check parameter set to {}.'.format(check))
     else:
         check = False
         rospy.loginfo('No check parameter specified, defaulting to False.')
     if 'CHECKPOINT' in args:
         checkpoint = args['CHECKPOINT']
+        rospy.loginfo('Checkpoint parameter set to {}.'.format(checkpoint))
     else:
         checkpoint = False
         rospy.loginfo('No checkpoint parameter specified, defaulting to False.')
@@ -60,6 +63,7 @@ def main(argv):
             model_path = None
         else:
             model_path = path + args['MODEL']
+        rospy.loginfo('Model set to {}.'.format(args['MODEL']))
     else:
         model_path = None
         rospy.loginfo('No model parameter specified, defaulting to new model.')
@@ -78,18 +82,25 @@ def main(argv):
     if check:
         check_env(env)
         rospy.loginfo('Env check completed.')
-    checkpoint_callback = CheckpointCallback(save_freq = 100, save_path = path + "/models/checkpoints/", name_prefix = model_type_small + "_checkpoint_" + str_date, save_replay_buffer = True, save_vecnormalize = True)
     if model_path is None:
+        rospy.loginfo('Creating {} model.'.format(model_type))
+        checkpoint_callback = CheckpointCallback(save_freq = 100, save_path = path + "/models/checkpoints/", name_prefix = model_type_small + "_checkpoint_" + str_date, save_replay_buffer = True, save_vecnormalize = True)
         if model_type == "PPO":
             model = PPO("MlpPolicy", env, n_steps = 50, batch_size = 5, n_epochs = 50, verbose = 1, tensorboard_log=path + "/logs/tensorboard")
+            rospy.loginfo('PPO model created.')
         elif model_type == "SAC":
             model = SAC("MlpPolicy", env, batch_size = 50, buffer_size = 10000, verbose = 1, tensorboard_log=path + "/logs/tensorboard")
+            rospy.loginfo('SAC model created.')
     else:
+        rospy.loginfo('Loading {} model.'.format(model_type))
         if model_type == "PPO":
             model = PPO.load(model_path, env = env)
+            rospy.loginfo('PPO model loaded.')
         elif model_type == "SAC":
             model = SAC.load(model_path, env = env)
+            rospy.loginfo('SAC model loaded.')
         if checkpoint:
+            rospy.loginfo('Load settings from checkpoint.')
             steps_pattern = re.compile(r".*_(?P<steps>\d+)_steps.*")
             matches = steps_pattern.match(model_path)
             steps = int(matches.group('steps'))
@@ -98,6 +109,12 @@ def main(argv):
             matches = log_pattern.match(model_path)
             date = matches.group('date')
             log_name = model_type + "_" + date
+            if model_type == "SAC":
+                rospy.loginfo('Loading Replay buffer.')
+                model.load_replay_buffer(path + "/models/checkpoints/sac_checkpoint_" + date + "_replay_buffer_" + "{}".format(steps) + "_steps")
+            checkpoint_callback = CheckpointCallback(save_freq = 100, save_path = path + "/models/checkpoints/", name_prefix = model_type_small + "_checkpoint_" + date, save_replay_buffer = True, save_vecnormalize = True)
+        else:
+            checkpoint_callback = CheckpointCallback(save_freq = 100, save_path = path + "/models/checkpoints/", name_prefix = model_type_small + "_checkpoint_" + str_date, save_replay_buffer = True, save_vecnormalize = True)
     rospy.loginfo('Start learning.')
     model.learn(total_timesteps=timesteps, progress_bar = True, callback = checkpoint_callback, tb_log_name = log_name, reset_num_timesteps = False)
     rospy.loginfo('Learning complete.')

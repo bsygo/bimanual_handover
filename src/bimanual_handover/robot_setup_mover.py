@@ -188,7 +188,7 @@ class RobotSetupMover():
         hand_pose.header.frame_id = "base_footprint"
         hand_pose.pose.position.x = min_point[0] + math.dist([max_point[0]], [min_point[0]])/2 - 0.01
         hand_pose.pose.position.y = min_point[1] + math.dist([max_point[1]], [min_point[1]])/2 - 0.07
-        hand_pose.pose.position.z = max_point[2] + 0.03
+        hand_pose.pose.position.z = max_point[2] + 0.05
         hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(1.57, 0, 3).tolist())
 
         # publish the hand pose if debugging is desired

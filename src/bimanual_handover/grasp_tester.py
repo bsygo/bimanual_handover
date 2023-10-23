@@ -107,6 +107,17 @@ class GraspTester():
         if not plan:
             raise Exception("Moving to pose \n {} \n failed. No path was found to the joint state \n {}.".format(current_pose, filtered_joint_state))
 
+    def enforce_bounds(self, joint_values):
+        joint_names = self.right_arm.get_active_joints()
+        for i in range(len(joint_names)):
+            joint_object = self.robot.get_joint(joint_names[i])
+            bounds = joint_object.bounds()
+            if joint_values[i] < bounds[0]:
+                joint_values[i] = bounds[0]
+            elif joint_values[i] > bounds[1]:
+                joint_values[i] = bounds[1]
+        return joint_values
+
     def test_grasp(self, req):
         if self.debug:
             self.debug_snapshot_pub.publish(True)
@@ -125,8 +136,18 @@ class GraspTester():
         #rospy.loginfo("Afterwards force value: {}".format(cur_ft))
 
         # Reset previous upwards movement
-        self.right_arm.set_joint_value_target(old_joint_values)
-        self.right_arm.go()
+        try:
+            self.right_arm.set_joint_value_target(old_joint_values)
+            self.right_arm.go()
+        except Exception as e:
+            rospy.logerr("Encountered exception [ {} ] while moving to pre-test pose. Trying again with bounded joints.".format(e))
+            old_joint_values = self.enforce_bounds(old_joint_values)
+            try:
+                self.right_arm.set_joint_value_target(old_joint_values)
+                self.right_arm.go()
+            except Exception as e:
+                rospy.logerr("Encountered exception [ {} ] while moving to pre-test pose with bounded joints.".format(e))
+                input("Please decide how to solve this issue and press Enter to continue.")
 
         print("Force diff: {}".format(abs(prev_ft - cur_ft)))
         if abs(prev_ft - cur_ft) >= 2:

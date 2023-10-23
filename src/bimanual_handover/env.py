@@ -204,6 +204,143 @@ class RealEnv(gym.Env):
         self.log_file.close()
         return
 
+class TrajEnv(gym.Env):
+
+    def __init__(self, fingers):
+        super().__init__()
+        self.action_space = spaces.Box(low = -1, high = 1, shape = (6,), dtype = np.float32) # first 3 values for starting pose, last 3 for trajectory generation
+        self.observation_space = None #Pointcloud
+        self.fingers = fingers
+        self.pca_con = sgg.SynGraspGen()
+        self.time = datetime.now().strftime("%d_%m_%Y_%H_%M")
+        self.log_file = open(rospkg.RosPack().get_path('bimanual_handover') + "/logs/log" + self.time + ".txt", 'w')
+        self.initial_biotac = None
+        self.joint_order = self.fingers.get_active_joints()
+        self.tactile_sub = rospy.Subscriber('/hand/rh/tactile', BiotacAll, self.tactile_callback)
+        rospy.wait_for_service('grasp_tester')
+        self.gt_srv = rospy.ServiceProxy('grasp_tester', GraspTesterSrv)
+        self.interrupt_sub = rospy.Subscriber('handover/interrupt_learning', Bool, self.interrupt_callback)
+        self.interrupted = False
+        self.max_steps = 20
+        self.current_step = 0
+
+    def step(self, action):
+        while self.interrupted:
+            rospy.sleep(1)
+
+        # Reduce normalized actions
+        action[0] = (action[0] - 1)/2 
+        action[1] = (action[1] - 1)/2
+        action[4] = (action[1] - 1)/2
+        action[5] = (action[1] - 1)/2
+
+        # Move into initial pose
+        result = self.pca_con.gen_joint_config(action[:3], normalize = True)
+        self.fingers.set_joint_value_target(result)
+        self.fingers.go()
+
+        # Stop moving if enough contacts have been made
+        contacts = [False, False, False, False, False]
+        while not sum(contacts >= 5):
+            current_biotac = deepcopy(self.current_tactile)
+            current_biotac_diff = [current_biotac[x] - self.initial_biotac[x] for x in range(len(current_biotac))]
+            contacts = [True if diff >=20 else False for diff in current_biotac_diff]
+            if sum(contacts) >= 5 or self.current_step >= self.max_steps:
+                print(current_biotac_diff)
+                success = self.gt_srv('placeholder').success
+                # Give reward if the previous decision was correct or not
+                if success:
+                    reward = 1
+                else:
+                    reward = -1
+                if self.current_step >= self.max_steps:
+                    terminated_reason = "Max steps"
+                else:
+                    terminated_reason = "Contacts"
+                print("Reward: {}, Terminated Reason: {}".format(reward, terminated_reason))
+            else:
+                # Get new config
+                result = self.pca_con.gen_joint_config(action[3:], normalize = True)
+                # Remove wrist joints
+                del result['rh_WRJ1']
+                del result['rh_WRJ2']
+
+                # Remove fingers with contact (optional, testing) -> Mabe switch to not close anymore instead of no movement at all
+                del_keys = []
+                if contacts[0]:
+                    for key in result.keys():
+                        if 'rh_FFJ' in key:
+                            del_keys.append(key)
+                if contacts[1]:
+                    for key in result.keys():
+                        if 'rh_MFJ' in key:
+                            del_keys.append(key)
+                if contacts[2]:
+                    for key in result.keys():
+                        if 'rh_RFJ' in key:
+                            del_keys.append(key)
+                if contacts[3]:
+                    for key in result.keys():
+                        if 'rh_LFJ' in key:
+                            del_keys.append(key)
+                if contacts[4]:
+                    for key in result.keys():
+                        if 'rh_THJ' in key:
+                            del_keys.append(key)
+                for key in del_keys:
+                    del result[key]
+            
+                # Move into desired config
+                try:
+                    self.fingers.set_joint_value_target(result)
+                    self.fingers.go()
+                except MoveItCommanderException as e:
+                    rospy.logerr("Exception encountered: {}".format(e))
+                    terminated_reason = "Exception {} encountered".format(e)
+                    reward = -1
+                    break
+
+        # Update observation for next step
+        observation = None #Pointcloud (irrelevant because of reset)
+
+        self.current_step += 1
+
+        self.log_file.write("Action: {}, Observation:  {}, Reward: {}, Terminated: {}".format(action, observation, reward, terminated_reason))
+
+        info = {}
+        truncated = False
+        terminated = True
+        return observation, reward, terminated, truncated, info
+
+    def reset(self, seed=None):
+        super().reset(seed=seed)
+        self.log_file.close()
+        while self.interrupted:
+            rospy.sleep(1)
+        self.log_file = open(rospkg.RosPack().get_path('bimanual_handover') + "/logs/log"+ self.time + ".txt", 'a')
+
+        # Reset hand into default position
+        self.fingers.set_named_target('open')
+        joint_values = dict(rh_THJ4 = 1.13446, rh_LFJ4 = -0.31699402670752413, rh_FFJ4 = -0.23131151280059523, rh_MFJ4 = 0.008929532157657268, rh_RFJ4 = -0.11378487918959583)
+        self.fingers.set_joint_value_target(joint_values)
+        self.fingers.go()
+
+        self.initial_biotac = deepcopy(self.current_tactile)
+
+        observation = None #Pointcloud
+
+        self.current_step = 0
+
+        info = {}
+        return (observation, info)
+
+    def render(self):
+        return
+
+    def close(self):
+        self.log_file.close()
+        return
+
 class MimicEnv(gym.Env):
 
     def __init__(self, fingers):

@@ -114,8 +114,10 @@ class GraspTester():
             bounds = joint_object.bounds()
             if joint_values[i] < bounds[0]:
                 joint_values[i] = bounds[0]
+                rospy.loginfo("{} set from {} to {}.".format(joint_names[i], joint_values[i], bounds[0]))
             elif joint_values[i] > bounds[1]:
                 joint_values[i] = bounds[1]
+                rospy.loginfo("{} set from {} to {}.".format(joint_names[i], joint_values[i], bounds[1]))
         return joint_values
 
     def test_grasp(self, req):

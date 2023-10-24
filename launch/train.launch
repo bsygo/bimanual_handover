@@ -3,7 +3,7 @@
         <arg name="check" default="True" />
         <arg name="checkpoint" default="False" />
         <!-- <arg name="model_type" value="None" /> -->
-        <arg name="model_type" value="/models/checkpoints/sac_checkpoint_20_10_2023_16_06_7500_steps" />
+        <arg name="model_type" value="/models/checkpoints/sac_checkpoint_23_10_2023_15_47_10100_steps" />
         <group ns="handover">
                 <node name="trainer" pkg="bimanual_handover" type="train_ppo.py" output="screen" args="--check $(arg check) --checkpoint $(arg checkpoint)--model $(arg model_type)"/>
                 <node name="grasp_tester" pkg="bimanual_handover" type="grasp_tester.py" output="screen" />

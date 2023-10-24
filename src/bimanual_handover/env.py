@@ -43,7 +43,7 @@ class RealEnv(gym.Env):
         #self.force_sub = rospy.Subscriber('/ft/l_gripper_motor', WrenchStamped, self.force_callback)
         rospy.wait_for_service('grasp_tester')
         self.gt_srv = rospy.ServiceProxy('grasp_tester', GraspTesterSrv)
-        self.interrupt_sub = rospy.Subscriber('handover/interrupt_learning', Bool, self.interrupt_callback)
+        self.interrupt_sub = rospy.Subscriber('interrupt_learning', Bool, self.interrupt_callback)
         self.interrupted = False
         self.max_steps = 20
         self.current_step = 0

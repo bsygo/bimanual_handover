@@ -21,6 +21,7 @@ def shutdown():
     roscpp_shutdown()
 
 def main(argv):
+    # Initialization
     rospy.init_node('model_trainer')
     roscpp_initialize('')
     rospy.on_shutdown(shutdown)
@@ -29,14 +30,11 @@ def main(argv):
     fingers = MoveGroupCommander('right_fingers', ns="/")
     fingers.set_max_velocity_scaling_factor(1.0)
     fingers.set_max_acceleration_scaling_factor(1.0)
-    model_type = "SAC"
-    if model_type == "SAC":
-        model_type_small = "sac"
-    elif model_type == "PPO":
-        model_type_small = "ppo"
-    else:
-        rospy.logerr("Unknown model type {}.".format(model_type))
 
+    # Set model type, might change to parameter
+    model_type = "sac"
+
+    # Load config args from function call
     args_pattern = re.compile(r"(((?:--check)\s(?P<CHECK>True|False))?\s?((?:--checkpoint)\s(?P<CHECKPOINT>True|False))?\s?((?:--model)\s(?P<MODEL>.*))?)")
     args = {}
     if len(argv) > 1:
@@ -46,14 +44,13 @@ def main(argv):
     if match_object := args_pattern.match(argv):
         args = {k: v for k, v in match_object.groupdict().items() if v is not None}
     if 'CHECK' in args:
-        check = args['CHECK']
-        print(args['CHECK'])
+        check = args['CHECK'] == "True"
         rospy.loginfo('Check parameter set to {}.'.format(check))
     else:
         check = False
         rospy.loginfo('No check parameter specified, defaulting to False.')
     if 'CHECKPOINT' in args:
-        checkpoint = args['CHECKPOINT']
+        checkpoint = args['CHECKPOINT'] == "True"
         rospy.loginfo('Checkpoint parameter set to {}.'.format(checkpoint))
     else:
         checkpoint = False
@@ -68,57 +65,69 @@ def main(argv):
         model_path = None
         rospy.loginfo('No model parameter specified, defaulting to new model.')
 
-#    rospy.loginfo('Waiting for pc.')
-#    pc = rospy.wait_for_message('pc/pc_filtered', PointCloud2, 20)
+    # Setup environment
     rospy.loginfo('Setting up env.')
     env = handover_env.RealEnv(fingers)
-#    env = handover_env.MimicEnv(fingers)
-
-    date = datetime.now()
-    str_date = date.strftime("%d_%m_%Y_%H_%M")
-    timesteps = 10000#100000
-    log_name = model_type + "_" + str_date
-
     if check:
         check_env(env)
         rospy.loginfo('Env check completed.')
+
+    # Set default parameters
+    date = datetime.now()
+    str_date = date.strftime("%d_%m_%Y_%H_%M")
+    timesteps = 10000
+    log_name = "{}_{}".format(model_type, str_date)
+
+    # Setup model
     if model_path is None:
+        # Create new model
         rospy.loginfo('Creating {} model.'.format(model_type))
-        checkpoint_callback = CheckpointCallback(save_freq = 100, save_path = path + "/models/checkpoints/", name_prefix = model_type_small + "_checkpoint_" + str_date, save_replay_buffer = True, save_vecnormalize = True)
-        if model_type == "PPO":
-            model = PPO("MlpPolicy", env, n_steps = 50, batch_size = 5, n_epochs = 50, verbose = 1, tensorboard_log=path + "/logs/tensorboard")
+        if model_type == "ppo":
+            model = PPO("MlpPolicy", env, n_steps = 50, batch_size = 5, n_epochs = 50, verbose = 1, tensorboard_log = "{}/logs/tensorboard".format(path))
             rospy.loginfo('PPO model created.')
-        elif model_type == "SAC":
-            model = SAC("MlpPolicy", env, batch_size = 50, buffer_size = 10000, verbose = 1, tensorboard_log=path + "/logs/tensorboard")
+        elif model_type == "sac":
+            model = SAC("MlpPolicy", env, batch_size = 50, buffer_size = 10000, verbose = 1, tensorboard_log = "{}/logs/tensorboard".format(path))
             rospy.loginfo('SAC model created.')
     else:
-        rospy.loginfo('Loading {} model.'.format(model_type))
-        if model_type == "PPO":
-            model = PPO.load(model_path, env = env)
-            rospy.loginfo('PPO model loaded.')
-        elif model_type == "SAC":
-            model = SAC.load(model_path, env = env)
-            rospy.loginfo('SAC model loaded.')
+        # Load date from specified model
+        log_pattern = re.compile(r".*_(?P<date>\d\d_\d\d_\d\d\d\d_\d\d_\d\d).*")
+        matches = log_pattern.match(model_path)
+        str_date = matches.group('date')
+        log_name = "{}_{}".format(model_type, str_date)
+        # Update parameters if loaded from checkpoint or finished model
         if checkpoint:
+            # Update timesteps to correctly append to graphs
             rospy.loginfo('Load settings from checkpoint.')
             steps_pattern = re.compile(r".*_(?P<steps>\d+)_steps.*")
             matches = steps_pattern.match(model_path)
             steps = int(matches.group('steps'))
             timesteps = timesteps - steps
-            log_pattern = re.compile(r".*_checkpoint_(?P<date>\d\d_\d\d_\d\d\d\d_\d\d_\d\d)_.*")
-            matches = log_pattern.match(model_path)
-            date = matches.group('date')
-            log_name = model_type + "_" + date
-            if model_type == "SAC":
-                rospy.loginfo('Loading Replay buffer.')
-                model.load_replay_buffer(path + "/models/checkpoints/sac_checkpoint_" + date + "_replay_buffer_" + "{}".format(steps) + "_steps")
-            checkpoint_callback = CheckpointCallback(save_freq = 100, save_path = path + "/models/checkpoints/", name_prefix = model_type_small + "_checkpoint_" + date, save_replay_buffer = True, save_vecnormalize = True)
+            starting_point = "checkpoint"
         else:
-            checkpoint_callback = CheckpointCallback(save_freq = 100, save_path = path + "/models/checkpoints/", name_prefix = model_type_small + "_checkpoint_" + str_date, save_replay_buffer = True, save_vecnormalize = True)
+            starting_point = "model"
+        # Load specified model
+        rospy.loginfo('Loading {} model.'.format(model_type))
+        if model_type == "ppo":
+            model = PPO.load(model_path, env = env)
+            rospy.loginfo('PPO model loaded.')
+        elif model_type == "sac":
+            model = SAC.load(model_path, env = env)
+            rospy.loginfo('SAC model loaded.')
+            rospy.loginfo('Loading Replay buffer.')
+            model.load_replay_buffer("{}/models/sac_{}_{}_replay_buffer".format(path, starting_point, str_date))
+
+    # Set checkpoint callback
+    checkpoint_callback = CheckpointCallback(save_freq = 100, save_path = "{}/models/checkpoints/".format(path), name_prefix = "{}_checkpoint_{}".format(model_type, str_date), save_replay_buffer = True, save_vecnormalize = True)
+
+    # Train model
     rospy.loginfo('Start learning.')
     model.learn(total_timesteps=timesteps, progress_bar = True, callback = checkpoint_callback, tb_log_name = log_name, reset_num_timesteps = False)
     rospy.loginfo('Learning complete.')
-    model.save(path + "/models/" + model_type_small + "_model_" + str_date)
+
+    # Save model
+    model.save("{}/models/{}_model_{}".format(path, model_type, str_date))
+    if model_type == "sac":
+        model.save_replay_buffer("{}/models/{}_model_{}_replay_buffer".format(path, model_type, str_date))
     roscpp_shutdown()
 
 if __name__ == "__main__":

@@ -1,10 +1,10 @@
 <?xml version="1.0"?>
 <launch>
-    <arg name="demo" default="true" />
+    <arg name="demo" default="false" />
     <!-- Choose between full and train -->
     <arg name="handover_type" default="full" />
     <!-- Choose grasp mode between "ccm" and "pca". -->
-    <arg name="grasp_mode" default="pca" /> 
+    <arg name="grasp_mode" default="ccm" /> 
     <group ns="handover" >
     <include file="$(find bimanual_handover)/launch/pc_filter.launch" >
         <arg name="demo_pc" value="$(arg demo)" />

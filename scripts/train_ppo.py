@@ -101,10 +101,10 @@ def main(argv):
             steps_pattern = re.compile(r".*_(?P<steps>\d+)_steps.*")
             matches = steps_pattern.match(model_path)
             steps = int(matches.group('steps'))
-            timesteps = timesteps - steps
-            starting_point = "checkpoint"
+            timesteps = timesteps - (steps % timesteps)
+            replay_buffer_location = "{}/models/checkpoints/sac_checkpoint_{}_replay_buffer_{}_steps".format(path, str_date, steps)
         else:
-            starting_point = "model"
+            replay_buffer_location = "{}_replay_buffer".format(model_path)
         # Load specified model
         rospy.loginfo('Loading {} model.'.format(model_type))
         if model_type == "ppo":
@@ -114,7 +114,7 @@ def main(argv):
             model = SAC.load(model_path, env = env)
             rospy.loginfo('SAC model loaded.')
             rospy.loginfo('Loading Replay buffer.')
-            model.load_replay_buffer("{}/models/sac_{}_{}_replay_buffer".format(path, starting_point, str_date))
+            model.load_replay_buffer(replay_buffer_location)
 
     # Set checkpoint callback
     checkpoint_callback = CheckpointCallback(save_freq = 100, save_path = "{}/models/checkpoints/".format(path), name_prefix = "{}_checkpoint_{}".format(model_type, str_date), save_replay_buffer = True, save_vecnormalize = True)

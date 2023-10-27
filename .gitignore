@@ -1,6 +1,6 @@
 data/old_data/
-models/
-!models/important_models/*
+models/*
+!models/important_models/
 logs/
 build/
 dist/

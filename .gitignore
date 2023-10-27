@@ -1,4 +1,7 @@
 data/old_data/
 models/
+!models/important_models/*
 logs/
 build/
+dist/
+src/bimanual_handover.*

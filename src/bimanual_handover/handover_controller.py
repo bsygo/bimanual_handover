@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 
 import rospy
-from bimanual_handover_msgs.srv import InitGripper, ProcessPC, MoveHandover, GraspExec, FinishHandoverSrv
-import sys
+from bimanual_handover_msgs.srv import InitGripper, ProcessPC, MoveHandover, GraspExec, FinishHandoverSrv, HandoverControllerSrv
 
 class HandoverCommander():
 
-    def __init__(self, handover_type, grasp_mode):
+    def __init__(self):
         rospy.init_node('handover_commander')
         self.grasp_mode = grasp_mode
         rospy.loginfo('Handover commander started.')
@@ -24,36 +23,42 @@ class HandoverCommander():
         rospy.loginfo('grasp_exec_srv initialized.')
         self.finish_handover_srv = rospy.ServiceProxy('finish_handover_srv', FinishHandoverSrv)
         rospy.loginfo('finish_handover_srv initialized.')
-        self.launch_handover(handover_type)
+        self.handover_controller_srv = rospy.Service('handover_controller_srv', HandoverControllerSrv, self.handover_controller_srv)
+        rospy.loginfo('handover_controller_srv initialized.')
+        rospy.spin()
 
-    def launch_handover(self, handover_type):
+    def handover_controller_srv(self, req):
+        return self.launch_handover(req.handover_type, req.grasp_type)
+
+    def launch_handover(self, handover_type, grasp_type):
         if handover_type == "full":
             rospy.loginfo("Launchng full handover pipeline.")
-            self.full_pipeline()
+            return self.full_pipeline(grasp_type)
         elif handover_type == "train":
             rospy.loginfo("Launching handover training setup.")
-            self.train_setup()
+            return self.train_setup()
         else:
             rospy.loginfo("Unknown handover command {}.".format(handover_type))
+            return False
 
-    def full_pipeline(self):
+    def full_pipeline(self, grasp_type):
         rospy.loginfo('Sending service request to init_gripper_srv.')
         if not self.init_gripper_srv('fixed'):
             rospy.logerr('Moving gripper to inital pose failed.')
-            return
+            return False
         rospy.loginfo('Sending service request to process_pc_srv.')
         self.process_pc_srv(True)
         rospy.loginfo('Sending service request to move_handover_srv.')
         if not self.move_handover_srv('fixed'):
             rospy.logerr('Moving to handover pose failed.')
-            return
+            return False
         rospy.loginfo('Sending service request to grasp_exec_srv.')
-        grasp_response = self.grasp_exec_srv(self.grasp_mode)
+        grasp_response = self.grasp_exec_srv(grasp_type)
         rospy.loginfo('Grasp response: {}'.format(grasp_response))
         if not grasp_response:
             rospy.logerr('Executing grasp failed.')
-            return
-        return
+            return False
+        return True
         rospy.loginfo('Sending service request to finish_handover_srv.')
         self.finish_handover_srv('placeholder')
         rospy.loginfo('Handover finished.')
@@ -62,16 +67,14 @@ class HandoverCommander():
         rospy.loginfo('Sending service request to init_gripper_srv.')
         if not self.init_gripper_srv('fixed'):
             rospy.logerr('Moving gripper to inital pose failed.')
-            return
+            return False
         rospy.loginfo('Sending service request to process_pc_srv.')
         self.process_pc_srv(True)
         rospy.loginfo('Sending service request to move_handover_srv.')
         self.move_handover_srv('fixed')
         rospy.loginfo('Training setup finished.')
+        return True
         
 
 if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        rospy.loginfo('Missing parameter for handover_commander.')
-    else:    
-        handover_commander = HandoverCommander(sys.argv[1], sys.argv[2])
+    handover_commander = HandoverCommander()

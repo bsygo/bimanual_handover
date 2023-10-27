@@ -19,7 +19,7 @@ from geometry_msgs.msg import WrenchStamped
 
 class CloseContactMover():
 
-    def __init__(self, debug = False, collect = True):
+    def __init__(self, debug = False, collect = False):
         rospy.init_node('close_contact_mover')
         self.joints_dict = {'rh_FFJ2': 0, 'rh_FFJ3': 0, 'rh_MFJ2': 1, 'rh_MFJ3': 1, 'rh_RFJ2': 2, 'rh_RFJ3': 2, 'rh_LFJ2': 3, 'rh_LFJ3': 3, 'rh_THJ5': 4}
         self.joints = list(self.joints_dict.keys())

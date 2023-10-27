@@ -51,10 +51,13 @@ class RobotSetupMover():
     def move_handover(self, req):
         rospy.loginfo('Request received.')
         if req.mode == "fixed":
-            self.move_fixed_pose_pc()
+            self.move_fixed_pose_pc_above()
             return True
         elif req.mode == "gpd":
             self.move_gpd_pose()
+            return True
+        elif req.mode == "side":
+            self.move_fixed_pose_pc_side()
             return True
         else:
             rospy.loginfo("Unknown mode {}".format(req.mode))
@@ -141,7 +144,7 @@ class RobotSetupMover():
         self.fingers.set_joint_value_target(joint_values)
         self.fingers.go()
 
-    def move_fixed_pose_pc(self):
+    def move_fixed_pose_pc_above(self):
         self.setup_fingers()
         rospy.loginfo('Moving to fixed pose.')
         while self.pc is None:
@@ -198,7 +201,6 @@ class RobotSetupMover():
         # move the hand to the previously set pose
         self.hand.set_pose_target(hand_pose)
         self.hand.go()
-        self.hand.stop()
 
         # spawn a collision object in the rough shape of the pointloud
         # Unused, maybe later for visualization or collision checking
@@ -212,6 +214,37 @@ class RobotSetupMover():
         self.psi.disable_collision_detections('can', ['rh_ff_biotac_link', 'rh_mf_biotac_link', 'rh_rf_biotac_link', 'rh_lf_biotac_link', 'rh_th_biotac_link', 'rh_ffdistal', 'rh_mfdistal', 'rh_rfdistal', 'rh_lfdistal', 'rh_thdistal'])
         '''
         return True
+
+    def move_fixed_pose_pc_side(self):
+        self.setup_fingers()
+        rospy.loginfo('Moving to fixed pose.')
+        while self.pc is None:
+            rospy.sleep(1)
+        pub = rospy.Publisher("debug_marker", Marker, latch = True, queue_size = 1)
+        hand_pub = rospy.Publisher("debug_hand_pose", PoseStamped, latch = True, queue_size = 1)
+        gen = pc2.read_points(self.pc, field_names = ("x", "y", "z"), skip_nans = True)
+
+        # find max and min values of the pointcloud
+        max_point = [-100, -100, -100]
+        min_point = [100, 100, 100]
+        for point in gen:
+            for x in range(len(point)):
+                if point[x] > max_point[x]:
+                    max_point[x] = point[x]
+                if point[x] < min_point[x]:
+                    min_point[x] = point[x]
+
+        # set the pose for the hand to a fixed pose related to the pointcloud
+        hand_pose = PoseStamped()
+        hand_pose.header.frame_id = "base_footprint"
+        hand_pose.pose.position.x = min_point[0] + math.dist([max_point[0]], [min_point[0]])/2 - 0.01
+        hand_pose.pose.position.y = min_point[1] - 0.07
+        hand_pose.pose.position.z = max_point[2] - 0.5
+        hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(1.57, 0, 3).tolist())
+
+        # move the hand to the previously set pose
+        self.hand.set_pose_target(hand_pose)
+        self.hand.go()
 
 if __name__ == "__main__":
     mover = RobotSetupMover()

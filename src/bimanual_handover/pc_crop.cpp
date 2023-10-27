@@ -10,8 +10,10 @@
 #include <pcl_ros/transforms.h>
 #include <pcl_conversions/pcl_conversions.h>
 
-ros::Publisher cropped_pub;
+#include <moveit/move_group_interface/move_group_interface.h>
 
+ros::Publisher cropped_pub;
+moveit::planning_interface::MoveGroupInterface left_arm("left_gripper");
 
 void crop_pc(const sensor_msgs::PointCloud2ConstPtr& input_cloud){
     pcl::PCLPointCloud2 pcl_pc2;
@@ -20,8 +22,9 @@ void crop_pc(const sensor_msgs::PointCloud2ConstPtr& input_cloud){
     pcl::fromPCLPointCloud2(pcl_pc2, *cloud);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_filtered (new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::CropBox<pcl::PointXYZRGB> box;
-    box.setMin(Eigen::Vector4f(-0.3, -0.3, 0.0, 1.0));
-    box.setMax(Eigen::Vector4f(0.3, 0.3, 1.0, 1.0));
+    geometry_msgs::PoseStamped gripper_pose = left_arm.getCurrentPose(); 
+    box.setMin(Eigen::Vector4f(gripper_pose.pose.position.x - 0.1, gripper_pose.pose.position.y - 0.1, gripper_pose.pose.position.z - 0.1, 1.0));
+    box.setMax(Eigen::Vector4f(gripper_pose.pose.position.x + 0.1, gripper_pose.pose.position.y + 0.1, gripper_pose.pose.position.z + 0.1, 1.0));
     box.setInputCloud(cloud);
     box.filter(*cloud_filtered);
     pcl::toPCLPointCloud2(*cloud_filtered, pcl_pc2);

@@ -15,6 +15,7 @@ find_package(catkin REQUIRED COMPONENTS
   sensor_msgs
   moveit_core
   moveit_ros_planning
+  moveit_ros_planning_interface
   bimanual_handover_msgs
 )
 

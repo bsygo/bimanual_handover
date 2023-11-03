@@ -7,7 +7,6 @@ class HandoverCommander():
 
     def __init__(self):
         rospy.init_node('handover_commander')
-        self.grasp_mode = grasp_mode
         rospy.loginfo('Handover commander started.')
         rospy.wait_for_service('init_gripper_srv')
         self.init_gripper_srv = rospy.ServiceProxy('init_gripper_srv', InitGripper)

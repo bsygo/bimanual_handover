@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import rospy
-from bimanual_handover_msgs.srv import handoverControllerSrv
+from bimanual_handover_msgs.srv import HandoverControllerSrv
 import sys
 
 def main():

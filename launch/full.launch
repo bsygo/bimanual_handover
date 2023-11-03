@@ -11,15 +11,14 @@
     </include>
     <node name="init_gripper_stub" pkg="bimanual_handover" type="init_gripper_stub.py" output="screen" />
     <node name="process_pc_stub" pkg="bimanual_handover" type="process_pc_stub.py" output="screen" />
-    <node name="grasp_stub" pkg="bimanual_handover" type="grasp_stub.py" output="screen" args="$(arg grasp_mode)"/>
+    <node name="grasp_stub" pkg="bimanual_handover" type="grasp_stub.py" output="screen" />
     <node name="capture_pc" pkg="bimanual_handover" type="capture_pc.py" output="screen" args="$(arg demo)"/>
-    <node name="close_contact_mover" pkg="bimanual_handover" type="close_contact_mover.py" output="screen" if="$(eval arg('grasp_mode') == 'ccm')" />
-    <node name="model_mover" pkg="bimanual_handover" type="model_mover.py" output="screen" if="$(eval arg('grasp_mode') == 'pca')"/>
+    <node name="hand_closer" pkg="bimanual_handover" type="hand_closer.py" output="screen" args="$(arg grasp_mode)" />
     <node name="grasp_tester" pkg="bimanual_handover" type="grasp_tester.py" output="screen" />
     <node name="robot_setup_mover" pkg="bimanual_handover" type="robot_setup_mover.py" output="screen" />
     <node name="finish_handover" pkg="bimanual_handover" type="finish_handover.py" output="screen" />
     <node name="handover_controller" pkg="bimanual_handover" type="handover_controller.py" output="screen" />
-    <node name="launch_handover" pkg="bimanual_handover" type="launch_handover" output="screen" args="$(arg grasp_mode) $(arg handover_type)" />
+    <node name="launch_handover" pkg="bimanual_handover" type="launch_handover.py" output="screen" args="$(arg grasp_mode) $(arg handover_type)" />
     </group>
     <node name="bio_ik_srv" pkg="bio_ik_service" type="bio_ik_service" output="screen" />
 </launch>

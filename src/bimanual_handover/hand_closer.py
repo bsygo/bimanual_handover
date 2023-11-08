@@ -49,7 +49,7 @@ class CloseContactMover():
             name = "closing_attempt_" + current_date + ".bag"
             self.data_bag = Bag(pkg_path + "/data/" + name, 'w')
         self.joint_client.wait_for_server()
-        rospy.Service('hand_closer_src', HandCloserSrv, self.move_until_contacts)
+        rospy.Service('hand_closer_srv', HandCloserSrv, self.move_until_contacts)
         rospy.spin()
 
     def wait_for_initial_values(self):

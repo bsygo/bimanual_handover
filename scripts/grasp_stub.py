@@ -17,7 +17,7 @@ def main():
     global grasp_tester_srv, hand_closer_srv
     rospy.init_node('grasp_stub')
     rospy.wait_for_service('hand_closer_srv')
-    model_mover_srv = rospy.ServiceProxy('hand_closer_srv', HandCloserSrv)
+    hand_closer_srv = rospy.ServiceProxy('hand_closer_srv', HandCloserSrv)
     rospy.wait_for_service('grasp_tester')
     grasp_tester_srv = rospy.ServiceProxy('grasp_tester', GraspTesterSrv)
     rospy.Service('grasp_exec_srv', GraspExec, grasp_exec)

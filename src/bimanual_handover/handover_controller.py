@@ -31,7 +31,7 @@ class HandoverCommander():
 
     def launch_handover(self, handover_type, grasp_type):
         if handover_type == "full":
-            rospy.loginfo("Launchng full handover pipeline.")
+            rospy.loginfo("Launching full handover pipeline.")
             return self.full_pipeline(grasp_type)
         elif handover_type == "train":
             rospy.loginfo("Launching handover training setup.")
@@ -42,7 +42,7 @@ class HandoverCommander():
 
     def full_pipeline(self, grasp_type):
         rospy.loginfo('Sending service request to init_gripper_srv.')
-        if not self.init_gripper_srv('fixed'):
+        if not self.init_gripper_srv('fixed', None):
             rospy.logerr('Moving gripper to inital pose failed.')
             return False
         rospy.loginfo('Sending service request to process_pc_srv.')
@@ -64,7 +64,7 @@ class HandoverCommander():
 
     def train_setup(self):
         rospy.loginfo('Sending service request to init_gripper_srv.')
-        if not self.init_gripper_srv('fixed'):
+        if not self.init_gripper_srv('fixed', None):
             rospy.logerr('Moving gripper to inital pose failed.')
             return False
         rospy.loginfo('Sending service request to process_pc_srv.')

@@ -3,25 +3,27 @@
 import rospy
 from moveit_commander import MoveGroupCommander, roscpp_initialize, roscpp_shutdown, PlanningSceneInterface, RobotCommander, MoveItCommanderException
 import sensor_msgs.point_cloud2 as pc2
-from sensor_msgs.msg import PointCloud2
+from sensor_msgs.msg import PointCloud2, JointState
 from visualization_msgs.msg import Marker
-from geometry_msgs.msg import PoseStamped, Quaternion, Pose, Vector3
-from tf.transformations import quaternion_from_euler, quaternion_from_matrix, quaternion_multiply
+from geometry_msgs.msg import PoseStamped, Quaternion, Pose, Vector3, PointStamped
+from tf.transformations import quaternion_from_euler, quaternion_from_matrix, quaternion_multiply, quaternion_matrix
 import math
+import numpy as np
 #from gpd_ros.msg import GraspConfigList, CloudIndexed, CloudSources
 #from gpd_ros.srv import detect_grasps
 from std_msgs.msg import Int64
 from tf2_ros import TransformListener, Buffer
-from tf2_geometry_msgs import do_transform_pose
+from tf2_geometry_msgs import do_transform_pose, do_transform_point
 from bimanual_handover_msgs.srv import CollisionChecking, MoveHandover
 import random
 import sys
+from bio_ik_msgs.msg import IKRequest, PositionGoal, DirectionGoal
+from bio_ik_msgs.srv import GetIK
 
 class RobotSetupMover():
 
     def __init__(self, debug = False):
         rospy.init_node('robot_setup_mover')
-        roscpp_initialize('')
         rospy.on_shutdown(self.shutdown)
         self.hand = MoveGroupCommander("right_arm", ns = "/")
         self.fingers = MoveGroupCommander("right_fingers", ns = "/")
@@ -38,10 +40,10 @@ class RobotSetupMover():
         self.debug_pose_pub = rospy.Publisher('debug/rsm_setup_pose', PoseStamped, queue_size = 1)
         self.tf_buffer = Buffer()
         TransformListener(self.tf_buffer)
-        #rospy.wait_for_service('/cc/collision_service')
-        #self.collision_service = rospy.ServiceProxy('/cc/collision_service', CollisionChecking)
-        #self.sh_pose_pub = rospy.Publisher('/cc/sh_pose', Pose)
-        #self.gripper_pose_pub = rospy.Publisher('/cc/gripper_pose', Pose)
+        #rospy.wait_for_service('collision_service')
+        #self.collision_service = rospy.ServiceProxy('collision_service', CollisionChecking)
+        rospy.wait_for_service('/bio_ik/get_bio_ik')
+        self.bio_ik_srv = rospy.ServiceProxy('/bio_ik/get_bio_ik', GetIK)
         rospy.Service('move_handover_srv', MoveHandover, self.move_handover)
         rospy.spin()
 
@@ -51,6 +53,9 @@ class RobotSetupMover():
     def move_handover(self, req):
         rospy.loginfo('Request received.')
         if req.mode == "fixed":
+            self.move_fixed_pose_above()
+            return True
+        elif req.mode == "above":
             self.move_fixed_pose_pc_above()
             return True
         elif req.mode == "gpd":
@@ -77,8 +82,7 @@ class RobotSetupMover():
     def move_gpd_pose(self):
         while self.pc is None:
             rospy.sleep(1)
-        self.fingers.set_joint_value_target('rh_THJ4, 1.13446')
-        self.fingers.go()
+        self.setup_fingers()
         current_pc = self.pc
         cloud_indexed = CloudIndexed()
         cloud_sources = CloudSources()
@@ -127,7 +131,7 @@ class RobotSetupMover():
                 checked_poses.append(transformed_pose)
         if not checked_poses:
             rospy.loginfo("No valid pose was found.")
-            return
+            return False
         for pose in checked_poses:
             try:
                 self.hand.set_pose_target(pose)
@@ -143,6 +147,83 @@ class RobotSetupMover():
         joint_values = dict(rh_THJ4=1.13446, rh_LFJ4=-0.31699402670752413, rh_FFJ4=-0.23131151280059523, rh_MFJ4=0.008929532157657268, rh_RFJ4=-0.11378487918959583) 
         self.fingers.set_joint_value_target(joint_values)
         self.fingers.go()
+
+    def move_fixed_pose_above(self):
+        self.setup_fingers()
+
+        # Calculate desired position and direction relative to l_gripper_tool_frame in base_footprint
+        gripper_pose = self.gripper.get_current_pose(end_effector_link = "l_gripper_tool_frame")
+        R = quaternion_matrix([gripper_pose.pose.orientation.x, gripper_pose.pose.orientation.y, gripper_pose.pose.orientation.z, gripper_pose.pose.orientation.w])
+        z_direction = R[:3, 2]
+        z_offset = np.array([0, 0, 0.167, 0])
+        rotated_offset = np.multiply(R, z_offset)[:3, 2]
+        gripper_base_transform = self.tf_buffer.lookup_transform("base_footprint", "l_gripper_tool_frame", rospy.Time(0))
+        transformed_pos = PointStamped()
+        transformed_pos.header.frame_id = "l_gripper_tool_frame"
+        transformed_pos.point.x = rotated_offset[0]
+        transformed_pos.point.y = rotated_offset[1]
+        transformed_pos.point.z = rotated_offset[2]
+        transformed_pos = do_transform_point(transformed_pos, gripper_base_transform)
+      
+        # Debug stuff
+        if self.debug: 
+            print(transformed_pos)
+            debug_pose = PoseStamped()
+            debug_pose.header.frame_id = "base_footprint"
+            debug_pose.pose.position.x = transformed_pos.point.x
+            debug_pose.pose.position.y = transformed_pos.point.y
+            debug_pose.pose.position.z = transformed_pos.point.z
+            self.debug_pose_pub.publish(debug_pose)
+            print(rotated_offset)
+
+        # Prepare bio_ik request
+        request = IKRequest()
+        request.group_name = "right_arm"
+        request.approximate = True
+        request.timeout = rospy.Duration.from_sec(1)
+        request.avoid_collisions = True
+        request.robot_state = self.robot.get_current_state()
+        pos_goal = PositionGoal()
+        pos_goal.link_name = "rh_manipulator"
+        pos_goal.weight = 10.0
+        pos_goal.position.x = transformed_pos.point.x
+        pos_goal.position.y = transformed_pos.point.y
+        pos_goal.position.z = transformed_pos.point.z
+        dir_goal = DirectionGoal()
+        dir_goal.link_name = "rh_manipulator"
+        dir_goal.weight = 10.0
+        dir_goal.axis = Vector3(0, -1, 0)
+        dir_goal.direction = Vector3(-z_direction[0], -z_direction[1], -z_direction[2])
+        request.position_goals = [pos_goal]
+        request.direction_goals = [dir_goal]
+
+        # Get bio_ik solution
+        response = self.bio_ik_srv(request).ik_response
+        if not response.error_code.val == 1:
+            print(response)
+            raise Exception("Bio_ik planning failed with error code {}.".format(response.error_code.val))
+
+        # Filter solution for relevante joints
+        joint_names = self.hand.get_active_joints()
+        joint_target_state = JointState()
+        joint_target_state.name = joint_names
+        joint_target_state.position = [response.solution.joint_state.position[response.solution.joint_state.name.index(joint_name)] for joint_name in joint_names]
+
+        # Execute solution
+        self.hand.set_joint_value_target(joint_target_state)
+        plan = self.hand.go()
+        if not plan:
+            raise Exception("No path was found to the joint state \n {}.".format(joint_target_state))        
+        # Need to move hand afterwards to get to actual grasp pose
+        offset_pose = PoseStamped()
+        offset_pose.header.frame_id = "rh_manipulator"
+        offset_pose.pose.position.x = -0.0006
+        offset_pose.pose.position.z = -0.0411
+        offset_pose.pose.orientation.w = 1
+        if self.debug:
+            self.debug_pose_pub.publish(offset_pose)
+        self.hand.set_pose_target(offset_pose, end_effector_link = "rh_manipulator")
+        self.hand.go()
 
     def move_fixed_pose_pc_above(self):
         self.setup_fingers()

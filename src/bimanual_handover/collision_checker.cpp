@@ -16,12 +16,15 @@ public:
     planning_scene::PlanningScene* ps;
     collision_detection::AllowedCollisionMatrix* acm;
 
-    CollisionDetector(){//geometry_msgs::Pose gripper_pose){
+    CollisionDetector(){
+        // Initialize new planning scene in which to check for collisions
         ros::NodeHandle handle = ros::NodeHandle();
         robot_model_loader::RobotModelLoader loader = robot_model_loader::RobotModelLoader();
         moveit::core::RobotModelConstPtr robot_model = loader.getModel();
         ps = new planning_scene::PlanningScene(robot_model);
+        ps->setName("collision_detection_ps");
 
+        // Spawn initial gripper attached collision object at 0, 0, 0
         moveit_msgs::CollisionObject gripper;
         gripper.header.frame_id = "base_footprint";
         gripper.id = "gripper";
@@ -33,14 +36,15 @@ public:
         gripper.operation = moveit_msgs::CollisionObject::ADD;
         shape_msgs::SolidPrimitive gripper_primitive;
         gripper_primitive.type = shape_msgs::SolidPrimitive::BOX;
+        // Change to proper dimensions
         gripper_primitive.dimensions = std::vector<double>{1, 1, 1};
         gripper.primitives = std::vector<shape_msgs::SolidPrimitive>{gripper_primitive};
         moveit_msgs::AttachedCollisionObject attached_gripper;
         attached_gripper.object = gripper;
         attached_gripper.link_name = "base_footprint";
-
         ps->processAttachedCollisionObjectMsg(attached_gripper);
 
+        // Spawn initial shadow hand collision object at 0, 0, 0
         moveit_msgs::CollisionObject sh;
         sh.header.frame_id = "base_footprint";
         sh.id = "sh";
@@ -52,23 +56,26 @@ public:
         sh.operation = moveit_msgs::CollisionObject::ADD;
         shape_msgs::SolidPrimitive sh_primitive;
         sh_primitive.type = shape_msgs::SolidPrimitive::BOX;
+        // Change to proper dimensions
         sh_primitive.dimensions = std::vector<double>{1, 1, 1};
         sh.primitives = std::vector<shape_msgs::SolidPrimitive>{sh_primitive};
-
         ps->processCollisionObjectMsg(sh);
 
+        // Allow collisions with the robots links to speed up collision checking
+        // Only check collisions between the two collision objects
         std::vector<std::string> link_names = robot_model->getLinkModelNames();
         acm = &ps->getAllowedCollisionMatrixNonConst();
         for(auto i = link_names.begin(); i != link_names.end(); ++i){
             acm->setEntry("gripper", *i, true);
             acm->setEntry("sh", *i, true);
         }
-        ros::ServiceServer collision_service = handle.advertiseService("/cc/collision_service", &CollisionDetector::collision_checking, this);
-        //ros::Subscriber sh_pose_sub = handle.subscribe("/cc/sh_pose", 5, move_sh)
-        //ros::Subscriber sh_pose_sub = handle.subscribe("/cc/gripper_pose", 5, move_gripper)
+
+        // Provide Service to move collision objects
+        ros::ServiceServer collision_service = handle.advertiseService("collision_service", &CollisionDetector::collision_checking, this);
         ros::spin();
     }
 
+    // Move the initially created gripper attached collision object into the provided pose
     void move_gripper(geometry_msgs::Pose new_pose){
         moveit_msgs::AttachedCollisionObject new_gripper;
         new_gripper.object.id = "gripper";
@@ -77,6 +84,7 @@ public:
         ps->processAttachedCollisionObjectMsg(new_gripper);
     }
 
+    // Move the initially created shadow hand collision object into the provided pose
     void move_sh(geometry_msgs::Pose new_pose){
         moveit_msgs::CollisionObject new_sh;
         new_sh.id = "sh";
@@ -85,6 +93,7 @@ public:
         ps->processCollisionObjectMsg(new_sh);
     }
 
+    // Receive the collision request, move collision objects into provided poses and check for collisions
     bool collision_checking(bimanual_handover_msgs::CollisionChecking::Request &req, bimanual_handover_msgs::CollisionChecking::Response &res){
         this->move_sh(req.sh_pose);
         this->move_gripper(req.gripper_pose);
@@ -98,20 +107,5 @@ public:
 
 int main(int argc, char **argv){
     ros::init(argc, argv, "collision_checking");
-    geometry_msgs::Pose gripper;
-    gripper.position.x = 0;
-    gripper.position.y = 0;
-    gripper.position.z = 0;
-    CollisionDetector cd = CollisionDetector();//gripper);
-    geometry_msgs::Pose sh;
-    sh.position.x = 0;
-    sh.position.y = 0;
-    sh.position.z = 0;
-    //std::cout << cd.collision_checking(sh) << std::endl;
-    cd.ps->printKnownObjects();
-    std::vector<std::string> colliding_links;
-    cd.ps->getCollidingLinks(colliding_links);
-    for(auto i = colliding_links.begin(); i != colliding_links.end(); ++i){
-        std::cout << *i;
-    }
+    CollisionDetector cd = CollisionDetector();
 }

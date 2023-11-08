@@ -35,7 +35,9 @@ class GraspTester():
         roscpp_shutdown()
 
     def update_force(self, wrench):
-        self.current_force = wrench.wrench.force.y
+        self.current_force_x = wrench.wrench.force.x
+        self.current_force_y = wrench.wrench.force.y
+        self.current_force_z = wrench.wrench.force.z
 
     def prepare_bio_ik_request(self, group_name, timeout_seconds = 1):
         '''
@@ -123,7 +125,15 @@ class GraspTester():
     def test_grasp(self, req):
         if self.debug:
             self.debug_snapshot_pub.publish(True)
-        prev_ft = deepcopy(self.current_force)
+        if req.direction == "x":
+            prev_ft = deepcopy(self.current_force_x)
+        elif req.direction == "y":
+            prev_ft = deepcopy(self.current_force_y)
+        elif req.direction == "z":
+            prev_ft = deepcopy(self.current_force_z)
+        else:
+            rospy.logerr("Unknown direction {} for grasp_tester. Currently only x, y and z are implemented.")
+            return False
         #rospy.loginfo("Initial force value: {}".format(prev_ft))
 
         current_pose = self.right_arm.get_current_pose()
@@ -134,7 +144,12 @@ class GraspTester():
 
         if self.debug:
             self.debug_snapshot_pub.publish(False)
-        cur_ft = deepcopy(self.current_force)
+        if req.direction == 'x':
+            cur_ft = deepcopy(self.current_force_x)
+        elif req.direction == 'y':
+            cur_ft = deepcopy(self.current_force_y)
+        elif req.direction == 'z':
+            cur_ft = deepcopy(self.current_force_z)
         #rospy.loginfo("Afterwards force value: {}".format(cur_ft))
 
         # Reset previous upwards movement

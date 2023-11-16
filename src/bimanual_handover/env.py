@@ -227,6 +227,25 @@ class RealEnv(gym.Env):
         self.current_attempt_step = 0
         if self.current_reset_step >= self.reset_steps:
             # Reset, move to pose again (if pc), insert new object
+            accepted_input = False
+            while not accepted_input:
+                # IDs: 1 - can, 2 - , 3 - 
+                object_id = input("Please enter the id of the next used object:")
+                if object_id in ["1", "2", "3"]:
+                    check = input("Object set to {}. Please give the object to the robot and press enter to continue. If the wrong object was selected, please enter [a].".format(object_id))
+                    if not check == "a":
+                        # Set one-hot encoding
+                        if object_id == "1":
+                            one_hot = [1, 0, 0]
+                        elif object_id == "2":
+                            one_hot = [0, 1, 0]
+                        elif object_id == "3":
+                            one_hot = [0, 0, 1]
+                        accepted_input = True
+                    else:
+                        print("Object selection aborted.")
+                else:
+                    print("Object id {} is not known. Please enter one of the known ids [1], [2] or [3].".format(object_id))
             self.current_reset_step = 0
 
         info = {}

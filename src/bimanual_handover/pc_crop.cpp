@@ -19,7 +19,7 @@ moveit::planning_interface::MoveGroupInterface *left_arm;
 tf2_ros::Buffer *tfBuffer;
 tf2_ros::TransformListener *tfListener;
 
-void crop_pc(const sensor_msgs::PointCloud2ConstPtr& input_cloud){
+void cropPC(const sensor_msgs::PointCloud2ConstPtr& input_cloud){
     ros::AsyncSpinner spinner(1);
     spinner.start();
     pcl::PCLPointCloud2 pcl_pc2;
@@ -51,7 +51,7 @@ int main(int argc, char **argv){
     // Call this way to set correct namespace
     moveit::planning_interface::MoveGroupInterface::Options opt("left_arm", "robot_description", ros::NodeHandle("/move_group"));
     left_arm = new moveit::planning_interface::MoveGroupInterface(opt);
-    ros::Subscriber sub = n.subscribe("pc_raw", 10, crop_pc);
+    ros::Subscriber sub = n.subscribe("pc_raw", 10, cropPC);
     cropped_pub = n.advertise<sensor_msgs::PointCloud2>("pc_cropped", 10, true);
     ros::AsyncSpinner spinner(1);
     spinner.start();

@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <launch>
     <arg name="demo" default="false" />
-    <!-- Choose between full and train -->
+    <!-- Choose between "full" and "train". -->
     <arg name="handover_type" default="full" />
     <!-- Choose grasp mode between "ccm" and "pca". -->
     <arg name="grasp_mode" default="ccm" /> 
@@ -9,6 +9,12 @@
     <include file="$(find bimanual_handover)/launch/pc_filter.launch" >
         <arg name="demo_pc" value="$(arg demo)" />
     </include>
+    <!-- Upload everything needed to be able to create a robot model with the additional link rh_grasp fro plannning. -->
+    <param name="robot_description_grasp" command="xacro '$(find bimanual_handover)/robots/tams_pr2.urdf.xacro'" />
+    <param name="robot_description_grasp_semantic" textfile="$(find bimanual_handover)/robots/tams_pr2.srdf" />
+    <group ns="robot_description_grasp_kinematics">
+        <rosparam command="load" file="$(find bimanual_handover)/robots/kinematics.yaml" />
+    </group>
     <node name="init_gripper_stub" pkg="bimanual_handover" type="init_gripper_stub.py" output="screen" />
     <node name="process_pc_stub" pkg="bimanual_handover" type="process_pc_stub.py" output="screen" />
     <node name="grasp_stub" pkg="bimanual_handover" type="grasp_stub.py" output="screen" />
@@ -19,8 +25,8 @@
     <node name="finish_handover" pkg="bimanual_handover" type="finish_handover.py" output="screen" />
     <node name="handover_controller" pkg="bimanual_handover" type="handover_controller.py" output="screen" />
     <node name="launch_handover" pkg="bimanual_handover" type="launch_handover.py" output="screen" args="$(arg grasp_mode) $(arg handover_type)" />
+    <node name="attached_body_srv_node" pkg="bimanual_handover" type="attached_body_srv" output="screen" />
     <!-- <node name="collision_checker" pkg="bimanual_handover" type="collision_checker" output="screen" /> -->
-    <!-- <node name="sh_grasp_fram_broadcaster" pkg="tf2_ros" type="static_transform_publisher" output="screen" args="0.0006 0 0.0411 0 0 0 rh_manipulator rh_grasp" /> -->
     </group>
     <node name="bio_ik_srv" pkg="bio_ik_service" type="bio_ik_service" output="screen" />
 </launch>

@@ -14,6 +14,11 @@ def move_pose(target_pose):
     # Call look at service for head
     return
 
+def move_head_only():
+    global head
+    head.set_joint_value_target([0.0, 0.872665])
+    head.go()
+
 def move_fixed():
     global head, left_arm
     head.set_joint_value_target([0.0, 0.872665])
@@ -27,6 +32,8 @@ def init_gripper(req):
         move_fixed()
     elif req.mode == "pose":
         move_pose(req.target_pose)
+    elif req.mode == "head":
+        move_head_only()
     return True
 
 def shutdown():

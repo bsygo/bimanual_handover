@@ -44,6 +44,8 @@ class RobotSetupMover():
         #self.collision_service = rospy.ServiceProxy('collision_service', CollisionChecking)
         rospy.wait_for_service('/bio_ik/get_bio_ik')
         self.bio_ik_srv = rospy.ServiceProxy('/bio_ik/get_bio_ik', GetIK)
+        rospy.wait_for_service('attached_body_srv')
+        self.attached_body_srv = rospy.ServiceProxy('attached_body_srv', AttachedBodySrv)
         rospy.Service('move_handover_srv', MoveHandover, self.move_handover)
         rospy.spin()
 
@@ -155,14 +157,12 @@ class RobotSetupMover():
         gripper_pose = self.gripper.get_current_pose(end_effector_link = "l_gripper_tool_frame")
         R = quaternion_matrix([gripper_pose.pose.orientation.x, gripper_pose.pose.orientation.y, gripper_pose.pose.orientation.z, gripper_pose.pose.orientation.w])
         z_direction = R[:3, 2]
-        z_offset = np.array([0, 0, 0.167, 0])
-        rotated_offset = np.multiply(R, z_offset)[:3, 2]
         gripper_base_transform = self.tf_buffer.lookup_transform("base_footprint", "l_gripper_tool_frame", rospy.Time(0))
         transformed_pos = PointStamped()
         transformed_pos.header.frame_id = "l_gripper_tool_frame"
-        transformed_pos.point.x = rotated_offset[0]
-        transformed_pos.point.y = rotated_offset[1]
-        transformed_pos.point.z = rotated_offset[2]
+        transformed_pos.point.x = 0
+        transformed_pos.point.y = 0
+        transformed_pos.point.z = 0.167
         transformed_pos = do_transform_point(transformed_pos, gripper_base_transform)
       
         # Debug stuff
@@ -178,19 +178,21 @@ class RobotSetupMover():
 
         # Prepare bio_ik request
         request = IKRequest()
+        # Load robot_model which has rh_grasp as an additional frame
+        request.robot_description = "/handover/robot_description_grasp"
         request.group_name = "right_arm"
         request.approximate = True
         request.timeout = rospy.Duration.from_sec(1)
         request.avoid_collisions = True
         request.robot_state = self.robot.get_current_state()
         pos_goal = PositionGoal()
-        pos_goal.link_name = "rh_manipulator"
+        pos_goal.link_name = "rh_grasp"
         pos_goal.weight = 10.0
         pos_goal.position.x = transformed_pos.point.x
         pos_goal.position.y = transformed_pos.point.y
         pos_goal.position.z = transformed_pos.point.z
         dir_goal = DirectionGoal()
-        dir_goal.link_name = "rh_manipulator"
+        dir_goal.link_name = "rh_grasp"
         dir_goal.weight = 10.0
         dir_goal.axis = Vector3(0, -1, 0)
         dir_goal.direction = Vector3(-z_direction[0], -z_direction[1], -z_direction[2])
@@ -214,16 +216,6 @@ class RobotSetupMover():
         plan = self.hand.go()
         if not plan:
             raise Exception("No path was found to the joint state \n {}.".format(joint_target_state))        
-        # Need to move hand afterwards to get to actual grasp pose
-        offset_pose = PoseStamped()
-        offset_pose.header.frame_id = "rh_manipulator"
-        offset_pose.pose.position.x = -0.0006
-        offset_pose.pose.position.z = -0.0411
-        offset_pose.pose.orientation.w = 1
-        if self.debug:
-            self.debug_pose_pub.publish(offset_pose)
-        self.hand.set_pose_target(offset_pose, end_effector_link = "rh_manipulator")
-        self.hand.go()
 
     def move_fixed_pose_pc_above(self):
         self.setup_fingers()

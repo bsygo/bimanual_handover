@@ -45,7 +45,6 @@ class RobotSetupMover():
         rospy.wait_for_service('/bio_ik/get_bio_ik')
         self.bio_ik_srv = rospy.ServiceProxy('/bio_ik/get_bio_ik', GetIK)
         rospy.wait_for_service('attached_body_srv')
-        self.attached_body_srv = rospy.ServiceProxy('attached_body_srv', AttachedBodySrv)
         rospy.Service('move_handover_srv', MoveHandover, self.move_handover)
         rospy.spin()
 

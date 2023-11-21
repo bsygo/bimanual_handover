@@ -19,7 +19,7 @@ class FinishHandover():
         self.right_hand = MoveGroupCommander('right_arm', ns = "/")
         self.psi = PlanningSceneInterface(ns = "/")
         self.tf_buffer = Buffer()
-        TransformListener(tf_buffer)
+        TransformListener(self.tf_buffer)
         self.debug_pub = rospy.Publisher('debug/finish_handover', PoseStamped, latch = True, queue_size = 1)
         rospy.Service('finish_handover_srv', FinishHandoverSrv, self.finish_handover)
         rospy.spin()

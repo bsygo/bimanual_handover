@@ -5,7 +5,7 @@ import random
 from datetime import datetime
 import rospkg
 from geometry_msgs.msg import PoseStamped, WrenchStamped
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, Float32MultiArray, Float32, String
 from copy import deepcopy
 import gymnasium as gym
 from gymnasium import spaces
@@ -18,140 +18,184 @@ from moveit_msgs.msg import MoveItErrorCodes
 from moveit_commander import MoveItCommanderException
 from pr2_msgs.msg import PressureState
 from sr_robot_msgs.msg import BiotacAll, MechanismStatistics
+from sensor_msgs.msg import JointState
 from copy import deepcopy
 import os
 import glob
 import rosbag
 
-# Tactile based environment used for training on the real robot
+# Environment used for training on the real robot
 class RealEnv(gym.Env):
 
-    def __init__(self, fingers, record = True):
+    def __init__(self, fingers, record = True, env_type = "tactile"):
         super().__init__()
+        rospy.on_shutdown(self.close)
+        self.env_type = env_type
+
+        # Setup action and observation space
         self.action_space = spaces.Box(low = -1, high = 1, shape = (3,), dtype = np.float32) # first 3 values for finger synergies, last value if grasp is final
-        self.observation_space = spaces.Box(low = -100, high = 100, shape = (8,), dtype = np.float32) # First 5 values for biotac diff, last 3 values for current joint config in pca space
-        self.fingers = fingers
-        self.pca_con = sgg.SynGraspGen()
-        self.time = datetime.now().strftime("%d_%m_%Y_%H_%M")
-        self.log_file = open(rospkg.RosPack().get_path('bimanual_handover') + "/logs/log" + self.time + ".txt", 'w')
+        if self.env_type == "tactile":
+            self.observation_space = spaces.Box(low = -100, high = 100, shape = (8,), dtype = np.float32) # First 5 values for biotac diff, last 3 values for current joint config in pca space
+        elif self.env_type == "effort":
+            self.observation_space = spaces.Box(low = -1000, high = 1000, shape = (12,), dtype = np.float32) # First 3 values for current joint config in pca space, last 9 values for efforts
+
+        # Initialize observation values
         self.last_joints = None
-        self.initial_biotac = None
+        self.initial_tactile = None
+        self.current_tactile = None
+        self.initial_effort = None
+        self.current_effort = None
+
+        # Setup information about relevant finger structure
+        self.fingers = fingers
         self.closing_joints = ['rh_FFJ2', 'rh_FFJ3', 'rh_MFJ2', 'rh_MFJ3', 'rh_RFJ2', 'rh_RFJ3', 'rh_LFJ2', 'rh_LFJ3', 'rh_THJ2']
         self.joint_order = self.fingers.get_active_joints()
-        #self.pressure_sub = rospy.Subscriber('/pressure/l_gripper_motor', PressureState, self.pressure_callback)
+        
+        # Setup observation callbacks
         self.tactile_sub = rospy.Subscriber('/hand/rh/tactile', BiotacAll, self.tactile_callback)
+        self.effort_sub = rospy.Subscriber('/hand/joint_states', JointState, self.effort_callback)
         #self.force_sub = rospy.Subscriber('/ft/l_gripper_motor', WrenchStamped, self.force_callback)
+        #self.pressure_sub = rospy.Subscriber('/pressure/l_gripper_motor', PressureState, self.pressure_callback)
+
+        # Setup relevant structures for action and reward generation
+        self.pca_con = sgg.SynGraspGen()
         rospy.wait_for_service('grasp_tester')
         self.gt_srv = rospy.ServiceProxy('grasp_tester', GraspTesterSrv)
+
+        # Setup interrupt option
         self.interrupt_sub = rospy.Subscriber('interrupt_learning', Bool, self.interrupt_callback)
         self.interrupted = False
+
+        # Initialize reset parameters
         self.max_attempt_steps = 20
         self.current_attempt_step = 0
         self.reset_steps = 1000
         self.current_reset_step = 0
+
+        # Further initializations if data should be recorded
         self.record = record
         if self.record:
+            self.time = datetime.now().strftime("%d_%m_%Y_%H_%M")
+            self.log_file = open(rospkg.RosPack().get_path('bimanual_handover') + "/logs/log" + self.time + ".txt", 'w')
             pkg_path = rospkg.RosPack().get_path('bimanual_handover')
             path = pkg_path + "/data/bags/"
             self.bag = rosbag.Bag('{}training_{}.bag'.format(path, self.time), 'w')
-            # Also record effort, even if it is not used in this approach, for training different models
-            self.initial_effort = None
-            self.current_effort = None
-            self.effort_sub = rospy.Subscriber('/hand/mechanism_statistics', MechanismStatistics, self.effort_callback)
 
-    '''
-    def pressure_callback(self, pressure):
-        self.current_pressure = pressure
-    '''
 
     def tactile_callback(self, tactile):
         self.current_tactile = [x.pdc for x in tactile.tactiles]
+
+    def effort_callback(self, joint_state):
+        self.current_effort = [joint_state.effort[joint_state.name.index(name)] for name in self.closing_joints]
 
     '''
     def force_callback(self, force):
         self.current_force = force
     '''
 
-    def effort_callback(self, statistics):
-        new_effort = {}
-        for joint_statistic in statistics.joint_statistics:
-            if joint_statistic.name is in self.closing_joints:
-                new_effort[joint_statistics.name] = joint_statistics.max_abs_effort
-        effort_list = [new_effort[joint] for joint in self.closing_joints]
-        self.current_effort = effort_list
+    '''
+    def pressure_callback(self, pressure):
+        self.current_pressure = pressure
+    '''
 
     def interrupt_callback(self, command):
         self.interrupted = command.data
+
+    def write_float_array_to_bag(self, topic, array):
+        array_msg = Float32MultiArray()
+        array_msg.data = array
+        self.bag.write(topic, array_msg)
 
     def step(self, action):
         while self.interrupted:
             rospy.sleep(1)
 
-        # Check if networked determined to have a finished grasped
-        #if action[3] >= 0.0:
+        # Check number of contacts
+        if self.env_type == "tactile":
+            current_tactile = deepcopy(self.current_tactile)
+            current_tactile_diff = [current_tactile[x] - self.initial_tactile[x] for x in range(len(current_tactile))]
+            contacts = [True if diff >=20 else False for diff in current_tactile_diff]
+            contact_threshold = 5
+        elif self.env_type == "effort":
+            current_effort = deepcopy(self.current_effort)
+            current_effort_diff = [abs((current_effort[x]) - (self.initial_effort[x])) for x in range(len(current_effort))]
+            contacts = [True if diff >=150 else False for diff in current_effort_diff]
+            contact_threshold = 9
 
-        # Stop moving if enough contacts have been made
-        current_biotac = deepcopy(self.current_tactile)
-        current_biotac_diff = [current_biotac[x] - self.initial_biotac[x] for x in range(len(current_biotac))]
-        contacts = [True if diff >=20 else False for diff in current_biotac_diff]
-        if sum(contacts) >= 5 or self.current_attempt_step >= self.max_attempt_steps:
-            print(current_biotac_diff)
-            success = self.gt_srv('y').success
+        # Stop if enough contacts have been made or max steps were reached
+        if sum(contacts) >= contact_threshold or self.current_attempt_step >= self.max_attempt_steps:
             terminated = True
-            # Give reward if the previous decision was correct or not
+
+            # Give reward depending on success of grasp
+            success = self.gt_srv('y').success
             if success:
                 reward = 1
             else:
                 reward = -1
-            reward += 0.1 * sum(contacts)
+
+            # Add bonus reward depending on number of contacts
+            if self.env_type == "tactile":
+                reward += 0.1 * sum(contacts)
+            elif self.env_type == "effort":
+                reward += 0.1 * sum(contacts)/2
+
+            # Set termination reason
             if self.current_attempt_step >= self.max_attempt_steps:
                 terminated_reason = "Max steps"
             else:
                 terminated_reason = "Contacts"
             print("Reward: {}, Terminated Reason: {}".format(reward, terminated_reason))
+        # Continue if not enough contacts were made and not enough steps were done
         else:
+            terminated = False
+
             # Reduce normalized actions
             action[0] = (action[0] - 1)/2 
             action[1] = (action[1] - 1)/2
-            # Get new config
+
+            # Turn action into joint configuration
             result = self.pca_con.gen_joint_config(action[:3], normalize = True)
+
             # Remove wrist joints
             del result['rh_WRJ1']
             del result['rh_WRJ2']
 
-            # Remove fingers with contact (optional, testing) -> Mabe switch to not close anymore instead of no movement at all
+            # Remove fingers with contact
+            if self.env_type == "tactile":
+                checks = contacts
+            elif self.env_type == "effort":
+                checks = [contacts[0] and contacts[1], contacts[2] and contacts[3], contacts[4] and contacts[5], contacts[6] and contacts[7], contacts[8]]    
             del_keys = []
-            if contacts[0]:
+            if checks[0]:
                 for key in result.keys():
                     if 'rh_FFJ' in key:
                         del_keys.append(key)
-            if contacts[1]:
+            if checks[1]:
                 for key in result.keys():
                     if 'rh_MFJ' in key:
                         del_keys.append(key)
-            if contacts[2]:
+            if checks[2]:
                 for key in result.keys():
                     if 'rh_RFJ' in key:
                         del_keys.append(key)
-            if contacts[3]:
+            if checks[3]:
                 for key in result.keys():
                     if 'rh_LFJ' in key:
                         del_keys.append(key)
-            if contacts[4]:
+            if checks[4]:
                 for key in result.keys():
                     if 'rh_THJ' in key:
                         del_keys.append(key)
             for key in del_keys:
                 del result[key]
             
-            # Move into desired config
             try:
+                # Move into desired joint configuration
                 self.fingers.set_joint_value_target(result)
                 self.fingers.go()
 
                 # Determine reward based on how much the fingers closed compared to the previous configuration
                 reward = 0
-                terminated = False
                 joint_diff = 0
                 current_joints = self.fingers.get_current_joint_values()
                 for joint in self.closing_joints:
@@ -162,6 +206,7 @@ class RealEnv(gym.Env):
                         joint_diff += - math.dist([current_joints[index]], [self.last_joints[index]])
                 reward = joint_diff
                 print("Reward: {}".format(reward))
+            # Terminate with negative reward if desired movement failed
             except MoveItCommanderException as e:
                 rospy.logerr("Exception encountered: {}".format(e))
                 terminated = True
@@ -170,30 +215,46 @@ class RealEnv(gym.Env):
 
 
         # Update observation for next step
-        current_biotac = deepcopy(self.current_tactile)
-        current_observation = [current_biotac[x] - self.initial_biotac[x] for x in range(len(current_biotac))]
+        if self.env_type == "tactile":
+            current_tactile = deepcopy(self.current_tactile)
+            current_observation = [current_tactile[x] - self.initial_tactile[x] for x in range(len(current_tactile))]
+        elif self.env_type == "effort":
+            current_effort = deepcopy(self.current_effort)
+            current_observation = [current_effort[x] - self.initial_effort[x] for x in range(len(current_effort))]
         current_pca = self.pca_con.get_pca_config()[0][:3]
         for pca in current_pca:
             current_observation.append(pca)
         observation = np.array(current_observation, dtype = np.float32)
 
+        # Update step values
         self.current_attempt_step += 1
         self.current_reset_step += 1
         self.last_joints = deepcopy(self.fingers.get_current_joint_values())
 
-        if not terminated:
-            terminated_reason = "False"
-        self.log_file.write("Action: {}, Observation:  {}, Reward: {}, Terminated: {}".format(action, observation, reward, terminated_reason))
-
+        # Write data of this step if data recording is desired
         if self.record:
-            self.bag.write('action', action)
-            self.bag.write('obs', observation)
-            self.bag.write('reward', reward)
-            self.bag.write('terminated', terminated_reason)
-            # Also save effort
-            current_effort = deepcopy(self.current_effort)
-            effort_diff = [current_effort[x] - self.initial_effort[x] for x in range(len(current_effort))]
-            self.bag-write('effort', effort_diff)
+            # Write into log file
+            if not terminated:
+                terminated_reason = "False"
+            self.log_file.write("Action: {}, Observation:  {}, Reward: {}, Terminated: {}".format(action, observation, reward, terminated_reason))
+
+            # Write into rosbag
+            self.write_float_array_to_bag('action', action)
+            self.write_float_array_to_bag('obs', observation)
+            reward_msg = Float32()
+            reward_msg.data = reward
+            self.bag.write('reward', reward_msg)
+            terminated_reason_msg = String()
+            terminated_reason_msg.data = terminated_reason
+            self.bag.write('terminated', terminated_reason_msg)
+            if self.env_type == "tactile":
+                current_effort = deepcopy(self.current_effort)
+                effort_diff = [current_effort[x] - self.initial_effort[x] for x in range(len(current_effort))]
+                self.write_float_array_to_bag('effort', effort_diff)
+            elif self.env_type == "effort":
+                current_tactile = deepcopy(self.current_tactile)
+                tactile_diff = [current_tactile[x] - self.initial_tactile[x] for x in range(len(current_tactile))]
+                self.write_float_array_to_bag('effort', tactile_diff)
 
         info = {}
         truncated = False
@@ -201,10 +262,8 @@ class RealEnv(gym.Env):
 
     def reset(self, seed=None):
         super().reset(seed=seed)
-        self.log_file.close()
         while self.interrupted:
             rospy.sleep(1)
-        self.log_file = open(rospkg.RosPack().get_path('bimanual_handover') + "/logs/log"+ self.time + ".txt", 'a')
 
         # Reset hand into default position
         self.fingers.set_named_target('open')
@@ -212,18 +271,24 @@ class RealEnv(gym.Env):
         self.fingers.set_joint_value_target(joint_values)
         self.fingers.go()
 
-        self.initial_biotac = deepcopy(self.current_tactile)
+        # Set new initial values
+        self.initial_tactile = deepcopy(self.current_tactile)
+        self.initial_effort = deepcopy(self.current_effort)
         self.last_joints = deepcopy(self.fingers.get_current_joint_values())
-        if self.record:
-            self.initial_effort = deepcopy(self.current_effort)
 
-        current_biotac = deepcopy(self.current_tactile)
-        current_observation = [current_biotac[x] - self.initial_biotac[x] for x in range(len(current_biotac))]
+        # Set new observation
+        if self.env_type == "tactile":
+            current_tactile = deepcopy(self.current_tactile)
+            observation = [current_tactile[x] - self.initial_tactile[x] for x in range(len(current_tactile))]
+        elif self.env_type == "effort":
+            current_effort = deepcopy(self.current_effort)
+            observation = [current_effort[x] - self.initial_effort[x] for x in range(len(current_effort))]
         current_pca = self.pca_con.get_pca_config()[0][:3]
         for pca in current_pca:
-            current_observation.append(pca)
-        observation = np.array(current_observation, dtype = np.float32)
+            observation.append(pca)
+        observation = np.array(observation, dtype = np.float32)
 
+        # WIP Setup with new object specified by user input
         self.current_attempt_step = 0
         if self.current_reset_step >= self.reset_steps:
             # Reset, move to pose again (if pc), insert new object
@@ -255,190 +320,9 @@ class RealEnv(gym.Env):
         return
 
     def close(self):
-        self.log_file.close()
-        return
-
-# WIP same as real env but with efforts instead of tactile feedback
-class RealEnvEffort(gym.Env):
-
-    def __init__(self, fingers, record = True):
-        super().__init__()
-        self.action_space = spaces.Box(low = -1, high = 1, shape = (3,), dtype = np.float32) # first 3 values for finger synergies, last value if grasp is final
-        self.observation_space = spaces.Box(low = -100, high = 100, shape = (12,), dtype = np.float32) # First 3 values for current joint config in pca space, last 9 values for efforts
-        self.fingers = fingers
-        self.pca_con = sgg.SynGraspGen()
-        self.time = datetime.now().strftime("%d_%m_%Y_%H_%M")
-        self.log_file = open(rospkg.RosPack().get_path('bimanual_handover') + "/logs/log" + self.time + ".txt", 'w')
-        self.last_joints = None
-        self.initial_effort = None
-        self.closing_joints = ['rh_FFJ2', 'rh_FFJ3', 'rh_MFJ2', 'rh_MFJ3', 'rh_RFJ2', 'rh_RFJ3', 'rh_LFJ2', 'rh_LFJ3', 'rh_THJ2']
-        self.joint_order = self.fingers.get_active_joints()
-        self.current_effort = None
-        self.effort_sub = rospy.Subscriber('/hand/mechanism_statistics', MechanismStatistics, self.effort_callback)
-        rospy.wait_for_service('grasp_tester')
-        self.gt_srv = rospy.ServiceProxy('grasp_tester', GraspTesterSrv)
-        self.interrupt_sub = rospy.Subscriber('interrupt_learning', Bool, self.interrupt_callback)
-        self.interrupted = False
-        self.max_steps = 20
-        self.current_step = 0
-        self.record = record
         if self.record:
-            pkg_path = rospkg.RosPack().get_path('bimanual_handover')
-            path = pkg_path + "/data/bags/"
-            self.bag = rosbag.Bag('{}training_{}.bag'.format(path, self.time), 'w')
-
-    def effort_callback(self, statistics):
-        new_effort = {}
-        for joint_statistic in statistics.joint_statistics:
-            if joint_statistic.name is in self.closing_joints:
-                new_effort[joint_statistics.name] = joint_statistics.max_abs_effort
-        effort_list = [new_effort[joint] for joint in self.closing_joints]
-        self.current_effort = effort_list
-
-    def interrupt_callback(self, command):
-        self.interrupted = command.data
-
-    def step(self, action):
-        while self.interrupted:
-            rospy.sleep(1)
-
-        # Stop moving if enough contacts have been made
-        current_effort = deepcopy(self.current_effort)
-        current_effort_diff = [current_effort[x] - self.initial_effort[x] for x in range(len(current_effort))]
-        contacts = [True if diff >=20 else False for diff in current_effort_diff]
-        if sum(contacts) >= 9 or self.current_step >= self.max_steps:
-            print(current_effort_diff)
-            success = self.gt_srv('y').success
-            terminated = True
-            # Give reward if the previous decision was correct or not
-            if success:
-                reward = 1
-            else:
-                reward = -1
-            reward += 0.1 * sum(contacts)/2
-            if self.current_step >= self.max_steps:
-                terminated_reason = "Max steps"
-            else:
-                terminated_reason = "Contacts"
-            print("Reward: {}, Terminated Reason: {}".format(reward, terminated_reason))
-        else:
-            # Reduce normalized actions
-            action[0] = (action[0] - 1)/2 
-            action[1] = (action[1] - 1)/2
-            # Get new config
-            result = self.pca_con.gen_joint_config(action[:3], normalize = True)
-            # Remove wrist joints
-            del result['rh_WRJ1']
-            del result['rh_WRJ2']
-
-            # Remove fingers with contact (optional, testing) -> Mabe switch to not close anymore instead of no movement at all
-            del_keys = []
-            if contacts[0] and contacts[1]:
-                for key in result.keys():
-                    if 'rh_FFJ' in key:
-                        del_keys.append(key)
-            if contacts[2] and contacts[3]:
-                for key in result.keys():
-                    if 'rh_MFJ' in key:
-                        del_keys.append(key)
-            if contacts[4] and contacts[5]:
-                for key in result.keys():
-                    if 'rh_RFJ' in key:
-                        del_keys.append(key)
-            if contacts[6] and contacts[7]:
-                for key in result.keys():
-                    if 'rh_LFJ' in key:
-                        del_keys.append(key)
-            if contacts[8]:
-                for key in result.keys():
-                    if 'rh_THJ' in key:
-                        del_keys.append(key)
-            for key in del_keys:
-                del result[key]
-            
-            # Move into desired config
-            try:
-                self.fingers.set_joint_value_target(result)
-                self.fingers.go()
-
-                # Determine reward based on how much the fingers closed compared to the previous configuration
-                reward = 0
-                terminated = False
-                joint_diff = 0
-                current_joints = self.fingers.get_current_joint_values()
-                for joint in self.closing_joints:
-                    index = self.joint_order.index(joint)
-                    if current_joints[index] >= self.last_joints[index]:
-                        joint_diff += math.dist([current_joints[index]], [self.last_joints[index]])
-                    else:
-                        joint_diff += - math.dist([current_joints[index]], [self.last_joints[index]])
-                reward = joint_diff
-                print("Reward: {}".format(reward))
-            except MoveItCommanderException as e:
-                rospy.logerr("Exception encountered: {}".format(e))
-                terminated = True
-                terminated_reason = "Exception {} encountered".format(e)
-                reward = -1
-
-
-        # Update observation for next step
-        current_effort = deepcopy(self.current_effort)
-        current_observation = [current_effort[x] - self.initial_effort[x] for x in range(len(current_effort))]
-        current_pca = self.pca_con.get_pca_config()[0][:3]
-        for pca in current_pca:
-            current_observation.append(pca)
-        observation = np.array(current_observation, dtype = np.float32)
-
-        self.current_step += 1
-        self.last_joints = deepcopy(self.fingers.get_current_joint_values())
-
-        if not terminated:
-            terminated_reason = "False"
-        self.log_file.write("Action: {}, Observation:  {}, Reward: {}, Terminated: {}".format(action, observation, reward, terminated_reason))
-
-        if self.record:
-            self.bag.write('action', action)
-            self.bag.write('obs', observation)
-            self.bag.write('reward', reward)
-            self.bag.write('terminated', terminated_reason)
-
-        info = {}
-        truncated = False
-        return observation, reward, terminated, truncated, info
-
-    def reset(self, seed=None):
-        super().reset(seed=seed)
-        self.log_file.close()
-        while self.interrupted:
-            rospy.sleep(1)
-        self.log_file = open(rospkg.RosPack().get_path('bimanual_handover') + "/logs/log"+ self.time + ".txt", 'a')
-
-        # Reset hand into default position
-        self.fingers.set_named_target('open')
-        joint_values = dict(rh_THJ4 = 1.13446, rh_LFJ4 = -0.31699402670752413, rh_FFJ4 = -0.23131151280059523, rh_MFJ4 = 0.008929532157657268, rh_RFJ4 = -0.11378487918959583)
-        self.fingers.set_joint_value_target(joint_values)
-        self.fingers.go()
-
-        self.initial_effort = deepcopy(self.current_effort)
-        self.last_joints = deepcopy(self.fingers.get_current_joint_values())
-
-        current_effort = deepcopy(self.current_effort)
-        current_observation = [current_effort[x] - self.initial_effort[x] for x in range(len(current_effort))]
-        current_pca = self.pca_con.get_pca_config()[0][:3]
-        for pca in current_pca:
-            current_observation.append(pca)
-        observation = np.array(current_observation, dtype = np.float32)
-
-        self.current_step = 0
-
-        info = {}
-        return (observation, info)
-
-    def render(self):
-        return
-
-    def close(self):
-        self.log_file.close()
+            self.log_file.close()
+            self.bag.close()
         return
 
 # WIP Trajectory approach based environment, probably wont be used and more as a backup

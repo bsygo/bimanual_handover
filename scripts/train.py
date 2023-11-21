@@ -67,7 +67,7 @@ def main(argv):
 
     # Setup environment
     rospy.loginfo('Setting up env.')
-    env = handover_env.RealEnv(fingers)
+    env = handover_env.RealEnv(fingers, env_type = "effort")
     if check:
         check_env(env)
         rospy.loginfo('Env check completed.')

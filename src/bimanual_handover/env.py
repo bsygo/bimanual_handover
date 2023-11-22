@@ -45,6 +45,7 @@ class RealEnv(gym.Env):
         self.current_tactile = None
         self.initial_effort = None
         self.current_effort = None
+        self.current_object = None
 
         # Setup information about relevant finger structure
         self.fingers = fingers
@@ -65,6 +66,10 @@ class RealEnv(gym.Env):
         # Setup interrupt option
         self.interrupt_sub = rospy.Subscriber('interrupt_learning', Bool, self.interrupt_callback)
         self.interrupted = False
+
+        # Setup new object services
+        rospy.wait_for_service('handover_controller_srv')
+        self.handover_controller_srv = rospy.ServiceProxy('handover_controller_srv', HandoverControllerSrv)
 
         # Initialize reset parameters
         self.max_attempt_steps = 20
@@ -105,6 +110,15 @@ class RealEnv(gym.Env):
         array_msg = Float32MultiArray()
         array_msg.data = array
         self.bag.write(topic, array_msg)
+
+    def reset_hand_pose(self):
+        if self.current_object[0] == 1:
+            object_type = "can"
+        elif self.current_object[1] == 1:
+            object_type = "book"
+        elif self.current_object[2] == 1:
+            object_type = "unknown"
+        self.handover_controller_srv("train", "pca", object_type)
 
     def step(self, action):
         while self.interrupted:
@@ -224,6 +238,8 @@ class RealEnv(gym.Env):
         current_pca = self.pca_con.get_pca_config()[0][:3]
         for pca in current_pca:
             current_observation.append(pca)
+        # for value in self.current_object:
+        #   current_observation.append(value)
         observation = np.array(current_observation, dtype = np.float32)
 
         # Update step values
@@ -286,7 +302,6 @@ class RealEnv(gym.Env):
         current_pca = self.pca_con.get_pca_config()[0][:3]
         for pca in current_pca:
             observation.append(pca)
-        observation = np.array(observation, dtype = np.float32)
 
         # WIP Setup with new object specified by user input
         self.current_attempt_step = 0
@@ -311,8 +326,15 @@ class RealEnv(gym.Env):
                         print("Object selection aborted.")
                 else:
                     print("Object id {} is not known. Please enter one of the known ids [1], [2] or [3].".format(object_id))
+            self.current_object = one_hot
+            '''
+            for value in one_hot:
+                observation.append(value)
             self.current_reset_step = 0
+            self.reset_hand_pose()
+            '''
 
+        observation = np.array(observation, dtype = np.float32)
         info = {}
         return (observation, info)
 

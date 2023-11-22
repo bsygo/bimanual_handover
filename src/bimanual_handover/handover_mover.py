@@ -20,11 +20,13 @@ import sys
 from bio_ik_msgs.msg import IKRequest, PositionGoal, DirectionGoal
 from bio_ik_msgs.srv import GetIK
 
-class RobotSetupMover():
+class HandoverMover():
 
     def __init__(self, debug = False):
-        rospy.init_node('robot_setup_mover')
+        rospy.init_node('handover_mover')
         rospy.on_shutdown(self.shutdown)
+
+        # Setup commanders
         self.hand = MoveGroupCommander("right_arm", ns = "/")
         self.fingers = MoveGroupCommander("right_fingers", ns = "/")
         self.arm = MoveGroupCommander("right_arm_pr2", ns = "/")
@@ -32,19 +34,29 @@ class RobotSetupMover():
         self.psi = PlanningSceneInterface(ns = "/")
         self.robot = RobotCommander()
         self.hand.set_end_effector_link("rh_manipulator")
-        self.debug = debug
+
+        # Setup pc subscriber 
         self.pc = None
         self.pc_sub = rospy.Subscriber("pc/pc_filtered", PointCloud2, self.update_pc)
+
+        # Setup required services
         #rospy.wait_for_service('pc/gpd_service/detect_grasps')
         #self.gpd_service = rospy.ServiceProxy('pc/gpd_service/detect_grasps', detect_grasps)
-        self.debug_pose_pub = rospy.Publisher('debug/rsm_setup_pose', PoseStamped, queue_size = 1)
-        self.tf_buffer = Buffer()
-        TransformListener(self.tf_buffer)
         #rospy.wait_for_service('collision_service')
         #self.collision_service = rospy.ServiceProxy('collision_service', CollisionChecking)
         rospy.wait_for_service('/bio_ik/get_bio_ik')
         self.bio_ik_srv = rospy.ServiceProxy('/bio_ik/get_bio_ik', GetIK)
-        rospy.wait_for_service('attached_body_srv')
+
+        # Start transform listener
+        self.tf_buffer = Buffer()
+        TransformListener(self.tf_buffer)
+
+        # Debug
+        self.debug = debug
+        if self.debug:
+            self.debug_pose_pub = rospy.Publisher('debug/handover_mover_setup_pose', PoseStamped, queue_size = 1)
+
+        # Start service
         rospy.Service('move_handover_srv', MoveHandover, self.move_handover)
         rospy.spin()
 
@@ -54,7 +66,7 @@ class RobotSetupMover():
     def move_handover(self, req):
         rospy.loginfo('Request received.')
         if req.mode == "fixed":
-            self.move_fixed_pose_above()
+            self.move_fixed_pose_above(req.object_type)
             return True
         elif req.mode == "above":
             self.move_fixed_pose_pc_above()
@@ -149,17 +161,21 @@ class RobotSetupMover():
         self.fingers.set_joint_value_target(joint_values)
         self.fingers.go()
 
-    def move_fixed_pose_above(self):
+    def move_fixed_pose_above(self, object_type = None):
         self.setup_fingers()
 
         # Calculate desired position and direction relative to l_gripper_tool_frame in base_footprint
         gripper_pose = self.gripper.get_current_pose(end_effector_link = "l_gripper_tool_frame")
         R = quaternion_matrix([gripper_pose.pose.orientation.x, gripper_pose.pose.orientation.y, gripper_pose.pose.orientation.z, gripper_pose.pose.orientation.w])
+        y_direction = R[:3, 1]
         z_direction = R[:3, 2]
         gripper_base_transform = self.tf_buffer.lookup_transform("base_footprint", "l_gripper_tool_frame", rospy.Time(0))
         transformed_pos = PointStamped()
         transformed_pos.header.frame_id = "l_gripper_tool_frame"
-        transformed_pos.point.x = 0
+        if object_type == "book":
+            transformed_pos.point.x = 0.02
+        else:
+            transformed_pos.point.x = 0
         transformed_pos.point.y = 0
         transformed_pos.point.z = 0.167
         transformed_pos = do_transform_point(transformed_pos, gripper_base_transform)
@@ -197,6 +213,13 @@ class RobotSetupMover():
         dir_goal.direction = Vector3(-z_direction[0], -z_direction[1], -z_direction[2])
         request.position_goals = [pos_goal]
         request.direction_goals = [dir_goal]
+        if object_type == "book":
+            dir_goal = DirectionGoal()
+            dir_goal.link_name = "rh_grasp"
+            dir_goal.weight = 10.0
+            dir_goal.axis = Vector3(0, 0, 1)
+            dir_goal.direction = Vector3(y_direction[0], y_direction[1], y_direction[2])
+            request.direction_goals.append(dir_goal)
 
         # Get bio_ik solution
         response = self.bio_ik_srv(request).ik_response
@@ -319,5 +342,5 @@ class RobotSetupMover():
         self.hand.go()
 
 if __name__ == "__main__":
-    mover = RobotSetupMover()
+    mover = HandoverMover()
 

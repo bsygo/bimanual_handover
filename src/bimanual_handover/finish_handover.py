@@ -34,7 +34,7 @@ class FinishHandover():
         self.gripper.go()
         gripper_pose = PoseStamped()
         gripper_pose.header.frame_id = "l_gripper_tool_frame"
-        gripper_pose.pose.position.y += -0.05
+        gripper_pose.pose.position.x += -0.05
         gripper_pose.pose.orientation.w = 1
         gripper_base_transform = self.tf_buffer.lookup_transform("base_footprint", "l_gripper_tool_frame", rospy.Time(0))
         gripper_pose = do_transform_pose(gripper_pose, gripper_base_transform)

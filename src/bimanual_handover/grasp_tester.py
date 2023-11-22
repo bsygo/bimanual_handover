@@ -8,6 +8,8 @@ from geometry_msgs.msg import WrenchStamped, PoseStamped
 from copy import deepcopy
 from bio_ik_msgs.msg import PoseGoal, IKRequest
 from bio_ik_msgs.srv import GetIK
+from tf2_ros import TransformListener, Buffer
+from tf2_geometry_msgs import do_transform_pose
 
 class GraspTester():
 
@@ -15,20 +17,34 @@ class GraspTester():
         rospy.init_node('grasp_tester_node')
         roscpp_initialize('')
         rospy.on_shutdown(self.shutdown)
-        force_sub = rospy.Subscriber('/ft/l_gripper_motor', WrenchStamped, self.update_force)
-        rospy.wait_for_service('/bio_ik/get_bio_ik')
-        self.bio_ik_srv = rospy.ServiceProxy('/bio_ik/get_bio_ik', GetIK)
+
+        # Setup force subscriber
         self.current_force = None
+        force_sub = rospy.Subscriber('/ft/l_gripper_motor', WrenchStamped, self.update_force)
+
+        # Setup commanders
         self.right_arm = MoveGroupCommander('right_arm', ns = "/")
         self.right_arm.get_current_pose() # To initiate state monitor: see moveit issue #2715
         self.robot = RobotCommander()
-        rospy.Service('grasp_tester', GraspTesterSrv, self.test_grasp)
+
+        # Setup services
+        rospy.wait_for_service('/bio_ik/get_bio_ik')
+        self.bio_ik_srv = rospy.ServiceProxy('/bio_ik/get_bio_ik', GetIK)
+
+        # Setup tf listener
+        self.tf_buffer = Buffer()
+        TransformListener(self.tf_buffer)
+
+        # Debug
         self.debug = debug
-        self.debug_pub_current = rospy.Publisher('debug/pre_cartesian', PoseStamped, queue_size = 1, latch = True)
-        self.debug_pub_plan = rospy.Publisher('debug/plan_cartesian', PoseStamped, queue_size = 1, latch = True)
         if self.debug:
+            self.debug_pub_current = rospy.Publisher('debug/pre_cartesian', PoseStamped, queue_size = 1, latch = True)
+            self.debug_pub_plan = rospy.Publisher('debug/plan_cartesian', PoseStamped, queue_size = 1, latch = True)
             self.debug_snapshot_pub = rospy.Publisher('debug/debug_snapshot', Bool, queue_size = 1, latch = True)
             self.debug_snapshot_pub.publish(False)
+
+        # Start service
+        rospy.Service('grasp_tester_srv', GraspTesterSrv, self.test_grasp)
         rospy.spin()
 
     def shutdown(self):
@@ -138,9 +154,12 @@ class GraspTester():
 
         current_pose = self.right_arm.get_current_pose()
         old_joint_values = deepcopy(self.right_arm.get_current_joint_values())
-        current_pose.pose.position.z += 0.005
-        self.debug_pub_plan.publish(current_pose)
-        self.move_bio_ik(current_pose)
+        base_gripper_transform = self.tf_buffer.lookup_transform("l_gripper_tool_frame", "base_footprint", rospy.Time(0))
+        transformed_pose = do_transform_pose(current_pose, base_gripper_transform)
+        transformed_pose.pose.position.z += 0.005
+        if self.debug:
+            self.debug_pub_plan.publish(transformed_pose)
+        self.move_bio_ik(transformed_pose)
 
         if self.debug:
             self.debug_snapshot_pub.publish(False)

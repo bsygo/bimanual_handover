@@ -25,7 +25,7 @@
     <node name="handover_mover_node" pkg="bimanual_handover" type="handover_mover.py" output="screen" />
     <node name="finish_handover_node" pkg="bimanual_handover" type="finish_handover.py" output="screen" />
     <node name="handover_controller_node" pkg="bimanual_handover" type="handover_controller.py" output="screen" />
-    <node name="launch_handover_node" pkg="bimanual_handover" type="launch_handover.py" output="screen" args="$(arg grasp_mode) $(arg handover_type) $(arg object_type)" />
+    <!-- <node name="launch_handover_node" pkg="bimanual_handover" type="launch_handover.py" output="screen" args="$(arg grasp_mode) $(arg handover_type) $(arg object_type)" /> -->
     <!-- <node name="collision_checker" pkg="bimanual_handover" type="collision_checker" output="screen" /> -->
     </group>
     <node name="bio_ik_srv" pkg="bio_ik_service" type="bio_ik_service" output="screen" />

@@ -12,7 +12,7 @@ from gymnasium import spaces
 import numpy as np
 import math
 import bimanual_handover.syn_grasp_gen as sgg
-from bimanual_handover_msgs.srv import CCM, GraspTesterSrv
+from bimanual_handover_msgs.srv import CCM, GraspTesterSrv, HandoverControllerSrv
 import sensor_msgs.point_cloud2 as pc2
 from moveit_msgs.msg import MoveItErrorCodes
 from moveit_commander import MoveItCommanderException
@@ -27,17 +27,20 @@ import rosbag
 # Environment used for training on the real robot
 class RealEnv(gym.Env):
 
-    def __init__(self, fingers, record = True, env_type = "tactile"):
+    def __init__(self, fingers, record = True, env_type = "tactile", time = None):
         super().__init__()
         rospy.on_shutdown(self.close)
         self.env_type = env_type
 
         # Setup action and observation space
-        self.action_space = spaces.Box(low = -1, high = 1, shape = (3,), dtype = np.float32) # first 3 values for finger synergies, last value if grasp is final
+        # 3 values for finger synergies
+        self.action_space = spaces.Box(low = -1, high = 1, shape = (3,), dtype = np.float32)
         if self.env_type == "tactile":
-            self.observation_space = spaces.Box(low = -100, high = 100, shape = (8,), dtype = np.float32) # First 5 values for biotac diff, last 3 values for current joint config in pca space
-        elif self.env_type == "effort":
-            self.observation_space = spaces.Box(low = -1000, high = 1000, shape = (12,), dtype = np.float32) # First 3 values for current joint config in pca space, last 9 values for efforts
+            # First 5 values for biotac diff, last 3 values for current joint config in pca space
+            self.observation_space = spaces.Box(low = -100, high = 100, shape = (8,), dtype = np.float32) 
+        elif self.env_type == "effort": 
+            # First 3 values for current joint config in pca space, next 9 values for efforts, last 3 values for one-hot encoding of object
+            self.observation_space = spaces.Box(low = -1000, high = 1000, shape = (15,), dtype = np.float32)
 
         # Initialize observation values
         self.last_joints = None
@@ -45,7 +48,7 @@ class RealEnv(gym.Env):
         self.current_tactile = None
         self.initial_effort = None
         self.current_effort = None
-        self.current_object = None
+        self.current_object = [0, 0, 0]
 
         # Setup information about relevant finger structure
         self.fingers = fingers
@@ -60,8 +63,8 @@ class RealEnv(gym.Env):
 
         # Setup relevant structures for action and reward generation
         self.pca_con = sgg.SynGraspGen()
-        rospy.wait_for_service('grasp_tester')
-        self.gt_srv = rospy.ServiceProxy('grasp_tester', GraspTesterSrv)
+        rospy.wait_for_service('grasp_tester_srv')
+        self.gt_srv = rospy.ServiceProxy('grasp_tester_srv', GraspTesterSrv)
 
         # Setup interrupt option
         self.interrupt_sub = rospy.Subscriber('interrupt_learning', Bool, self.interrupt_callback)
@@ -75,16 +78,22 @@ class RealEnv(gym.Env):
         self.max_attempt_steps = 20
         self.current_attempt_step = 0
         self.reset_steps = 1000
-        self.current_reset_step = 0
+        self.current_reset_step = 1000 # To set an object in first reset call
 
         # Further initializations if data should be recorded
         self.record = record
         if self.record:
-            self.time = datetime.now().strftime("%d_%m_%Y_%H_%M")
-            self.log_file = open(rospkg.RosPack().get_path('bimanual_handover') + "/logs/log" + self.time + ".txt", 'w')
+            if time is None:
+                self.time = datetime.now().strftime("%d_%m_%Y_%H_%M")
+            else:
+                self.time = time
+            self.log_file = open(rospkg.RosPack().get_path('bimanual_handover') + "/logs/log" + self.time + ".txt", 'a')
             pkg_path = rospkg.RosPack().get_path('bimanual_handover')
             path = pkg_path + "/data/bags/"
-            self.bag = rosbag.Bag('{}training_{}.bag'.format(path, self.time), 'w')
+            if os.path.isfile('{}training_{}.bag'.format(path, self.time)):
+                self.bag = rosbag.Bag('{}training_{}.bag'.format(path, self.time), 'a')
+            else:
+                self.bag = rosbag.Bag('{}training_{}.bag'.format(path, self.time), 'w')
 
 
     def tactile_callback(self, tactile):
@@ -238,8 +247,8 @@ class RealEnv(gym.Env):
         current_pca = self.pca_con.get_pca_config()[0][:3]
         for pca in current_pca:
             current_observation.append(pca)
-        # for value in self.current_object:
-        #   current_observation.append(value)
+        for value in self.current_object:
+            current_observation.append(value)
         observation = np.array(current_observation, dtype = np.float32)
 
         # Update step values
@@ -252,7 +261,7 @@ class RealEnv(gym.Env):
             # Write into log file
             if not terminated:
                 terminated_reason = "False"
-            self.log_file.write("Action: {}, Observation:  {}, Reward: {}, Terminated: {}".format(action, observation, reward, terminated_reason))
+            self.log_file.write("Action: {}, Observation:  {}, Reward: {}, Terminated: {}, Object: {} \n".format(action, observation, reward, terminated_reason, self.current_object))
 
             # Write into rosbag
             self.write_float_array_to_bag('action', action)
@@ -270,7 +279,8 @@ class RealEnv(gym.Env):
             elif self.env_type == "effort":
                 current_tactile = deepcopy(self.current_tactile)
                 tactile_diff = [current_tactile[x] - self.initial_tactile[x] for x in range(len(current_tactile))]
-                self.write_float_array_to_bag('effort', tactile_diff)
+                self.write_float_array_to_bag('tactile', tactile_diff)
+            self.write_float_array_to_bag('object', self.current_object)
 
         info = {}
         truncated = False
@@ -303,16 +313,16 @@ class RealEnv(gym.Env):
         for pca in current_pca:
             observation.append(pca)
 
-        # WIP Setup with new object specified by user input
+        # Setup with new object specified by user input
         self.current_attempt_step = 0
         if self.current_reset_step >= self.reset_steps:
-            # Reset, move to pose again (if pc), insert new object
+            # Reset, insert new object, move to pose
             accepted_input = False
             while not accepted_input:
                 # IDs: 1 - can, 2 - , 3 - 
                 object_id = input("Please enter the id of the next used object:")
                 if object_id in ["1", "2", "3"]:
-                    check = input("Object set to {}. Please give the object to the robot and press enter to continue. If the wrong object was selected, please enter [a].".format(object_id))
+                    check = input("Object set to {}. Press enter to continue. If the wrong object was selected, please enter [a].".format(object_id))
                     if not check == "a":
                         # Set one-hot encoding
                         if object_id == "1":
@@ -327,12 +337,13 @@ class RealEnv(gym.Env):
                 else:
                     print("Object id {} is not known. Please enter one of the known ids [1], [2] or [3].".format(object_id))
             self.current_object = one_hot
-            '''
             for value in one_hot:
                 observation.append(value)
             self.current_reset_step = 0
             self.reset_hand_pose()
-            '''
+        else:
+            for value in self.current_object:
+                observation.append(value)
 
         observation = np.array(observation, dtype = np.float32)
         info = {}

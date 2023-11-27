@@ -17,12 +17,12 @@ class HandoverCommander():
         self.process_pc_srv = rospy.ServiceProxy('process_pc_srv', ProcessPC)
         rospy.loginfo('process_pc_srv initialized.')
 
-        rospy.wait_for_service('move_handover_srv')
-        self.move_handover_srv = rospy.ServiceProxy('move_handover_srv', MoveHandover)
-        rospy.loginfo('move_handover_srv initialized.')
+        rospy.wait_for_service('handover_mover_srv')
+        self.handover_mover_srv = rospy.ServiceProxy('handover_mover_srv', MoveHandover)
+        rospy.loginfo('handover_mover_srv initialized.')
 
         rospy.wait_for_service('hand_closer_srv')
-        self.grasp_tester_srv = rospy.ServiceProxy('hand_closer_srv', HandCloserSrv)
+        self.hand_closer_srv = rospy.ServiceProxy('hand_closer_srv', HandCloserSrv)
         rospy.loginfo('hand_closer_srv initialized.')
 
         rospy.wait_for_service('grasp_tester_srv')
@@ -48,15 +48,15 @@ class HandoverCommander():
 
     def full_pipeline(self, handover_type, grasp_type, object_type):
         rospy.loginfo('Sending service request to initial_setup_srv.')
-        if not self.initial_setup_srv('head', object_type, None):
+        if not self.initial_setup_srv('fixed', object_type, None):
             rospy.logerr('Moving to inital setup failed.')
             return False
 
         rospy.loginfo('Sending service request to process_pc_srv.')
         self.process_pc_srv(True)
 
-        rospy.loginfo('Sending service request to move_handover_srv.')
-        if not self.move_handover_srv('fixed', object_type):
+        rospy.loginfo('Sending service request to handover_mover_srv.')
+        if not self.handover_mover_srv('fixed', object_type):
             rospy.logerr('Moving to handover pose failed.')
             return False
 

@@ -5,6 +5,7 @@ from bimanual_handover_msgs.srv import HandoverControllerSrv
 import sys
 
 def main():
+    rospy.init_node("launch_handover_node")
     rospy.wait_for_service('handover_controller_srv')
     srv = rospy.ServiceProxy('handover_controller_srv', HandoverControllerSrv)
     if len(sys.argv) < 4:
@@ -16,7 +17,7 @@ def main():
         grasp_type = sys.argv[1]
         handover_type = sys.argv[2]
         object_type = sys.argv[3]
-    result = srv(grasp_type, handover_type, object_type)
+    result = srv(handover_type, grasp_type, object_type)
     rospy.loginfo('Handover controller finished with {}.'.format(result.success))
 
 if __name__ == "__main__":

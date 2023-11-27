@@ -17,13 +17,14 @@ from tf2_geometry_msgs import do_transform_pose, do_transform_point
 from bimanual_handover_msgs.srv import CollisionChecking, MoveHandover
 import random
 import sys
-from bio_ik_msgs.msg import IKRequest, PositionGoal, DirectionGoal
+from bio_ik_msgs.msg import IKRequest, PositionGoal, DirectionGoal, AvoidJointLimitsGoal
 from bio_ik_msgs.srv import GetIK
 
 class HandoverMover():
 
     def __init__(self, debug = False):
         rospy.init_node('handover_mover')
+        roscpp_initialize('')
         rospy.on_shutdown(self.shutdown)
 
         # Setup commanders
@@ -57,7 +58,7 @@ class HandoverMover():
             self.debug_pose_pub = rospy.Publisher('debug/handover_mover_setup_pose', PoseStamped, queue_size = 1)
 
         # Start service
-        rospy.Service('move_handover_srv', MoveHandover, self.move_handover)
+        rospy.Service('handover_mover_srv', MoveHandover, self.move_handover)
         rospy.spin()
 
     def shutdown(self):
@@ -193,6 +194,7 @@ class HandoverMover():
 
         # Prepare bio_ik request
         request = IKRequest()
+        # Set non-goal parameters for the request
         # Load robot_model which has rh_grasp as an additional frame
         request.robot_description = "/handover/robot_description_grasp"
         request.group_name = "right_arm"
@@ -200,19 +202,33 @@ class HandoverMover():
         request.timeout = rospy.Duration.from_sec(1)
         request.avoid_collisions = True
         request.robot_state = self.robot.get_current_state()
+
+        # Set the position goal
         pos_goal = PositionGoal()
         pos_goal.link_name = "rh_grasp"
         pos_goal.weight = 10.0
         pos_goal.position.x = transformed_pos.point.x
         pos_goal.position.y = transformed_pos.point.y
         pos_goal.position.z = transformed_pos.point.z
+    
+        # Set the direction goal
         dir_goal = DirectionGoal()
         dir_goal.link_name = "rh_grasp"
         dir_goal.weight = 10.0
         dir_goal.axis = Vector3(0, -1, 0)
         dir_goal.direction = Vector3(-z_direction[0], -z_direction[1], -z_direction[2])
+
+        # Set secondary goals
+        limit_goal = AvoidJointLimitsGoal()
+        weight = 5.0
+        primary = False
+
+        # Add the previous goals
         request.position_goals = [pos_goal]
         request.direction_goals = [dir_goal]
+        request.avoid_joint_limits_goals = [limit_goal]
+
+        # Set additional goals for different objects
         if object_type == "book":
             dir_goal = DirectionGoal()
             dir_goal.link_name = "rh_grasp"

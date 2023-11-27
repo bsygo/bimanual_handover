@@ -1,0 +1,6 @@
+timesteps: 10000
+model_type: 'sac'
+env_type: 'effort'
+model_path: '' # set either path or empty string
+env_check: True
+checkpoint: False

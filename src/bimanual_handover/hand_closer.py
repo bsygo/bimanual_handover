@@ -14,7 +14,7 @@ from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from sr_robot_msgs.msg import BiotacAll
 from bimanual_handover_msgs.srv import HandCloserSrv
-from moveit_commander import MoveGroupCommander
+from moveit_commander import MoveGroupCommander, roscpp_initialize, roscpp_shutdown
 import actionlib
 from control_msgs.msg import FollowJointTrajectoryAction, FollowJointTrajectoryGoal
 from copy import deepcopy
@@ -167,6 +167,8 @@ class ModelMover():
 
     def __init__(self, model_name = "sac_checkpoint_23_10_2023_15_47_12900_steps.zip"):
         rospy.init_node('model_mover')
+        roscpp_initialize('')
+        rospy.on_shutdown(self.shutdown)
         rospack = rospkg.RosPack()
         pkg_path = rospack.get_path('bimanual_handover')
         model_path = pkg_path + "/models/" + "checkpoints/" + model_name
@@ -185,6 +187,9 @@ class ModelMover():
         #self.joint_state_sub = rospy.Subscriber('/hand/joint_states', JointState, callback = self.joint_callback, queue_size = 10)
         rospy.Service('hand_closer_srv', HandCloserSrv, self.close_hand)
         rospy.spin()
+
+    def shutdown(self):
+        roscpp_shutdown()
 
     def tactile_callback(self, tactile):
         self.current_tactile = [x.pdc for x in tactile.tactiles]

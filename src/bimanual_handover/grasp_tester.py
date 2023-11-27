@@ -5,6 +5,7 @@ from moveit_commander import roscpp_initialize, roscpp_shutdown, MoveGroupComman
 from std_msgs.msg import Bool
 from bimanual_handover_msgs.srv import GraspTesterSrv
 from geometry_msgs.msg import WrenchStamped, PoseStamped
+from moveit_msgs.msg import DisplayRobotState
 from copy import deepcopy
 from bio_ik_msgs.msg import PoseGoal, IKRequest
 from bio_ik_msgs.srv import GetIK
@@ -38,9 +39,10 @@ class GraspTester():
         # Debug
         self.debug = debug
         if self.debug:
-            self.debug_pub_current = rospy.Publisher('debug/pre_cartesian', PoseStamped, queue_size = 1, latch = True)
-            self.debug_pub_plan = rospy.Publisher('debug/plan_cartesian', PoseStamped, queue_size = 1, latch = True)
-            self.debug_snapshot_pub = rospy.Publisher('debug/debug_snapshot', Bool, queue_size = 1, latch = True)
+            self.debug_ik_solution_pub = rospy.Publisher('debug/grasp_tester/ik_solution', DisplayRobotState, queue_size = 1, latch = True)
+            self.debug_pub_current = rospy.Publisher('debug/grasp_tester/pre_cartesian', PoseStamped, queue_size = 1, latch = True)
+            self.debug_pub_plan = rospy.Publisher('debug/grasp_tester/plan_cartesian', PoseStamped, queue_size = 1, latch = True)
+            self.debug_snapshot_pub = rospy.Publisher('debug/grasp_tester/debug_snapshot', Bool, queue_size = 1, latch = True)
             self.debug_snapshot_pub.publish(False)
 
         # Start service
@@ -118,6 +120,10 @@ class GraspTester():
         request = self.add_goals(request, target_pose.pose)
         response = self.bio_ik_srv(request).ik_response
         if not response.error_code.val == 1:
+            if self.debug:
+                display_state = DisplayRobotState()
+                display_state.state = response.solution
+                self.debug_ik_solution_pub.publish(display_state)
             raise Exception("Bio_ik planning failed with error code {}.".format(response.error_code.val))
         filtered_joint_state = self.filter_joint_state(response.solution.joint_state, self.right_arm)
         self.right_arm.set_joint_value_target(filtered_joint_state)
@@ -152,14 +158,25 @@ class GraspTester():
             return False
         #rospy.loginfo("Initial force value: {}".format(prev_ft))
 
+        # Get current pose
         current_pose = self.right_arm.get_current_pose()
         old_joint_values = deepcopy(self.right_arm.get_current_joint_values())
+
+        # Transform from base_footprint into l_gripper_tool_frame
         base_gripper_transform = self.tf_buffer.lookup_transform("l_gripper_tool_frame", "base_footprint", rospy.Time(0))
         transformed_pose = do_transform_pose(current_pose, base_gripper_transform)
+
+        # Adjust pose in l_gripper_tool_frame
         transformed_pose.pose.position.z += 0.005
         if self.debug:
             self.debug_pub_plan.publish(transformed_pose)
-        self.move_bio_ik(transformed_pose)
+
+        # Transform pose back to base_fooprint
+        gripper_base_transform = self.tf_buffer.lookup_transform("base_footprint", "l_gripper_tool_frame", rospy.Time(0))
+        goal_pose = do_transform_pose(transformed_pose, gripper_base_transform)
+
+        # Move to goal pose
+        self.move_bio_ik(goal_pose)
 
         if self.debug:
             self.debug_snapshot_pub.publish(False)

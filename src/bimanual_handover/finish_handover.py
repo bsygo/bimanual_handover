@@ -12,6 +12,7 @@ class FinishHandover():
 
     def __init__(self):
         rospy.init_node('finish_handover')
+        roscpp_initialize('')
         rospy.on_shutdown(self.shutdown)
         self.gripper = MoveGroupCommander('left_gripper', ns = "/")
         self.left_arm = MoveGroupCommander('left_arm', ns = "/")

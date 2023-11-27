@@ -18,6 +18,10 @@ def reset_right_arm():
 
 def grasp_object():
     global gripper
+    response = input("Do you want to change the current object? [Y/n]")
+    if response in ["n", "N", "no", "No"]:
+        print("Keeping the current object. Continuing without changing.")
+        return
     input("Please prepare to catch current object in the gripper. Press Enter when ready.")
     gripper.set_named_target('open')
     gripper.go()

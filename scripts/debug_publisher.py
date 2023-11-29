@@ -14,8 +14,8 @@ def main():
     global value, pub
     value = 0
     rospy.init_node("debug_snapshot_node")
-    pub = rospy.Publisher("/handover/debug/debug_snapshot_const", Bool, queue_size = 1)
-    sub = rospy.Subscriber("/handover/debug/debug_snapshot", Bool, update_value)
+    pub = rospy.Publisher("/handover/debug/grasp_tester/debug_snapshot_const", Bool, queue_size = 1)
+    sub = rospy.Subscriber("/handover/debug/grasp_tester/debug_snapshot", Bool, update_value)
     rospy.loginfo("{}".format(rospy.is_shutdown()))
     while not rospy.is_shutdown():
         pub.publish(value)

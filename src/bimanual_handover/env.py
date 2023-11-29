@@ -334,6 +334,8 @@ class RealEnv(gym.Env):
                         accepted_input = True
                     else:
                         print("Object selection aborted.")
+                elif rospy.is_shutdown():
+                    self.close()
                 else:
                     print("Object id {} is not known. Please enter one of the known ids [1], [2] or [3].".format(object_id))
             self.current_object = one_hot

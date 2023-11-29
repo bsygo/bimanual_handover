@@ -232,7 +232,7 @@ class HandoverMover():
         if object_type == "book":
             dir_goal = DirectionGoal()
             dir_goal.link_name = "rh_grasp"
-            dir_goal.weight = 10.0
+            dir_goal.weight = 8.0
             dir_goal.axis = Vector3(0, 0, 1)
             dir_goal.direction = Vector3(y_direction[0], y_direction[1], y_direction[2])
             request.direction_goals.append(dir_goal)

@@ -27,6 +27,8 @@ class GraspTester():
         self.right_arm = MoveGroupCommander('right_arm', ns = "/")
         self.right_arm.get_current_pose() # To initiate state monitor: see moveit issue #2715
         self.fingers = MoveGroupCommander('right_fingers', ns = "/")
+        self.fingers.set_max_velocity_scaling_factor(1.0)
+        self.fingers.set_max_acceleration_scaling_factor(1.0)
         self.robot = RobotCommander()
 
         # Setup services

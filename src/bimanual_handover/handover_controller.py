@@ -72,7 +72,7 @@ class HandoverCommander():
             return False
 
         rospy.loginfo('Sending service request to grasp_tester_srv.')
-        grasp_response = self.grasp_tester_srv('y')
+        grasp_response = self.grasp_tester_srv('y', False)
         rospy.loginfo('Grasp response: {}'.format(grasp_response))
         if not grasp_response:
             rospy.logerr('Executing grasp failed.')

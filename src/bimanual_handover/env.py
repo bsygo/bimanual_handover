@@ -150,7 +150,7 @@ class RealEnv(gym.Env):
             terminated = True
 
             # Give reward depending on success of grasp
-            success = self.gt_srv('y').success
+            success = self.gt_srv('y', True).success
             if success:
                 reward = 1
             else:

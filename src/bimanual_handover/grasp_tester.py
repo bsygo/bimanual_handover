@@ -26,6 +26,7 @@ class GraspTester():
         # Setup commanders
         self.right_arm = MoveGroupCommander('right_arm', ns = "/")
         self.right_arm.get_current_pose() # To initiate state monitor: see moveit issue #2715
+        self.fingers = MoveGroupCommander('right_fingers', ns = "/")
         self.robot = RobotCommander()
 
         # Setup services
@@ -187,6 +188,12 @@ class GraspTester():
         elif req.direction == 'z':
             cur_ft = deepcopy(self.current_force_z)
         #rospy.loginfo("Afterwards force value: {}".format(cur_ft))
+
+        if req.train:
+            self.fingers.set_named_target('open')
+            joint_values = dict(rh_THJ4 = 1.13446, rh_LFJ4 = -0.31699402670752413, rh_FFJ4 = -0.23131151280059523, rh_MFJ4 = 0.008929532157657268, rh_RFJ4 = -0.11378487918959583)
+            self.fingers.set_joint_value_target(joint_values)
+            self.fingers.go()
 
         # Reset previous upwards movement
         try:

@@ -1,0 +1,20 @@
+Grasps for the book that were deemed "successful" didn't necessarily result in stable grasps. This happened, because the little finger of the shadow hand is usually the first one that makes contact with the book after the thumb. These two are enough to already pass the force threshold. When the gripper would then get opened, the book would twist, as the little finger and the thumb were not perfectly opposite from each other, resulting in the book falling. Solutions would be:
+
+- Do nothing. As the reward would increase with more fingers conecting with the book, the best grasps should be those where the first and middle finger also have contact with the book, maybe being able to stabilize the grasp.
+
+- Switch object. As the book is not part of the YCB dataset, it will switched to another object eventually. This would not resolve the problem, but may be the most time efficient option, if it doesn't occur with other objects as well.
+
+- Utilize force readings in other directions for reward. If there is such a huge imbalance between the forces of thumb and fingers, beacuse of the length of the book, it might be possible to set a threshold for force in the direction of thumb and fingers. 
+
+- Utilize pressure sensors. As an alternative to the above option, the pressure sensors of the gripper might be of use for feedback. The twist between thumb and little finger should be visible there.
+
+- Make gripper arm effort controled during handover. Probably stupid idea, would cost a lot of time, new issues and might not be possible/might no solve the problem. Only mentioned for completeness.
+
+
+The fingers sometimes seem to push up the hand itself. Drift might result in shifting hand pose, but might get countered already by regular resets for new objects.
+
+
+Encountered an unexplainable error "Unable to fetch current robot state" during random training step. Might need to investigate if it happens further.
+
+
+Might want to place markers on objects to have more consistent grasping location.

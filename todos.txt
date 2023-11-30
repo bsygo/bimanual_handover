@@ -1,0 +1,8 @@
+record good trajectories and replay them to check if they can be repeated
+check if "good" grasps are actually good
+transform checked force from force torque sensor to gripper
+check LFJ5 and enable if possible
+
+maybe include efforts in obs space
+reset initial pose every 1000 steps
+object pointcloud exploration and filtering before initial pose

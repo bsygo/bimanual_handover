@@ -2,35 +2,63 @@
 
 import rospy
 from moveit_commander import roscpp_initialize, roscpp_shutdown, MoveGroupCommander, RobotCommander
+from std_msgs.msg import Bool
 from bimanual_handover_msgs.srv import GraspTesterSrv
 from geometry_msgs.msg import WrenchStamped, PoseStamped
+from moveit_msgs.msg import DisplayRobotState
 from copy import deepcopy
 from bio_ik_msgs.msg import PoseGoal, IKRequest
 from bio_ik_msgs.srv import GetIK
+from tf2_ros import TransformListener, Buffer
+from tf2_geometry_msgs import do_transform_pose
 
 class GraspTester():
 
-    def __init__(self):
-        rospy.init_node('grasp_tester')
+    def __init__(self, debug = True):
+        rospy.init_node('grasp_tester_node')
         roscpp_initialize('')
         rospy.on_shutdown(self.shutdown)
-        force_sub = rospy.Subscriber('/ft/l_gripper_motor', WrenchStamped, self.update_force)
-        rospy.wait_for_service('/bio_ik/get_bio_ik')
-        self.bio_ik_srv = rospy.ServiceProxy('/bio_ik/get_bio_ik', GetIK)
+
+        # Setup force subscriber
         self.current_force = None
+        force_sub = rospy.Subscriber('/ft/l_gripper_motor', WrenchStamped, self.update_force)
+
+        # Setup commanders
         self.right_arm = MoveGroupCommander('right_arm', ns = "/")
         self.right_arm.get_current_pose() # To initiate state monitor: see moveit issue #2715
+        self.fingers = MoveGroupCommander('right_fingers', ns = "/")
+        self.fingers.set_max_velocity_scaling_factor(1.0)
+        self.fingers.set_max_acceleration_scaling_factor(1.0)
         self.robot = RobotCommander()
-        rospy.Service('grasp_tester', GraspTesterSrv, self.test_grasp)
-        self.debug_pub_current = rospy.Publisher('debug/pre_cartesian', PoseStamped, queue_size = 1, latch = True)
-        self.debug_pub_plan = rospy.Publisher('debug/plan_cartesian', PoseStamped, queue_size = 1, latch = True)
+
+        # Setup services
+        rospy.wait_for_service('/bio_ik/get_bio_ik')
+        self.bio_ik_srv = rospy.ServiceProxy('/bio_ik/get_bio_ik', GetIK)
+
+        # Setup tf listener
+        self.tf_buffer = Buffer()
+        TransformListener(self.tf_buffer)
+
+        # Debug
+        self.debug = debug
+        if self.debug:
+            self.debug_ik_solution_pub = rospy.Publisher('debug/grasp_tester/ik_solution', DisplayRobotState, queue_size = 1, latch = True)
+            self.debug_pub_current = rospy.Publisher('debug/grasp_tester/pre_cartesian', PoseStamped, queue_size = 1, latch = True)
+            self.debug_pub_plan = rospy.Publisher('debug/grasp_tester/plan_cartesian', PoseStamped, queue_size = 1, latch = True)
+            self.debug_snapshot_pub = rospy.Publisher('debug/grasp_tester/debug_snapshot', Bool, queue_size = 1, latch = True)
+            self.debug_snapshot_pub.publish(False)
+
+        # Start service
+        rospy.Service('grasp_tester_srv', GraspTesterSrv, self.test_grasp)
         rospy.spin()
 
     def shutdown(self):
         roscpp_shutdown()
 
     def update_force(self, wrench):
-        self.current_force = wrench.wrench.force.y
+        self.current_force_x = wrench.wrench.force.x
+        self.current_force_y = wrench.wrench.force.y
+        self.current_force_z = wrench.wrench.force.z
 
     def prepare_bio_ik_request(self, group_name, timeout_seconds = 1):
         '''
@@ -90,21 +118,15 @@ class GraspTester():
             filtered_joint_state.effort = [joint_state.effort[x] for x in indices]
         return filtered_joint_state
 
-    def test_grasp(self, req):
-        prev_ft = deepcopy(self.current_force)
-        rospy.loginfo("Initial force value: {}".format(prev_ft))
-
-        # For some reason, this needs to happen twice or otherwise the orientation is messed up
-        #current_pose = self.right_arm.get_current_pose()
-        #rospy.sleep(1)
-        current_pose = self.right_arm.get_current_pose()
-
+    def move_bio_ik(self, target_pose):
         request = self.prepare_bio_ik_request('right_arm')
-        current_pose.pose.position.z += 0.005
-        self.debug_pub_plan.publish(current_pose)
-        request = self.add_goals(request, current_pose.pose)
+        request = self.add_goals(request, target_pose.pose)
         response = self.bio_ik_srv(request).ik_response
         if not response.error_code.val == 1:
+            if self.debug:
+                display_state = DisplayRobotState()
+                display_state.state = response.solution
+                self.debug_ik_solution_pub.publish(display_state)
             raise Exception("Bio_ik planning failed with error code {}.".format(response.error_code.val))
         filtered_joint_state = self.filter_joint_state(response.solution.joint_state, self.right_arm)
         self.right_arm.set_joint_value_target(filtered_joint_state)
@@ -112,9 +134,85 @@ class GraspTester():
         if not plan:
             raise Exception("Moving to pose \n {} \n failed. No path was found to the joint state \n {}.".format(current_pose, filtered_joint_state))
 
-        cur_ft = deepcopy(self.current_force)
-        rospy.loginfo("Afterwards force value: {}".format(cur_ft))
-        if prev_ft + 2 <= cur_ft:
+    def enforce_bounds(self, joint_values):
+        joint_names = self.right_arm.get_active_joints()
+        for i in range(len(joint_names)):
+            joint_object = self.robot.get_joint(joint_names[i])
+            bounds = joint_object.bounds()
+            if joint_values[i] < bounds[0]:
+                joint_values[i] = bounds[0]
+                rospy.loginfo("{} set from {} to {}.".format(joint_names[i], joint_values[i], bounds[0]))
+            elif joint_values[i] > bounds[1]:
+                joint_values[i] = bounds[1]
+                rospy.loginfo("{} set from {} to {}.".format(joint_names[i], joint_values[i], bounds[1]))
+        return joint_values
+
+    def test_grasp(self, req):
+        if self.debug:
+            self.debug_snapshot_pub.publish(True)
+        if req.direction == "x":
+            prev_ft = deepcopy(self.current_force_x)
+        elif req.direction == "y":
+            prev_ft = deepcopy(self.current_force_y)
+        elif req.direction == "z":
+            prev_ft = deepcopy(self.current_force_z)
+        else:
+            rospy.logerr("Unknown direction {} for grasp_tester. Currently only x, y and z are implemented.")
+            return False
+        #rospy.loginfo("Initial force value: {}".format(prev_ft))
+
+        # Get current pose
+        current_pose = self.right_arm.get_current_pose()
+        old_joint_values = deepcopy(self.right_arm.get_current_joint_values())
+
+        # Transform from base_footprint into l_gripper_tool_frame
+        base_gripper_transform = self.tf_buffer.lookup_transform("l_gripper_tool_frame", "base_footprint", rospy.Time(0))
+        transformed_pose = do_transform_pose(current_pose, base_gripper_transform)
+
+        # Adjust pose in l_gripper_tool_frame
+        transformed_pose.pose.position.z += 0.005
+        if self.debug:
+            self.debug_pub_plan.publish(transformed_pose)
+
+        # Transform pose back to base_fooprint
+        gripper_base_transform = self.tf_buffer.lookup_transform("base_footprint", "l_gripper_tool_frame", rospy.Time(0))
+        goal_pose = do_transform_pose(transformed_pose, gripper_base_transform)
+
+        # Move to goal pose
+        self.move_bio_ik(goal_pose)
+
+        if self.debug:
+            self.debug_snapshot_pub.publish(False)
+        if req.direction == 'x':
+            cur_ft = deepcopy(self.current_force_x)
+        elif req.direction == 'y':
+            cur_ft = deepcopy(self.current_force_y)
+        elif req.direction == 'z':
+            cur_ft = deepcopy(self.current_force_z)
+        #rospy.loginfo("Afterwards force value: {}".format(cur_ft))
+
+        if req.train:
+            self.fingers.set_named_target('open')
+            joint_values = dict(rh_THJ4 = 1.13446, rh_LFJ4 = -0.31699402670752413, rh_FFJ4 = -0.23131151280059523, rh_MFJ4 = 0.008929532157657268, rh_RFJ4 = -0.11378487918959583)
+            self.fingers.set_joint_value_target(joint_values)
+            self.fingers.go()
+
+        # Reset previous upwards movement
+        try:
+            self.right_arm.set_joint_value_target(old_joint_values)
+            self.right_arm.go()
+        except Exception as e:
+            rospy.logerr("Encountered exception [ {} ] while moving to pre-test pose. Trying again with bounded joints.".format(e))
+            old_joint_values = self.enforce_bounds(old_joint_values)
+            try:
+                self.right_arm.set_joint_value_target(old_joint_values)
+                self.right_arm.go()
+            except Exception as e:
+                rospy.logerr("Encountered exception [ {} ] while moving to pre-test pose with bounded joints.".format(e))
+                input("Please decide how to solve this issue and press Enter to continue.")
+
+        print("Force diff: {}".format(abs(prev_ft - cur_ft)))
+        if abs(prev_ft - cur_ft) >= 2:
             return True
         else:
             return False

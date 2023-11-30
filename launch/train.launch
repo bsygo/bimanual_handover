@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<launch>
+        <!-- <arg name="model_type" value="/models/checkpoints/sac_checkpoint_23_10_2023_15_47_12900_steps" /> -->
+        <include file="$(find bimanual_handover)/launch/full.launch" />
+        <group ns="handover">
+                <rosparam file="$(find bimanual_handover)/config/train.yaml" />
+                <node name="trainer" pkg="bimanual_handover" type="train.py" output="screen" />
+        </group>
+</launch>

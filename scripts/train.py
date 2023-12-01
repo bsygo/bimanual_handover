@@ -47,6 +47,7 @@ def main():
         log_name = "{}_{}".format(model_type, str_date)
     else:
         # Load date from specified model
+        model_path = path + model_path
         log_pattern = re.compile(r".*_(?P<date>\d\d_\d\d_\d\d\d\d_\d\d_\d\d).*")
         matches = log_pattern.match(model_path)
         str_date = matches.group('date')

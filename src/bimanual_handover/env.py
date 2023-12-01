@@ -220,7 +220,12 @@ class RealEnv(gym.Env):
                 # Determine reward based on how much the fingers closed compared to the previous configuration
                 reward = 0
                 joint_diff = 0
-                current_joints = self.fingers.get_current_joint_values()
+                # Sometimes the error "Failed to fetch current robot state" occurs here
+                # Possibly because finger joint values are not published in every joint_states msg.
+                # This should ensure to try again until a correct state was received.
+                current_joints = []
+                while not current_joints:
+                    current_joints = deepcopy(self.fingers.get_current_joint_values())
                 for joint in self.closing_joints:
                     index = self.joint_order.index(joint)
                     if current_joints[index] >= self.last_joints[index]:
@@ -235,7 +240,12 @@ class RealEnv(gym.Env):
                 terminated = True
                 terminated_reason = "Exception {} encountered".format(e)
                 reward = -1
-
+            except IndexError as e:
+                rospy.logerr("Error encountered: {}".format(e))
+                rospy.logerr("current_joints list is the most likely error source. Value is {}.".format(current_joints))
+                rospy.logerr("Next step is to terminate current run. Keeping it running until manual termination for diagnosis.")
+                while not rospy.is_shutdown():
+                    rospy.sleep(1)
 
         # Update observation for next step
         if self.env_type == "tactile":

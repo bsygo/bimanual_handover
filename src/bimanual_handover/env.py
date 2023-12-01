@@ -37,8 +37,8 @@ class RealEnv(gym.Env):
         self.action_space = spaces.Box(low = -1, high = 1, shape = (3,), dtype = np.float32)
         if self.env_type == "tactile":
             # First 5 values for biotac diff, last 3 values for current joint config in pca space
-            self.observation_space = spaces.Box(low = -100, high = 100, shape = (8,), dtype = np.float32) 
-        elif self.env_type == "effort": 
+            self.observation_space = spaces.Box(low = -100, high = 100, shape = (8,), dtype = np.float32)
+        elif self.env_type == "effort":
             # First 3 values for current joint config in pca space, next 9 values for efforts, last 3 values for one-hot encoding of object
             self.observation_space = spaces.Box(low = -1000, high = 1000, shape = (15,), dtype = np.float32)
 
@@ -54,7 +54,7 @@ class RealEnv(gym.Env):
         self.fingers = fingers
         self.closing_joints = ['rh_FFJ2', 'rh_FFJ3', 'rh_MFJ2', 'rh_MFJ3', 'rh_RFJ2', 'rh_RFJ3', 'rh_LFJ2', 'rh_LFJ3', 'rh_THJ2']
         self.joint_order = self.fingers.get_active_joints()
-        
+
         # Setup observation callbacks
         self.tactile_sub = rospy.Subscriber('/hand/rh/tactile', BiotacAll, self.tactile_callback)
         self.effort_sub = rospy.Subscriber('/hand/joint_states', JointState, self.effort_callback)
@@ -173,7 +173,7 @@ class RealEnv(gym.Env):
             terminated = False
 
             # Reduce normalized actions
-            action[0] = (action[0] - 1)/2 
+            action[0] = (action[0] - 1)/2
             action[1] = (action[1] - 1)/2
 
             # Turn action into joint configuration
@@ -187,7 +187,7 @@ class RealEnv(gym.Env):
             if self.env_type == "tactile":
                 checks = contacts
             elif self.env_type == "effort":
-                checks = [contacts[0] and contacts[1], contacts[2] and contacts[3], contacts[4] and contacts[5], contacts[6] and contacts[7], contacts[8]]    
+                checks = [contacts[0] and contacts[1], contacts[2] and contacts[3], contacts[4] and contacts[5], contacts[6] and contacts[7], contacts[8]]
             del_keys = []
             if checks[0]:
                 for key in result.keys():
@@ -211,7 +211,7 @@ class RealEnv(gym.Env):
                         del_keys.append(key)
             for key in del_keys:
                 del result[key]
-            
+
             try:
                 # Move into desired joint configuration
                 self.fingers.set_joint_value_target(result)
@@ -329,7 +329,7 @@ class RealEnv(gym.Env):
             # Reset, insert new object, move to pose
             accepted_input = False
             while not accepted_input:
-                # IDs: 1 - can, 2 - , 3 - 
+                # IDs: 1 - can, 2 - , 3 -
                 object_id = input("Please enter the id of the next used object:")
                 if object_id in ["1", "2", "3"]:
                     check = input("Object set to {}. Press enter to continue. If the wrong object was selected, please enter [a].".format(object_id))
@@ -396,7 +396,7 @@ class TrajEnv(gym.Env):
             rospy.sleep(1)
 
         # Reduce normalized actions
-        action[0] = (action[0] - 1)/2 
+        action[0] = (action[0] - 1)/2
         action[1] = (action[1] - 1)/2
         action[4] = (action[1] - 1)/2
         action[5] = (action[1] - 1)/2
@@ -456,7 +456,7 @@ class TrajEnv(gym.Env):
                             del_keys.append(key)
                 for key in del_keys:
                     del result[key]
-            
+
                 # Move into desired config
                 try:
                     self.fingers.set_joint_value_target(result)

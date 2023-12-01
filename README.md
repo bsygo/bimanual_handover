@@ -1,4 +1,23 @@
 # bimanual_handover
+plan:
+-have object in 2 finger gripper
+-observe object using azure kinect to get pointcloud
+-preprocess pointcloud to filter robot out and crop to object (implemented)
+-use gpd to generate grasp poses for the shadow hand (implemented)
+-filter grasp poses by removing self collision poses (implemented)
+-sample transforms to move into ideal handover poses
+-move to handover poses
+-learn handover:
+    -open hand (implemented/tested)
+    -move fingers until first contact (implemented/WIP)
+    -start training: (partially implemented)
+        -action: small synergy changes, decision to lift (partially implemented)
+        -observation: joint states, gripper tactile, sh tactiles(, force/torque readings) (implemented)
+        -reward: positive if closing motion, negative if opening motion, final reward after lift decision (partially implemented)
+        -end: lift decision
+    -repeat process for different objects until gerneralized
+-perform handover
+-move shadow hand to predetermined position and open to drop object
 
 Workspace installation:
 - create virtualenv with: virtualenv name 
@@ -27,4 +46,3 @@ The previous models don't work either and were trained for 10000 steps or fewer.
 The models 04_10_2023 and after are trained for 100000 steps with the MlpPolicy for PPO and usin    g the updated MimicEnv, which has only 3 values as the joint values encoded in PCA space as obse    rvation space as a Box. They also have only 3 PCA values as action.
 04_10_2023 failed due to a bug, where the current pca values would be falsely updated.
 06_10_2023 works very well, if the joints 4 for each finger except the thumb are limited to rema    in in the current configurations (otherwise collisions occur).
-

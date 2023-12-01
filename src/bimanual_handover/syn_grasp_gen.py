@@ -86,7 +86,7 @@ class SynGraspGen():
     def limit_joints(self, joint_dict, current_joint_config):
         limit_joints = ['rh_FFJ4', 'rh_MFJ4', 'rh_RFJ4', 'rh_LFJ4']
         for joint in limit_joints:
-            joint_dict[joint] = current_joint_config[self.joint_order.index(joint)] 
+            joint_dict[joint] = current_joint_config[self.joint_order.index(joint)]
         return joint_dict
 
     def enforce_bounds(self, joint_dict):

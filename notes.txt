@@ -4,6 +4,12 @@ Grasps for the book that were deemed "successful" didn't necessarily result in s
 
 - Switch object. As the book is not part of the YCB dataset, it will switched to another object eventually. This would not resolve the problem, but may be the most time efficient option, if it doesn't occur with other objects as well.
 
+- Adjust hand pose. The current pose was chosen just by human intuition. A pose with the thumb initially further away from the book might have the thumb more centralized compared to the other fingers and lets more fingers make contact with the book, resulting in a possibly more stable grasp.
+
+- Remove max_steps. With the effort method, the training procedure is more likely to actually make contact with every finger compared to the tactile method. For the book, it would mean it has to run until all fingers hace made contact, possibly having the required counterforce to the thumb with the first and middle finger.
+
+- Increase the effort threshold for the first finger. It might be, that the first finger never makes contact with the book, because it hits the force threshold previously just through movement. Needs to be observed.
+
 - Utilize force readings in other directions for reward. If there is such a huge imbalance between the forces of thumb and fingers, beacuse of the length of the book, it might be possible to set a threshold for force in the direction of thumb and fingers. 
 
 - Utilize pressure sensors. As an alternative to the above option, the pressure sensors of the gripper might be of use for feedback. The twist between thumb and little finger should be visible there.

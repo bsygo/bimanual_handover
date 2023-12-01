@@ -107,6 +107,25 @@ class HandoverMover():
         request.pose_goals = [goal]
         return request
 
+    def score(self, joint_state):
+        # Should be the maximum distance to any joint limit. Need to check joint limits if correct
+        epsilon = math.pi
+
+        # Calculations of delta for cost function
+        delta = []
+        joints = joint_state.name
+        for i in joints:
+            bounds = self.robot.get_joint(joints[i]).bounds()
+            delta.append(min(abs(bounds[1] - joint_state.position[i]), abs(joint_state.position[i] - bounds[0])))
+
+        # Implementation of cost function in bimanual functional regrasping paper
+        score = 0
+        for i in range(len(delta)):
+            score += 1/epsilon**2 * delta[i]**2 - 2/epsilon * delta[i] + 1
+        score = score/len(delta)
+
+        return score
+            
     def check_pose(self, gripper_pose, hand_pose):
         # Get hand solution
         request = prepare_bio_ik_request("right_arm", self.robot.get_current_state())
@@ -131,7 +150,13 @@ class HandoverMover():
             return score
         else:
             filtered_joint_state_gripper = filter_joint_state(result.solution.joint_state, "left_arm")
-        return score
+
+        # Combine joint_states for combined score
+        combined joint_state = JointState()
+        combined_joint_state.name = filtered_joint_state_hand.name + filtered_joint_state_gripper
+        combined_joint_state.position = filtered_joint_state_hand.name + filtered_joint_state_gripper
+        
+        return self.score(combined_joint_state)
 
     def send_handover_frame(self, gripper_pose, hand_pose):
         frame_pose = PoseStamped()

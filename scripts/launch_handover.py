@@ -6,11 +6,11 @@ import sys
 
 def main():
     rospy.init_node("launch_handover_node")
-    rospy.wait_for_service('handover_controller_srv')
-    srv = rospy.ServiceProxy('handover_controller_srv', HandoverControllerSrv)
+    rospy.wait_for_service('/handover/handover_controller_srv')
+    srv = rospy.ServiceProxy('/handover/handover_controller_srv', HandoverControllerSrv)
     if len(sys.argv) < 4:
         rospy.loginfo('Missing parameters to call handover_controller. Calling with default parameters.')
-        grasp_type = 'ccm'
+        grasp_type = 'pca'
         handover_type = 'full'
         object_type = 'can'
     else:

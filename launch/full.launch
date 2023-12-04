@@ -11,6 +11,7 @@
     <include file="$(find bimanual_handover)/launch/pc_filter.launch" >
         <arg name="demo_pc" value="$(arg demo)" />
     </include>
+    <rosparam file="$(find bimanual_handover)/config/config.yaml" />
     <!-- Upload everything needed to be able to create a robot model with the additional link rh_grasp fro plannning. -->
     <param name="robot_description_grasp" command="xacro '$(find bimanual_handover)/robots/tams_pr2.urdf.xacro'" />
     <param name="robot_description_grasp_semantic" textfile="$(find bimanual_handover)/robots/tams_pr2.srdf" />

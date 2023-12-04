@@ -1,0 +1,3 @@
+closing_model_path: '/models/checkpoints/sac_checkpoint_29_11_2023_16_09_5400_steps' #'/models/sac_model_29_11_2023_16_09' # Without zip
+closing_model_replay_buffer_path: '/models/checkpoints/sac_checkpoint_29_11_2023_16_09_replay_buffer_5400_steps' #'/models/sac_model_29_11_2023_16_09_replay_buffer' # Without pkl
+

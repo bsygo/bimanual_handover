@@ -35,12 +35,12 @@ class FinishHandover():
         self.gripper.go()
         gripper_pose = PoseStamped()
         gripper_pose.header.frame_id = "l_gripper_tool_frame"
-        gripper_pose.pose.position.x += -0.05
+        gripper_pose.pose.position.x += -0.1
         gripper_pose.pose.orientation.w = 1
         gripper_base_transform = self.tf_buffer.lookup_transform("base_footprint", "l_gripper_tool_frame", rospy.Time(0))
         gripper_pose = do_transform_pose(gripper_pose, gripper_base_transform)
         plan, fraction = self.left_arm.compute_cartesian_path([gripper_pose.pose], 0.01, 0.0)
-        if fraction < 1.0:
+        if fraction < 0.8:
             rospy.loginfo('Only {} of the path to remove the gripper from the object found.'.format(fraction))
         self.left_arm.execute(plan)
         self.left_arm.set_named_target('left_arm_to_side')

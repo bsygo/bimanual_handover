@@ -23,6 +23,7 @@
     <node name="capture_pc_node" pkg="bimanual_handover" type="capture_pc.py" output="screen" args="$(arg demo)"/>
     <node name="hand_closer_node" pkg="bimanual_handover" type="hand_closer.py" output="screen" args="$(arg grasp_mode)" />
     <node name="grasp_tester_node" pkg="bimanual_handover" type="grasp_tester.py" output="screen" />
+    <node name="handover_frame_publisher_node" pkg="bimanual_handover" type="handover_frame_publisher.py" output="screen" />
     <node name="handover_mover_node" pkg="bimanual_handover" type="handover_mover.py" output="screen" />
     <node name="finish_handover_node" pkg="bimanual_handover" type="finish_handover.py" output="screen" />
     <node name="handover_controller_node" pkg="bimanual_handover" type="handover_controller.py" output="screen" />

@@ -23,14 +23,21 @@ def broadcast_transform():
     broadcaster = TransformBroadcaster()
     while not rospy.is_shutdown():
         current_transform = deepcopy(transform)
-        current_transform.header.stamep = rospy.Time.now()
+        current_transform.header.stamp = rospy.Time.now()
         broadcaster.sendTransform(current_transform)
         rate.sleep()
+
+def init_transform():
+    initial_pose = PoseStamped()
+    initial_pose.header.frame_id = "base_footprint"
+    initial_pose.pose.orientation.w = 1
+    set_transform(initial_pose)
 
 def main():
     global transform
     rospy.init_node("handover_frame_publisher")
     transform = TransformStamped()
+    init_transform()
     rospy.Subscriber("handover_frame_pose", PoseStamped, set_transform)
     broadcast_transform()
 

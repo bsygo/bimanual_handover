@@ -5,7 +5,7 @@ from moveit_commander import MoveGroupCommander, roscpp_initialize, roscpp_shutd
 import sensor_msgs.point_cloud2 as pc2
 from sensor_msgs.msg import PointCloud2, JointState
 from visualization_msgs.msg import Marker
-from geometry_msgs.msg import PoseStamped, Quaternion, Pose, Vector3, PointStamped
+from geometry_msgs.msg import PoseStamped, Quaternion, Pose, Vector3, PointStamped, TransformStamped
 from tf.transformations import quaternion_from_euler, quaternion_from_matrix, quaternion_multiply, quaternion_matrix
 import math
 import numpy as np
@@ -20,6 +20,7 @@ import sys
 from bio_ik_msgs.msg import IKRequest, PositionGoal, DirectionGoal, AvoidJointLimitsGoal, PoseGoal
 from bio_ik_msgs.srv import GetIK
 from bimanual_handover.bio_ik_helper_functions import prepare_bio_ik_request, filter_joint_state
+from copy import deepcopy
 
 class HandoverMover():
 
@@ -58,6 +59,7 @@ class HandoverMover():
         # Debug
         self.debug = debug
         if self.debug:
+            self.debug_second_pose_pub = rospy.Publisher('debug/handover_mover_second_pose', PoseStamped, queue_size = 1)
             self.debug_pose_pub = rospy.Publisher('debug/handover_mover_setup_pose', PoseStamped, queue_size = 1)
 
         # Start service
@@ -103,7 +105,7 @@ class HandoverMover():
                         new_transform.header.frame_id = "handover_frame"
                         new_transform.child_frame_id = "handover_frame"
                         new_transform.transform.translation = Vector3(*[x * translation_step for x in linear])
-                        new_transform.transform.roation = Quaternion(*quaternion_from_euler(*[y * rotation_step for y in angular]))
+                        new_transform.transform.rotation = Quaternion(*quaternion_from_euler(*[y * rotation_step for y in angular]))
                         transformations.append(new_transform)
         return transformations
 
@@ -122,7 +124,7 @@ class HandoverMover():
         # Calculations of delta for cost function
         delta = []
         joints = joint_state.name
-        for i in joints:
+        for i in range(len(joints)):
             bounds = self.robot.get_joint(joints[i]).bounds()
             delta.append(min(abs(bounds[1] - joint_state.position[i]), abs(joint_state.position[i] - bounds[0])))
 
@@ -136,34 +138,37 @@ class HandoverMover():
             
     def check_pose(self, gripper_pose, hand_pose):
         # Get hand solution
-        request = prepare_bio_ik_request("right_arm", self.robot.get_current_state())
+        request = prepare_bio_ik_request("right_arm", self.robot.get_current_state(), "robot_description_grasp")
         request.robot_description = "/handover/robot_description_grasp"
         request = self.add_pose_goal(request, hand_pose, 'rh_grasp')
-        result = self.bio_ik_srv(request)
+        result = self.bio_ik_srv(request).ik_response
         # If result is not feasible, no further checking necessary, return worst score
         if result.error_code.val != 1:
             score = 1
             return score
         else:
-            filtered_joint_state_hand = filter_joint_state(result.solution.joint_state, "right_arm")
+            filtered_joint_state_hand = filter_joint_state(result.solution.joint_state, self.hand)
 
         # Get gripper solution
         request = prepare_bio_ik_request("left_arm", self.robot.get_current_state())
         request.robot_description = "/handover/robot_description_grasp"
         request = self.add_pose_goal(request, hand_pose, 'l_gripper_tool_frame')
-        result = self.bio_ik_srv(request)
+        result = self.bio_ik_srv(request).ik_response
         # If result is not feasible, no further checking necessary, return worst score
         if result.error_code.val != 1:
             score = 1
             return score
         else:
-            filtered_joint_state_gripper = filter_joint_state(result.solution.joint_state, "left_arm")
+            filtered_joint_state_gripper = filter_joint_state(result.solution.joint_state, self.left_arm)
 
         # Combine joint_states for combined score
         combined_joint_state = JointState()
-        combined_joint_state.name = filtered_joint_state_hand.name + filtered_joint_state_gripper
-        combined_joint_state.position = filtered_joint_state_hand.name + filtered_joint_state_gripper
+        combined_joint_state.name = filtered_joint_state_hand.name + filtered_joint_state_gripper.name
+        combined_joint_state.position = filtered_joint_state_hand.position + filtered_joint_state_gripper.position
         
+        rospy.loginfo("Score hand: {}".format(self.score(filtered_joint_state_hand)))
+        rospy.loginfo("Score gripper: {}".format(self.score(filtered_joint_state_gripper)))
+
         return self.score(combined_joint_state)
 
     def send_handover_frame(self, gripper_pose, hand_pose):
@@ -179,14 +184,15 @@ class HandoverMover():
         self.handover_frame_pub.publish(frame_pose)
 
     def get_handover_transform(self, gripper_pose, hand_pose):
-        send_handover_frame(gripper_pose, hand_pose)
+        self.send_handover_frame(gripper_pose, hand_pose)
 
         # Transform gripper and hand pose to handover_frame
-        base_handover_transform = self.tf_buffer.lookup_transform("handover_frame", "base_footprint", rospy.Time.now())
+        base_handover_transform = self.tf_buffer.lookup_transform("handover_frame", "base_footprint", rospy.Time(0))
         gripper_pose = do_transform_pose(gripper_pose, base_handover_transform)
         hand_pose = do_transform_pose(hand_pose, base_handover_transform)
 
         # Setup for iterating through transformations
+        score_limit = 0.6
         best_score = 1
         best_transform = None
         transformations = self.get_sample_transformations()
@@ -200,10 +206,17 @@ class HandoverMover():
             transformed_hand = do_transform_pose(transformed_hand, transformation)
 
             # Evaluate
-            score = check_pose(transformed_gripper, transformed_hand)
+            score = self.check_pose(transformed_gripper, transformed_hand)
             if score < best_score:
                 best_score = score
                 best_transform = transformation
+            rospy.loginfo("Transform score: {}".format(score))
+
+            # Stop if score already good enough
+            if best_score < score_limit:
+                break
+        rospy.loginfo("Best score: {}".format(best_score))
+        rospy.loginfo("Best transform: {}".format(best_transform))
         return best_transform
 
     def move_gpd_pose(self):
@@ -290,13 +303,16 @@ class HandoverMover():
             hand_pose.pose.position.x = 0
         hand_pose.pose.position.y = 0
         hand_pose.pose.position.z = 0.167
-        hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(0, 0, 0)) # Adapt to correct numbers
+        hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(-1.5708, 3.14159, 1.5708))
         hand_pose = do_transform_pose(hand_pose, gripper_base_transform)
 
         # Get required trasforms
         handover_transform = self.get_handover_transform(gripper_pose, hand_pose)
         base_handover_transform = self.tf_buffer.lookup_transform("handover_frame", "base_footprint", rospy.Time(0))
         handover_base_transform = self.tf_buffer.lookup_transform("base_footprint", "handover_frame", rospy.Time(0))
+
+        if self.debug:
+            self.debug_second_pose_pub.publish(hand_pose)
 
         # Transform poses into handover_frame
         gripper_pose = do_transform_pose(gripper_pose, base_handover_transform)
@@ -314,9 +330,14 @@ class HandoverMover():
         self.left_arm.set_pose_target(gripper_pose)
         self.left_arm.go()
 
+        if self.debug:
+            self.debug_pose_pub.publish(hand_pose)
+
         # Move hand to requested pose
         self.hand.set_pose_target(hand_pose)
         self.hand.go()
+
+        return True
 
     def move_fixed_pose_above(self, object_type = None):
         self.setup_fingers()

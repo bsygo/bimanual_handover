@@ -4,7 +4,7 @@ import rospy
 from bio_ik_msgs.msg import IKRequest
 from bio_ik_msgs.srv import GetIK
 
-def prepare_bio_ik_request(group_name, robot_state, timeout_seconds = 1):
+def prepare_bio_ik_request(group_name, robot_state, robot_description = "robot_description", timeout_seconds = 1):
     '''
     Prepares an IKRequest for the bio ik solver.
 
@@ -16,6 +16,7 @@ def prepare_bio_ik_request(group_name, robot_state, timeout_seconds = 1):
     :return IKRequest: The prepared IKRequest.
     '''
     request = IKRequest()
+    request.robot_description = robot_description
     request.group_name = group_name
     request.approximate = True
     request.timeout = rospy.Duration.from_sec(timeout_seconds)

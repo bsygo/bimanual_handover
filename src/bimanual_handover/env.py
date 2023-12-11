@@ -75,7 +75,7 @@ class RealEnv(gym.Env):
         self.handover_controller_srv = rospy.ServiceProxy('handover_controller_srv', HandoverControllerSrv)
 
         # Initialize reset parameters
-        self.max_attempt_steps = 20
+        self.max_attempt_steps = 50
         self.current_attempt_step = 0
         self.reset_steps = 1000
         self.current_reset_step = 1000 # To set an object in first reset call

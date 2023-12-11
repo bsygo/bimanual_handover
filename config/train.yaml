@@ -1,6 +1,6 @@
 timesteps: 10000
 model_type: 'sac'
 env_type: 'effort'
-model_path: '/models/checkpoints/sac_checkpoint_29_11_2023_16_09_6400_steps.zip' # set either path from bimanual_handover package or empty string
+model_path: '' #/models/checkpoints/sac_checkpoint_29_11_2023_16_09_9400_steps.zip' # set either path from bimanual_handover package or empty string
 env_check: False
-checkpoint: True
+checkpoint: False

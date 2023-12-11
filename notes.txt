@@ -24,3 +24,9 @@ Encountered an unexplainable error "Unable to fetch current robot state" during 
 
 
 Might want to place markers on objects to have more consistent grasping location.
+
+
+Might change the cost function to have the epsilon constants for each individual joint instead of one for all (epsilon -> epsilon_i)
+
+
+Might add more rotation possibilities for the handover_mover, at least around the z-axis.

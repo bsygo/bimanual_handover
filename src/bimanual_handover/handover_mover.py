@@ -138,8 +138,7 @@ class HandoverMover():
             
     def check_pose(self, gripper_pose, hand_pose):
         # Get hand solution
-        request = prepare_bio_ik_request("right_arm", self.robot.get_current_state(), "robot_description_grasp")
-        request.robot_description = "/handover/robot_description_grasp"
+        request = prepare_bio_ik_request("right_arm", self.robot.get_current_state(), "/handover/robot_description_grasp", timeout_seconds = 0.1)
         request = self.add_pose_goal(request, hand_pose, 'rh_grasp')
         result = self.bio_ik_srv(request).ik_response
         # If result is not feasible, no further checking necessary, return worst score
@@ -150,8 +149,7 @@ class HandoverMover():
             filtered_joint_state_hand = filter_joint_state(result.solution.joint_state, self.hand)
 
         # Get gripper solution
-        request = prepare_bio_ik_request("left_arm", self.robot.get_current_state())
-        request.robot_description = "/handover/robot_description_grasp"
+        request = prepare_bio_ik_request("left_arm", self.robot.get_current_state(), timeout_seconds = 0.1)
         request = self.add_pose_goal(request, hand_pose, 'l_gripper_tool_frame')
         result = self.bio_ik_srv(request).ik_response
         # If result is not feasible, no further checking necessary, return worst score
@@ -166,8 +164,9 @@ class HandoverMover():
         combined_joint_state.name = filtered_joint_state_hand.name + filtered_joint_state_gripper.name
         combined_joint_state.position = filtered_joint_state_hand.position + filtered_joint_state_gripper.position
         
-        rospy.loginfo("Score hand: {}".format(self.score(filtered_joint_state_hand)))
-        rospy.loginfo("Score gripper: {}".format(self.score(filtered_joint_state_gripper)))
+        if self.debug:
+            rospy.loginfo("Score hand: {}".format(self.score(filtered_joint_state_hand)))
+            rospy.loginfo("Score gripper: {}".format(self.score(filtered_joint_state_gripper)))
 
         return self.score(combined_joint_state)
 
@@ -192,7 +191,7 @@ class HandoverMover():
         hand_pose = do_transform_pose(hand_pose, base_handover_transform)
 
         # Setup for iterating through transformations
-        score_limit = 0.6
+        score_limit = 0.57 # 0.51 0.56/0.57
         best_score = 1
         best_transform = None
         transformations = self.get_sample_transformations()
@@ -215,8 +214,10 @@ class HandoverMover():
             # Stop if score already good enough
             if best_score < score_limit:
                 break
-        rospy.loginfo("Best score: {}".format(best_score))
-        rospy.loginfo("Best transform: {}".format(best_transform))
+
+        if self.debug:
+            rospy.loginfo("Best score: {}".format(best_score))
+            rospy.loginfo("Best transform: {}".format(best_transform))
         return best_transform
 
     def move_gpd_pose(self):
@@ -301,18 +302,21 @@ class HandoverMover():
             hand_pose.pose.position.x = 0.02
         else:
             hand_pose.pose.position.x = 0
-        hand_pose.pose.position.y = 0
+        hand_pose.pose.position.y = -0.03
         hand_pose.pose.position.z = 0.167
-        hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(-1.5708, 3.14159, 1.5708))
+        if object_type == "book":
+            hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(-1.5708, 3.14159, 0))
+        else:
+            hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(-1.5708, 3.14159, 1.5708))
         hand_pose = do_transform_pose(hand_pose, gripper_base_transform)
+
+        if self.debug:
+            self.debug_second_pose_pub.publish(hand_pose)
 
         # Get required trasforms
         handover_transform = self.get_handover_transform(gripper_pose, hand_pose)
         base_handover_transform = self.tf_buffer.lookup_transform("handover_frame", "base_footprint", rospy.Time(0))
         handover_base_transform = self.tf_buffer.lookup_transform("base_footprint", "handover_frame", rospy.Time(0))
-
-        if self.debug:
-            self.debug_second_pose_pub.publish(hand_pose)
 
         # Transform poses into handover_frame
         gripper_pose = do_transform_pose(gripper_pose, base_handover_transform)
@@ -326,19 +330,26 @@ class HandoverMover():
         gripper_pose = do_transform_pose(gripper_pose, handover_base_transform)
         hand_pose = do_transform_pose(hand_pose, handover_base_transform)
 
+        # Get gripper solution
+        request = prepare_bio_ik_request("left_arm", self.robot.get_current_state())
+        request = self.add_pose_goal(request, gripper_pose, 'l_gripper_tool_frame')
+        result = self.bio_ik_srv(request).ik_response
+        if result.error_code.val != 1:
+            rospy.logerr("Bio_ik planning request returned error code {}.".format(result.error_code.val))
+            return False
+        filtered_joint_state_gripper = filter_joint_state(result.solution.joint_state, self.left_arm)
+
         # Move gripper to requested pose
-        self.left_arm.set_pose_target(gripper_pose)
+        self.left_arm.set_joint_value_target(filtered_joint_state_gripper)
         self.left_arm.go()
 
         if self.debug:
             self.debug_pose_pub.publish(hand_pose)
 
         # Get hand solution
-        request = prepare_bio_ik_request("right_arm", self.robot.get_current_state(), "robot_description_grasp")
-        request.robot_description = "/handover/robot_description_grasp"
+        request = prepare_bio_ik_request("right_arm", self.robot.get_current_state(), "/handover/robot_description_grasp")
         request = self.add_pose_goal(request, hand_pose, 'rh_grasp')
         result = self.bio_ik_srv(request).ik_response
-        # If result is not feasible, no further checking necessary, return worst score
         if result.error_code.val != 1:
             rospy.logerr("Bio_ik planning request returned error code {}.".format(result.error_code.val))
             return False

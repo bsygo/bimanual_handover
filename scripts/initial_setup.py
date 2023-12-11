@@ -41,21 +41,18 @@ def move_head_only():
     head.set_joint_value_target([0.0, 0.872665])
     head.go()
 
-def move_fixed(object_type):
+def move_fixed():
     global head, left_arm
     head.set_joint_value_target([0.0, 0.872665])
     head.go()
-    if object_type == "can":
-        joint_values = dict(l_shoulder_pan_joint=0.6877300386981536, l_shoulder_lift_joint=0.0014527860014343034, l_upper_arm_roll_joint=1.988643872487468, l_forearm_roll_joint=-0.48605351559908117, l_elbow_flex_joint=-1.7236114019354039, l_wrist_flex_joint=-0.6663365621588351, l_wrist_roll_joint=-0.9874690540253139)
-    elif object_type == "book":
-        joint_values = [0.497912812475168, 0.6417141983535197, 1.5318181439664142, -1.894157976916556, -2.7289803579735015, -0.8217423864483477, 1.8652765105646032]
+    joint_values = dict(l_shoulder_pan_joint=0.6877300386981536, l_shoulder_lift_joint=0.0014527860014343034, l_upper_arm_roll_joint=1.988643872487468, l_forearm_roll_joint=-0.48605351559908117, l_elbow_flex_joint=-1.7236114019354039, l_wrist_flex_joint=-0.6663365621588351, l_wrist_roll_joint=-0.9874690540253139)
     left_arm.set_joint_value_target(joint_values)
     left_arm.go()
 
 def initial_setup(req):
     reset_right_arm()
     if req.mode == "fixed":
-        move_fixed(req.object_type)
+        move_fixed()
         grasp_object()    
     elif req.mode == "pose":
         move_pose(req.target_pose)

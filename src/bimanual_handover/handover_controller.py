@@ -48,7 +48,7 @@ class HandoverCommander():
 
     def full_pipeline(self, handover_type, grasp_type, object_type):
         rospy.loginfo('Sending service request to initial_setup_srv.')
-        if not self.initial_setup_srv('fixed', object_type, None):
+        if not self.initial_setup_srv('fixed', None):
             rospy.logerr('Moving to inital setup failed.')
             return False
 
@@ -56,7 +56,7 @@ class HandoverCommander():
         self.process_pc_srv(True)
 
         rospy.loginfo('Sending service request to handover_mover_srv.')
-        if not self.handover_mover_srv('fixed', object_type):
+        if not self.handover_mover_srv('sample', object_type):
             rospy.logerr('Moving to handover pose failed.')
             return False
 

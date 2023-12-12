@@ -5,7 +5,7 @@ from moveit_commander import MoveGroupCommander, roscpp_initialize, roscpp_shutd
 import sensor_msgs.point_cloud2 as pc2
 from sensor_msgs.msg import PointCloud2, JointState
 from visualization_msgs.msg import Marker
-from geometry_msgs.msg import PoseStamped, Quaternion, Pose, Vector3, PointStamped, TransformStamped
+from geometry_msgs.msg import PoseStamped, Quaternion, Pose, Vector3, PointStamped, TransformStamped, PoseArray
 from tf.transformations import quaternion_from_euler, quaternion_from_matrix, quaternion_multiply, quaternion_matrix
 import math
 import numpy as np
@@ -24,7 +24,7 @@ from copy import deepcopy
 
 class HandoverMover():
 
-    def __init__(self, debug = False):
+    def __init__(self, debug = True):
         rospy.init_node('handover_mover')
         roscpp_initialize('')
         rospy.on_shutdown(self.shutdown)
@@ -61,6 +61,8 @@ class HandoverMover():
         if self.debug:
             self.debug_second_pose_pub = rospy.Publisher('debug/handover_mover_second_pose', PoseStamped, queue_size = 1)
             self.debug_pose_pub = rospy.Publisher('debug/handover_mover_setup_pose', PoseStamped, queue_size = 1)
+            self.debug_samples_pub = rospy.Publisher('debug/handover_mover_samples', PoseArray, queue_size = 1)
+            self.debug_sampled_poses_pub = rospy.Publisher('debug/handover_mover_sampled_poses', PoseArray, queue_size = 1)
 
         # Start service
         rospy.Service('handover_mover_srv', MoveHandover, self.move_handover)
@@ -96,9 +98,14 @@ class HandoverMover():
     def get_sample_transformations(self):
         translation_step = 0.03
         rotation_step = 0.523599
-        linear_combinations = [[x, y, z] for x in range(3) for y in range(3) for z in range(3)]
+        linear_combinations = [[x, y, z] for x in range(-1, 2) for y in range(-2, 1) for z in range(-1, 2)]
+        #linear_combinations = [[x, y, z] for x in range(3) for y in range(3) for z in range(3)]
         angular_combinations = [[x, y, z] for x in range(-1, 2) for y in range(-1, 2) for z in range(-1, 2)]
         transformations = []
+        if self.debug:
+            poses = PoseArray()
+            poses.header.frame_id = "handover_frame"
+            poses.poses = []
         for linear in linear_combinations:
             for angular in angular_combinations:
                         new_transform = TransformStamped()
@@ -107,34 +114,53 @@ class HandoverMover():
                         new_transform.transform.translation = Vector3(*[x * translation_step for x in linear])
                         new_transform.transform.rotation = Quaternion(*quaternion_from_euler(*[y * rotation_step for y in angular]))
                         transformations.append(new_transform)
+                        if self.debug:
+                            new_pose = Pose()
+                            new_pose.orientation = new_transform.transform.rotation
+                            new_pose.position.x = new_transform.transform.translation.x
+                            new_pose.position.y = new_transform.transform.translation.y
+                            new_pose.position.z = new_transform.transform.translation.z
+                            poses.poses.append(new_pose)
+        if self.debug:
+            self.debug_samples_pub.publish(poses)
         return transformations
 
     def add_pose_goal(self, request, pose, eef_link):
         goal = PoseGoal()
         goal.link_name = eef_link
-        goal.weight = 10.0
+        goal.weight = 20.0
         goal.pose = pose.pose
         request.pose_goals = [goal]
         return request
 
     def score(self, joint_state):
         # Should be the maximum distance to any joint limit. Need to check joint limits if correct
-        epsilon = math.pi
+        epsilon_old = math.pi
 
         # Calculations of delta for cost function
         delta = []
+        epsilon = []
         joints = joint_state.name
         for i in range(len(joints)):
             bounds = self.robot.get_joint(joints[i]).bounds()
             delta.append(min(abs(bounds[1] - joint_state.position[i]), abs(joint_state.position[i] - bounds[0])))
+            epsilon.append(abs((bounds[1] - bounds[0])/2))
 
         # Implementation of cost function in bimanual functional regrasping paper
         score = 0
         for i in range(len(delta)):
-            score += 1/epsilon**2 * delta[i]**2 - 2/epsilon * delta[i] + 1
+            score += 1/epsilon[i]**2 * delta[i]**2 - 2/epsilon[i] * delta[i] + 1
         score = score/len(delta)
 
-        return score
+        score_old = 0
+        for i in range(len(delta)):
+            score_old += 1/epsilon_old**2 * delta[i]**2 - 2/epsilon_old * delta[i] + 1
+        score_old = score_old/len(delta)
+
+        rospy.loginfo("Score with old epsilon: {}".format(score_old))
+        rospy.loginfo("Score with new epsilon: {}".format(score))
+
+        return score_old
             
     def check_pose(self, gripper_pose, hand_pose):
         # Get hand solution
@@ -181,6 +207,8 @@ class HandoverMover():
         z = min(gripper_pose.pose.position.z, hand_pose.pose.position.z) + abs(gripper_pose.pose.position.z - hand_pose.pose.position.z)/2
         frame_pose.pose.position.z = z
         self.handover_frame_pub.publish(frame_pose)
+        # sleep causes issues -> WHY??????????
+        rospy.sleep(1)
 
     def get_handover_transform(self, gripper_pose, hand_pose):
         self.send_handover_frame(gripper_pose, hand_pose)
@@ -191,14 +219,20 @@ class HandoverMover():
         hand_pose = do_transform_pose(hand_pose, base_handover_transform)
 
         # Setup for iterating through transformations
-        score_limit = 0.57 # 0.51 0.56/0.57
+        score_limit = 0.1 # 0.51 0.56/0.57
         best_score = 1
         best_transform = None
         transformations = self.get_sample_transformations()
+        if self.debug:
+            poses = PoseArray()
+            poses.header.frame_id = "handover_frame"
+            poses.poses = []
         for transformation in transformations:
             # Transform gripper
             transformed_gripper = deepcopy(gripper_pose)
             transformed_gripper = do_transform_pose(transformed_gripper, transformation)
+            if self.debug:
+                poses.poses.append(deepcopy(transformed_gripper.pose))
 
             # Transform hand
             transformed_hand = deepcopy(hand_pose)
@@ -218,6 +252,7 @@ class HandoverMover():
         if self.debug:
             rospy.loginfo("Best score: {}".format(best_score))
             rospy.loginfo("Best transform: {}".format(best_transform))
+            self.debug_sampled_poses_pub.publish(poses)
         return best_transform
 
     def move_gpd_pose(self):
@@ -318,13 +353,23 @@ class HandoverMover():
         base_handover_transform = self.tf_buffer.lookup_transform("handover_frame", "base_footprint", rospy.Time(0))
         handover_base_transform = self.tf_buffer.lookup_transform("base_footprint", "handover_frame", rospy.Time(0))
 
+        # Split transform inot rotation and translation
+        rot_handover_transform = deepcopy(handover_transform)
+        rot_handover_transform.transform.translation = Vector3(0, 0, 0)
+        translation_handover_transform = deepcopy(handover_transform)
+        translation_handover_transform.transform.rotation = Quaternion(*quaternion_from_euler(0, 0, 0))
+
         # Transform poses into handover_frame
         gripper_pose = do_transform_pose(gripper_pose, base_handover_transform)
         hand_pose = do_transform_pose(hand_pose, base_handover_transform)
 
         # Apply handover_transform
-        gripper_pose = do_transform_pose(gripper_pose, handover_transform)
-        hand_pose = do_transform_pose(hand_pose, handover_transform)
+        #gripper_pose = do_transform_pose(gripper_pose, handover_transform)
+        #hand_pose = do_transform_pose(hand_pose, handover_transform)
+        gripper_pose = do_transform_pose(gripper_pose, rot_handover_transform)
+        gripper_pose = do_transform_pose(gripper_pose, translation_handover_transform)
+        hand_pose = do_transform_pose(hand_pose, rot_handover_transform)
+        hand_pose = do_transform_pose(hand_pose, translation_handover_transform)
 
         # Tranform poses back into base_footprint
         gripper_pose = do_transform_pose(gripper_pose, handover_base_transform)

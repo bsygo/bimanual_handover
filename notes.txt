@@ -30,3 +30,21 @@ Might change the cost function to have the epsilon constants for each individual
 
 
 Might add more rotation possibilities for the handover_mover, at least around the z-axis.
+
+
+Scoring:
+- min_score doesn't work. Apparently each configuration has at least one joint at its limits. -> Maybe increase sampling.
+
+- increased bio_ik timeout doesn't improve anything.
+
+- AvoidJointLimitsGoal doesn't change anything.
+
+- old score produces pose, which has the hand significantly offset from its correct relative position. Seems to be because of bio_ik approximate solution.
+
+- With bio_ik approximate solution off, almost all solutions are invalid. For can poses are still found, and best is the same as usual for new_score, but needs to be tested for book.
+
+- Sometimes best pose is a wrong pose with the gripper in a pose completely away from sampled poses. -> WHY? -> Apparently caused by AvoidJointLimitsGoal -> No, also happened afterwards. Needs further investigating, if again handover_frame or bio_ik caused the problem (most likely one of these two)
+
+- Maybe experiment with evaluating gripper/hand individually, using relation as part of final score.
+
+-> Probably use new score, experiment with much more sampling locations.

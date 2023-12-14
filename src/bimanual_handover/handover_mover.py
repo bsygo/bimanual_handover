@@ -25,7 +25,7 @@ from copy import deepcopy
 
 class HandoverMover():
 
-    def __init__(self, debug = False):
+    def __init__(self, debug = True):
         rospy.init_node('handover_mover')
         roscpp_initialize('')
         rospy.on_shutdown(self.shutdown)
@@ -101,8 +101,8 @@ class HandoverMover():
         # Set which transformations are to sample
         translation_step = 0.03
         rotation_step = math.pi * 30/180
-        linear_combinations = [[x, y, z] for x in range(-1, 2) for y in range(-2, 1) for z in range(-1, 2)]
-        angular_combinations = [[x, y, z] for x in range(-1, 2) for y in range(-1, 2) for z in range(-1, 2)]
+        linear_combinations = [[x, y, z] for x in range(-1, 3) for y in range(-2, 1) for z in range(-1, 2)]
+        angular_combinations = [[x, y, z] for x in range(-1, 2) for y in range(-1, 2) for z in range(-2, 3)]
         transformations = []
 
         # Aggregate transforms to show for debugging
@@ -180,10 +180,10 @@ class HandoverMover():
             rospy.loginfo("Min score: {}".format(min_score))
 
         return score
-            
+
     def check_pose(self, gripper_pose, hand_pose):
         # Get hand solution
-        request = prepare_bio_ik_request("right_arm", self.robot.get_current_state(), "/handover/robot_description_grasp", timeout_seconds = 0.1)
+        request = prepare_bio_ik_request("right_arm", self.robot.get_current_state(), "/handover/robot_description_grasp", timeout_seconds = 0.01)
         #request.approximate = False
         request = self.add_pose_goal(request, hand_pose, 'rh_grasp')
         #request = self.add_limit_goal(request)
@@ -201,7 +201,7 @@ class HandoverMover():
             filtered_joint_state_hand = filter_joint_state(result.solution.joint_state, self.hand)
 
         # Get gripper solution
-        request = prepare_bio_ik_request("left_arm", self.robot.get_current_state(), timeout_seconds = 0.1)
+        request = prepare_bio_ik_request("left_arm", self.robot.get_current_state(), timeout_seconds = 0.01)
         #request.approximate = False
         request = self.add_pose_goal(request, hand_pose, 'l_gripper_tool_frame')
         #request = self.add_limit_goal(request)
@@ -219,7 +219,7 @@ class HandoverMover():
         combined_joint_state = JointState()
         combined_joint_state.name = filtered_joint_state_hand.name + filtered_joint_state_gripper.name
         combined_joint_state.position = filtered_joint_state_hand.position + filtered_joint_state_gripper.position
-        
+
         if self.debug:
             rospy.loginfo("Score hand: {}".format(self.score(filtered_joint_state_hand)))
             rospy.loginfo("Score gripper: {}".format(self.score(filtered_joint_state_gripper)))
@@ -241,7 +241,7 @@ class HandoverMover():
 
     def get_handover_transform(self, gripper_pose, hand_pose):
         self.send_handover_frame(gripper_pose, hand_pose)
-        
+
         # Lookup transforms
         base_handover_transform = self.tf_buffer.lookup_transform("handover_frame", "base_footprint", rospy.Time(0))
         handover_base_transform = self.tf_buffer.lookup_transform("base_footprint", "handover_frame", rospy.Time(0))
@@ -251,7 +251,7 @@ class HandoverMover():
         hand_pose = do_transform_pose(hand_pose, base_handover_transform)
 
         # Setup for iterating through transformations
-        score_limit = 0.38 # old: can->0.51 book->0.56/0.57 new: can->0.2/0.21 book->0.38
+        score_limit = 0.2 # old: can->0.51 book->0.56/0.57 new: can->0.2/0.21 book->0.38
         best_score = 1
         best_transform = None
         transformations = self.get_sample_transformations()

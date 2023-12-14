@@ -23,6 +23,39 @@ from sr_robot_msgs.msg import BiotacAll
 from pr2_msgs.msg import PressureState
 from geometry_msgs.msg import WrenchStamped
 
+class DemoCloser():
+
+    def __init__(self):
+        rospy.init_node('demo_closer')
+        roscpp_initialize('')
+        rospy.on_shutdown(self.shutdown)
+
+        # Setup fingers
+        self.fingers = MoveGroupCommander('right_fingers', ns="/")
+        self.fingers.set_max_velocity_scaling_factor(1.0)
+        self.fingers.set_max_acceleration_scaling_factor(1.0)
+
+        rospy.Service('hand_closer_srv', HandCloserSrv, self.move_fixed)
+        rospy.spin()
+
+    def shutdown(self):
+        roscpp_shutdown()
+
+    def move_fixed(self, req):
+        finger_dict = {}
+        finger_dict["rh_FFJ2"] = 0.785398
+        finger_dict["rh_FFJ3"] = 0.785398
+        finger_dict["rh_MFJ2"] = 0.785398
+        finger_dict["rh_MFJ3"] = 0.785398
+        finger_dict["rh_RFJ2"] = 0.785398
+        finger_dict["rh_RFJ3"] = 0.785398
+        finger_dict["rh_LFJ2"] = 0.785398
+        finger_dict["rh_LFJ3"] = 0.785398
+        finger_dict["rh_THJ5"] = 0.436332
+        self.fingers.set_joint_target_value(finger_dict)
+        self.fingers.go()
+        return True
+
 class CloseContactMover():
 
     def __init__(self, debug = False, collect = False):
@@ -317,9 +350,11 @@ def init_mover(mode):
         CloseContactMover()
     elif mode == "pca":
         ModelMover()
+    elif mode == "demo":
+        DemoCloser()
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
         rospy.logerr("Missing parameters to call hand_closer. Exiting.")
     else:
-        init_mover(sys.argv[1]) 
+        init_mover(sys.argv[1])

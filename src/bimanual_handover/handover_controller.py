@@ -31,8 +31,8 @@ class HandoverCommander():
 
         self.finish_handover_srv = rospy.ServiceProxy('finish_handover_srv', FinishHandoverSrv)
         rospy.loginfo('finish_handover_srv initialized.')
-        self.handover_controller_srv = rospy.Service('handover_controller_srv', HandoverControllerSrv, self.handover_controller_srv)
 
+        self.handover_controller_srv = rospy.Service('handover_controller_srv', HandoverControllerSrv, self.handover_controller_srv)
         rospy.loginfo('handover_controller_srv initialized.')
         rospy.spin()
 

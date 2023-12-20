@@ -120,6 +120,7 @@ class GraspTester():
 
     def move_bio_ik(self, target_pose):
         request = self.prepare_bio_ik_request('right_arm')
+        #request.avoid_collisions = False
         request = self.add_goals(request, target_pose.pose)
         response = self.bio_ik_srv(request).ik_response
         if not response.error_code.val == 1:
@@ -132,7 +133,7 @@ class GraspTester():
         self.right_arm.set_joint_value_target(filtered_joint_state)
         plan = self.right_arm.go()
         if not plan:
-            raise Exception("Moving to pose \n {} \n failed. No path was found to the joint state \n {}.".format(current_pose, filtered_joint_state))
+            raise Exception("Moving to pose \n {} \n failed. No path was found to the joint state \n {}.".format(target_pose, filtered_joint_state))
 
     def enforce_bounds(self, joint_values):
         joint_names = self.right_arm.get_active_joints()

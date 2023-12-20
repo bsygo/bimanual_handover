@@ -53,6 +53,7 @@ int main(int argc, char **argv){
     left_arm = new moveit::planning_interface::MoveGroupInterface(opt);
     ros::Subscriber sub = n.subscribe("pc_raw", 10, cropPC);
     cropped_pub = n.advertise<sensor_msgs::PointCloud2>("pc_cropped", 10, true);
+    ROS_INFO_STREAM("pc_crop node ready");
     ros::AsyncSpinner spinner(1);
     spinner.start();
     ros::waitForShutdown();

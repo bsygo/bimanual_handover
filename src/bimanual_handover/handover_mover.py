@@ -7,7 +7,7 @@ from sensor_msgs.msg import PointCloud2, JointState
 from visualization_msgs.msg import Marker
 from geometry_msgs.msg import PoseStamped, Quaternion, Pose, Vector3, PointStamped, TransformStamped, PoseArray
 from moveit_msgs.msg import DisplayRobotState
-from tf.transformations import quaternion_from_euler, quaternion_from_matrix, quaternion_multiply, quaternion_matrix, euler_from_quaternion
+from tf.transformations import quaternion_from_euler, quaternion_from_matrix, quaternion_multiply, quaternion_matrix, euler_from_quaternion, quaternion_inverse
 import math
 import numpy as np
 #from gpd_ros.msg import GraspConfigList, CloudIndexed, CloudSources
@@ -22,6 +22,8 @@ from bio_ik_msgs.msg import IKRequest, PositionGoal, DirectionGoal, AvoidJointLi
 from bio_ik_msgs.srv import GetIK
 from bimanual_handover.bio_ik_helper_functions import prepare_bio_ik_request, filter_joint_state
 from copy import deepcopy
+from urdf_parser_py.urdf import URDF
+from pykdl_utils.kdl_kinematics import KDLKinematics
 
 class HandoverMover():
 
@@ -51,6 +53,10 @@ class HandoverMover():
         #self.collision_service = rospy.ServiceProxy('collision_service', CollisionChecking)
         rospy.wait_for_service('/bio_ik/get_bio_ik')
         self.bio_ik_srv = rospy.ServiceProxy('/bio_ik/get_bio_ik', GetIK)
+
+        # Setup FK
+        self.fk_robot = URDF.from_parameter_server(key = "robot_description_grasp")
+        self.kdl_kin = KDLKinematics(self.fk_robot, "base_footprint", "rh_grasp")
 
         # Setup transform listener and publisher
         self.tf_buffer = Buffer()
@@ -280,7 +286,7 @@ class HandoverMover():
         hand_pose = do_transform_pose(hand_pose, base_handover_transform)
 
         # Setup for iterating through transformations
-        score_limit = 0.22 # old: can->0.51 book->0.56/0.57 new: can->0.2/0.21 book->0.38
+        score_limit = 0.18 # old: can->0.51 book->0.56/0.57 new: can->0.2/0.21 book->0.38
         best_score = 1
         best_transform = None
         best_hand = None
@@ -344,68 +350,23 @@ class HandoverMover():
             self.debug_sampled_poses_pub.publish(poses)
         return best_transform, best_hand, best_gripper
 
-    def move_gpd_pose(self):
-        while self.pc is None:
-            rospy.sleep(1)
-        self.setup_fingers()
-        current_pc = self.pc
-        cloud_indexed = CloudIndexed()
-        cloud_sources = CloudSources()
-        cloud_sources.cloud = current_pc
-        cloud_sources.view_points = [self.robot.get_link('azure_kinect_rgb_camera_link_urdf').pose().pose.position]
-        cloud_sources.camera_source = [Int64(0) for i in range(current_pc.width)]
-        cloud_indexed.cloud_sources = cloud_sources
-        cloud_indexed.indices = [Int64(i) for i in range(current_pc.width)]
-        response = self.gpd_service(cloud_indexed)
-        manipulator_transform = self.tf_buffer.lookup_transform('rh_manipulator', 'base_footprint', rospy.Time(0))
-        checked_poses = []
-        gripper_pose = self.gripper.get_current_pose()
-        '''
-        # Use the middle point between thumb and middle finger as the grasp point for the hand
-        mf_pose = self.fingers.get_current_pose('rh_mf_biotac_link')
-        th_pose = self.fingers.get_current_pose('rh_th_biotac_link')
-        hand_grasp_point = PoseStamped()
-        hand_grasp_point.pose.position.x = (mf_pose.pose.position.x + th_pose.pose.position.x)/2
-        hand_grasp_point.pose.position.y = (mf_pose.pose.position.y + th_pose.pose.position.y)/2
-        hand_grasp_point.pose.position.z = (mf_pose.pose.position.z + th_pose.pose.position.z)/2
-        grasp_point_transform = self.tf_buffer.lookup_transform('base_footprint', 'rh_manipulator')
-        hand_grasp_point = do_transform_pose(hand_grasp_point, grasp_point_transform)
-        '''
-        for i in range(len(response.grasp_configs.grasps)):
-            selected_grasp = response.grasp_configs.grasps[i]
-            grasp_point = selected_grasp.position
-            R = [[selected_grasp.approach.x, selected_grasp.binormal.x, selected_grasp.axis.x, 0], [selected_grasp.approach.y, selected_grasp.binormal.y, selected_grasp.axis.y, 0], [selected_grasp.approach.z, selected_grasp.binormal.z, selected_grasp.axis.z, 0], [0, 0, 0, 1]]
-            grasp_q = quaternion_from_matrix(R)
-            sh_q = quaternion_from_euler(math.pi/2, -math.pi/2, 0)
-            final_q = Quaternion(*quaternion_multiply(grasp_q, sh_q))
-            pose = PoseStamped()
-            pose.header.frame_id = "base_footprint"
-            pose.pose.position = grasp_point
-            pose.pose.orientation = final_q
-            transformed_pose = do_transform_pose(pose, manipulator_transform)
-            transformed_pose.pose.position.y += 0.02
-            transformed_pose.pose.position.z += - 0.02
-            '''
-            # Adjust hand movement from rh_manipulator to the grasp point specified above
-            transformed_pose.pose.position.x += hand_grasp_point.pose.position.x
-            transformed_pose.pose.position.y += hand_grasp_point.pose.position.y
-            transformed_pose.pose.position.z += hand_grasp_point.pose.position.z
-            '''
-            self.debug_pose_pub.publish(transformed_pose)
-            if self.collision_service(transformed_pose.pose, gripper_pose):
-                checked_poses.append(transformed_pose)
-        if not checked_poses:
-            rospy.loginfo("No valid pose was found.")
-            return False
-        for pose in checked_poses:
-            try:
-                self.hand.set_pose_target(pose)
-                result = self.hand.go()
-                if result:
-                    rospy.loginfo("hand moved")
-                    break
-            except MoveItCommanderException as e:
-                print(e)
+    def calculate_fk_diff(self, joint_values, target_pose):
+        target = list(joint_values.position)
+        target = [self.robot.get_joint("torso_lift_joint").value()] + target
+        hand_pose_fk = self.kdl_kin.forward(target, base_link = "base_footprint", end_link = "rh_grasp")
+
+        # Calculate pos dist
+        fk_pos_list = hand_pose_fk[:3, 3].flatten().tolist()[0]
+        target_pos_list = [target_pose.pose.position.x, target_pose.pose.position.y, target_pose.pose.position.z]
+        pos_dist = math.dist(target_pos_list, fk_pos_list)
+
+        # Calculate quat dist
+        fk_quat = quaternion_from_matrix(hand_pose_fk)
+        target_quat = [target_pose.pose.orientation.x, target_pose.pose.orientation.y, target_pose.pose.orientation.z, target_pose.pose.orientation.w]
+        inverse_fk_quat = quaternion_inverse(fk_quat)
+        quat_dist = quaternion_multiply(target_quat, inverse_fk_quat)
+
+        return pos_dist, quat_dist
 
     def setup_fingers(self):
         # Values except for thumb taken from spread hand.
@@ -466,6 +427,8 @@ class HandoverMover():
         gripper_pose = do_transform_pose(gripper_pose, handover_base_transform)
         hand_pose = do_transform_pose(hand_pose, handover_base_transform)
         pre_hand_pose = do_transform_pose(pre_hand_pose, handover_base_transform)
+
+        self.calculate_fk_diff(hand_joint_state, hand_pose)
 
         if self.debug:
             self.debug_pose_pub.publish(gripper_pose)
@@ -530,6 +493,69 @@ class HandoverMover():
         self.hand.go()
 
         return True
+
+    def move_gpd_pose(self):
+        while self.pc is None:
+            rospy.sleep(1)
+        self.setup_fingers()
+        current_pc = self.pc
+        cloud_indexed = CloudIndexed()
+        cloud_sources = CloudSources()
+        cloud_sources.cloud = current_pc
+        cloud_sources.view_points = [self.robot.get_link('azure_kinect_rgb_camera_link_urdf').pose().pose.position]
+        cloud_sources.camera_source = [Int64(0) for i in range(current_pc.width)]
+        cloud_indexed.cloud_sources = cloud_sources
+        cloud_indexed.indices = [Int64(i) for i in range(current_pc.width)]
+        response = self.gpd_service(cloud_indexed)
+        manipulator_transform = self.tf_buffer.lookup_transform('rh_manipulator', 'base_footprint', rospy.Time(0))
+        checked_poses = []
+        gripper_pose = self.gripper.get_current_pose()
+        '''
+        # Use the middle point between thumb and middle finger as the grasp point for the hand
+        mf_pose = self.fingers.get_current_pose('rh_mf_biotac_link')
+        th_pose = self.fingers.get_current_pose('rh_th_biotac_link')
+        hand_grasp_point = PoseStamped()
+        hand_grasp_point.pose.position.x = (mf_pose.pose.position.x + th_pose.pose.position.x)/2
+        hand_grasp_point.pose.position.y = (mf_pose.pose.position.y + th_pose.pose.position.y)/2
+        hand_grasp_point.pose.position.z = (mf_pose.pose.position.z + th_pose.pose.position.z)/2
+        grasp_point_transform = self.tf_buffer.lookup_transform('base_footprint', 'rh_manipulator')
+        hand_grasp_point = do_transform_pose(hand_grasp_point, grasp_point_transform)
+        '''
+        for i in range(len(response.grasp_configs.grasps)):
+            selected_grasp = response.grasp_configs.grasps[i]
+            grasp_point = selected_grasp.position
+            R = [[selected_grasp.approach.x, selected_grasp.binormal.x, selected_grasp.axis.x, 0], [selected_grasp.approach.y, selected_grasp.binormal.y, selected_grasp.axis.y, 0], [selected_grasp.approach.z, selected_grasp.binormal.z, selected_grasp.axis.z, 0], [0, 0, 0, 1]]
+            grasp_q = quaternion_from_matrix(R)
+            sh_q = quaternion_from_euler(math.pi/2, -math.pi/2, 0)
+            final_q = Quaternion(*quaternion_multiply(grasp_q, sh_q))
+            pose = PoseStamped()
+            pose.header.frame_id = "base_footprint"
+            pose.pose.position = grasp_point
+            pose.pose.orientation = final_q
+            transformed_pose = do_transform_pose(pose, manipulator_transform)
+            transformed_pose.pose.position.y += 0.02
+            transformed_pose.pose.position.z += - 0.02
+            '''
+            # Adjust hand movement from rh_manipulator to the grasp point specified above
+            transformed_pose.pose.position.x += hand_grasp_point.pose.position.x
+            transformed_pose.pose.position.y += hand_grasp_point.pose.position.y
+            transformed_pose.pose.position.z += hand_grasp_point.pose.position.z
+            '''
+            self.debug_pose_pub.publish(transformed_pose)
+            if self.collision_service(transformed_pose.pose, gripper_pose):
+                checked_poses.append(transformed_pose)
+        if not checked_poses:
+            rospy.loginfo("No valid pose was found.")
+            return False
+        for pose in checked_poses:
+            try:
+                self.hand.set_pose_target(pose)
+                result = self.hand.go()
+                if result:
+                    rospy.loginfo("hand moved")
+                    break
+            except MoveItCommanderException as e:
+                print(e)
 
     def move_fixed_pose_above(self, object_type = None):
         self.setup_fingers()

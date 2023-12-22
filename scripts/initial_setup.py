@@ -5,7 +5,7 @@ from bimanual_handover_msgs.srv import InitialSetupSrv
 from moveit_commander import MoveGroupCommander, roscpp_initialize, roscpp_shutdown
 from geometry_msgs.msg import PoseStamped
 
-global head, left_arm, tf_buffer, right_arm, hand, gripper
+global head, left_arm, tf_buffer, right_arm, hand, gripper, torso
 
 def reset_right_arm():
     global right_arm, hand
@@ -42,9 +42,11 @@ def move_head_only():
     head.go()
 
 def move_fixed():
-    global head, left_arm
+    global head, left_arm, torso
     head.set_joint_value_target([0.0, 0.872665])
     head.go()
+    torso.set_joint_value_target([0.0167])
+    torso.go()
     joint_values = dict(l_shoulder_pan_joint=0.6877300386981536, l_shoulder_lift_joint=0.0014527860014343034, l_upper_arm_roll_joint=1.988643872487468, l_forearm_roll_joint=-0.48605351559908117, l_elbow_flex_joint=-1.7236114019354039, l_wrist_flex_joint=-0.6663365621588351, l_wrist_roll_joint=-0.9874690540253139)
     left_arm.set_joint_value_target(joint_values)
     left_arm.go()
@@ -53,10 +55,10 @@ def initial_setup(req):
     reset_right_arm()
     if req.mode == "fixed":
         move_fixed()
-        grasp_object()    
+        grasp_object()
     elif req.mode == "pose":
         move_pose(req.target_pose)
-        grasp_object()    
+        grasp_object()
     elif req.mode == "head":
         move_head_only()
     return True
@@ -65,7 +67,7 @@ def shutdown():
     roscpp_shutdown()
 
 def main():
-    global head, left_arm, right_arm, hand, gripper
+    global head, left_arm, right_arm, hand, gripper, torso
     rospy.init_node('init_gripper_stub')
     rospy.on_shutdown(shutdown)
     left_arm = MoveGroupCommander('left_arm', ns = "/")
@@ -73,6 +75,9 @@ def main():
     head = MoveGroupCommander('head', ns = "/")
     right_arm = MoveGroupCommander('right_arm_pr2', ns = "/")
     hand = MoveGroupCommander('right_hand', ns = "/")
+    torso = MoveGroupCommander('torso', ns = "/")
+    torso.set_max_velocity_scaling_factor(1.0)
+    torso.set_max_acceleration_scaling_factor(1.0)
     rospy.Service('initial_setup_srv', InitialSetupSrv, initial_setup)
     rospy.spin()
 

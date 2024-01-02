@@ -5,7 +5,7 @@ from moveit_commander import MoveGroupCommander, roscpp_initialize, roscpp_shutd
 import sensor_msgs.point_cloud2 as pc2
 from sensor_msgs.msg import PointCloud2, JointState
 from visualization_msgs.msg import Marker
-from geometry_msgs.msg import PoseStamped, Quaternion, Pose, Vector3, PointStamped, TransformStamped, PoseArray
+from geometry_msgs.msg import PoseStamped, Quaternion, Pose, Vector3, PointStamped, TransformStamped, PoseArray, Point
 from moveit_msgs.msg import DisplayRobotState
 from tf.transformations import quaternion_from_euler, quaternion_from_matrix, quaternion_multiply, quaternion_matrix, euler_from_quaternion, quaternion_inverse
 import math
@@ -25,10 +25,13 @@ from copy import deepcopy
 from urdf_parser_py.urdf import URDF
 from pykdl_utils.kdl_kinematics import KDLKinematics
 from std_msgs.msg import ColorRGBA
+import rosbag
+import rospkg
+from datetime import datetime
 
 class HandoverMover():
 
-    def __init__(self, debug = True):
+    def __init__(self, debug = True, analyse = True):
         rospy.init_node('handover_mover')
         roscpp_initialize('')
         rospy.on_shutdown(self.shutdown)
@@ -58,7 +61,8 @@ class HandoverMover():
 
         # Setup FK
         self.fk_robot = URDF.from_parameter_server(key = "robot_description_grasp")
-        self.kdl_kin = KDLKinematics(self.fk_robot, "base_footprint", "rh_grasp")
+        self.kdl_kin_hand = KDLKinematics(self.fk_robot, "base_footprint", "rh_grasp")
+        self.kdl_kin_gripper = KDLKinematics(self.fk_robot, "base_footprint", "l_gripper_tool_frame")
 
         # Setup transform listener and publisher
         self.tf_buffer = Buffer()
@@ -75,12 +79,21 @@ class HandoverMover():
             self.debug_state_pub = rospy.Publisher('debug/handover_mover/robot_state', DisplayRobotState, queue_size = 1)
             self.debug_hand_markers_pub = rospy.Publisher('debug/handover_mover/hand_markers', Marker, queue_size = 1, latch = True)
             self.debug_gripper_markers_pub = rospy.Publisher('debug/handover_mover/gripper_markers', Marker, queue_size = 1, latch = True)
+        self.analyse = analyse
+        if self.analyse:
+            self.debug_combined_markers_pub = rospy.Publisher('debug/handover_mover/combined_markers', Marker, queue_size = 1, latch = True)
+            self.time = datetime.now().strftime("%d_%m_%Y_%H_%M")
+            pkg_path = rospkg.RosPack().get_path('bimanual_handover')
+            path = pkg_path + "/data/bags/"
+            self.bag = rosbag.Bag('{}workspace_analysis_{}.bag'.format(path, self.time), 'w')
 
         # Start service
         rospy.Service('handover_mover_srv', MoveHandover, self.move_handover)
         rospy.spin()
 
     def shutdown(self):
+        if self.analyse:
+            self.bag.close()
         roscpp_shutdown()
 
     def move_handover(self, req):
@@ -110,8 +123,12 @@ class HandoverMover():
         # Set which transformations are to sample
         translation_step = 0.03
         rotation_step = math.pi * 30/180
-        linear_combinations = [[x, y, z] for x in range(-1, 3) for y in range(-2, 1) for z in range(-1, 2)]
-        angular_combinations = [[x, y, z] for x in range(-1, 2) for y in range(-1, 2) for z in range(-2, 3)]
+        if self.analyse:
+            linear_combinations = [[x, y, z] for x in range(-10, 7) for y in range(-9, 20) for z in range(-13, 13)]
+            angular_combinations = [[x, y, z] for x in range(-2, 3) for y in range(-2, 3) for z in range(-2, 3)]
+        else:
+            linear_combinations = [[x, y, z] for x in range(-1, 3) for y in range(-2, 1) for z in range(-1, 2)]
+            angular_combinations = [[x, y, z] for x in range(-1, 2) for y in range(-1, 2) for z in range(-2, 3)]
         transformations = []
 
         # Aggregate transforms to show for debugging
@@ -290,13 +307,19 @@ class HandoverMover():
         hand_pose = do_transform_pose(hand_pose, base_handover_transform)
 
         # Setup for iterating through transformations
-        score_limit = 0.22 # old: can->0.51 book->0.56/0.57 new: can->0.2/0.21 book->0.38
+        if self.analyse:
+            score_limit = 0.0
+        else:
+            score_limit = 0.22 # old: can->0.51 book->0.56/0.57 new: can->0.2/0.21 book->0.38
+        deviation_limit = 0.01
         best_score = 1
         best_transform = None
         best_hand = None
         best_gripper = None
         transformations = self.get_sample_transformations()
         if self.debug:
+            debug_counter = 0
+            best_debug_index = None
             poses = PoseArray()
             poses.header.frame_id = "handover_frame"
             poses.poses = []
@@ -317,6 +340,19 @@ class HandoverMover():
             gripper_marker.points = []
             gripper_marker.colors = []
             gripper_marker.scale = Vector3(0.01, 0.01, 0.01)
+        if self.analyse:
+            analyse_counter = 0
+            best_analyse_index = None
+            previous_linear = None
+            aggregated_results = []
+            combined_marker = Marker()
+            combined_marker.header.frame_id = "base_footprint"
+            combined_marker.ns = "combined_markers"
+            combined_marker.type = Marker.POINTS
+            combined_marker.action = Marker.ADD
+            combined_marker.points = []
+            combined_marker.colors = []
+            combined_marker.scale = Vector3(0.01, 0.01, 0.01)
 
         rospy.loginfo("Iterating through sampled transformations.")
         for transformation in transformations:
@@ -337,6 +373,9 @@ class HandoverMover():
 
             # Evaluate
             score, hand_joint_state, gripper_joint_state = self.check_pose(transformed_gripper, transformed_hand)
+            if score < 1:
+                hand_pos_diff, hand_quat_diff = self.calculate_fk_diff(hand_joint_state, transformed_hand, "hand")
+                gripper_pos_diff, gripper_quat_diff = self.calculate_fk_diff(gripper_joint_state, transformed_gripper, "gripper")
 
             if self.debug:
                 self.debug_gripper_pose_pub.publish(transformed_gripper)
@@ -355,13 +394,13 @@ class HandoverMover():
                 hand_marker.points.append(transformed_hand.pose.position)
                 gripper_marker.points.append(transformed_gripper.pose.position)
                 if score < 1:
-                    hand_pos_diff, hand_quat_diff = self.calculate_fk_diff(hand_joint_state, transformed_hand)
-                    gripper_pos_diff, gripper_quat_diff = self.calculate_fk_diff(gripper_joint_state, transformed_gripper)
-                    if hand_pos_diff > 0.01:
+                    hand_pos_diff, hand_quat_diff = self.calculate_fk_diff(hand_joint_state, transformed_hand, "hand")
+                    gripper_pos_diff, gripper_quat_diff = self.calculate_fk_diff(gripper_joint_state, transformed_gripper, "gripper")
+                    if hand_pos_diff > deviation_limit:
                         hand_marker.colors.append(ColorRGBA(1, 1, 0, 1))
                     else:
                         hand_marker.colors.append(ColorRGBA(0, 1, 0, 1))
-                    if gripper_pos_diff > 0.01:
+                    if gripper_pos_diff > deviation_limit:
                         gripper_marker.colors.append(ColorRGBA(1, 1, 0, 1))
                     else:
                         gripper_marker.colors.append(ColorRGBA(0, 1, 0, 1))
@@ -369,39 +408,115 @@ class HandoverMover():
                     hand_marker.colors.append(ColorRGBA(1, 0, 0, 1))
                     gripper_marker.colors.append(ColorRGBA(1, 0, 0, 1))
 
-            if score < best_score:
+            if score < best_score and not(hand_pos_diff >= deviation_limit or gripper_pos_diff >= deviation_limit):
                 best_score = score
                 best_transform = transformation
                 best_hand = hand_joint_state
                 best_gripper = gripper_joint_state
+                if self.analyse:
+                    best_analyse_index = deepcopy(analyse_counter)
+                if self.debug:
+                    best_debug_index = deepcopy(debug_counter)
+
+            if self.analyse:
+                if previous_linear is None:
+                    previous_linear = transformation.transform.translation
+                    x = min(transformed_gripper.pose.position.x, transformed_hand.pose.position.x) + abs(transformed_gripper.pose.position.x - transformed_hand.pose.position.x)/2
+                    y = min(transformed_gripper.pose.position.y, transformed_hand.pose.position.y) + abs(transformed_gripper.pose.position.y - transformed_hand.pose.position.y)/2
+                    z = min(transformed_gripper.pose.position.z, transformed_hand.pose.position.z) + abs(transformed_gripper.pose.position.z - transformed_hand.pose.position.z)/2
+                    combined_pose = PoseStamped()
+                    combined_pose.header.frame_id = "base_footprint"
+                    combined_pose.pose.position = Point(x, y, z)
+                    combined_pose.pose.orientation.w = 1.0
+                    combined_marker.points.append(combined_pose.pose.position)
+                    if score == 1:
+                        aggregated_results.append(2)
+                    elif self.debug and (hand_pos_diff >= deviation_limit or gripper_pos_diff >= deviation_limit):
+                        aggregated_results.append(1)
+                    else:
+                        aggregated_results.append(0)
+                    analyse_counter += 1
+                elif not previous_linear == transformation.transform.translation:
+                    previous_linear = transformation.transform.translation
+                    x = min(transformed_gripper.pose.position.x, transformed_hand.pose.position.x) + abs(transformed_gripper.pose.position.x - transformed_hand.pose.position.x)/2
+                    y = min(transformed_gripper.pose.position.y, transformed_hand.pose.position.y) + abs(transformed_gripper.pose.position.y - transformed_hand.pose.position.y)/2
+                    z = min(transformed_gripper.pose.position.z, transformed_hand.pose.position.z) + abs(transformed_gripper.pose.position.z - transformed_hand.pose.position.z)/2
+                    combined_pose = PoseStamped()
+                    combined_pose.header.frame_id = "base_footprint"
+                    combined_pose.pose.position = Point(x, y, z)
+                    combined_pose.pose.orientation.w = 1.0
+                    combined_marker.points.append(combined_pose.pose.position)
+
+                    if score == 1:
+                        aggregated_results.append(2)
+                    elif self.debug and (hand_pos_diff >= deviation_limit or gripper_pos_diff >= deviation_limit):
+                        aggregated_results.append(1)
+                    else:
+                        aggregated_results.append(0)
+
+                    if all(value >= 1  for value in aggregated_results):
+                        combined_marker.colors.append(ColorRGBA(1, 0, 0, 1))
+                    elif all(value == 0  for value in aggregated_results):
+                        combined_marker.colors.append(ColorRGBA(0, 1, 0, 1))
+                    elif 0 in aggregated_results:
+                        combined_marker.colors.append(ColorRGBA(1, 1, 0, 1))
+
+                    aggregated_results = []
+                    analyse_counter += 1
+                else:
+                    if score == 1:
+                        aggregated_results.append(2)
+                    elif self.debug and (hand_pos_diff >= deviation_limit or gripper_pos_diff >= deviation_limit):
+                        aggregated_results.append(1)
+                    else:
+                        aggregated_results.append(0)
 
             if self.debug:
                 rospy.loginfo("Transform score: {}".format(score))
+                debug_counter += 1
 
             # Stop if score already good enough
             if best_score < score_limit:
                 break
 
         if self.debug:
+            hand_marker.colors[best_debug_index] = ColorRGBA(0, 0, 1, 1)
+            gripper_marker.colors[best_debug_index] = ColorRGBA(0, 0, 1, 1)
             rospy.loginfo("Best score: {}".format(best_score))
             rospy.loginfo("Best transform: {}".format(best_transform))
             self.debug_sampled_poses_pub.publish(poses)
             self.debug_hand_markers_pub.publish(hand_marker)
             self.debug_gripper_markers_pub.publish(gripper_marker)
+
+        if self.analyse:
+            if all(value >= 1  for value in aggregated_results):
+                combined_marker.colors.append(ColorRGBA(1, 0, 0, 1))
+            elif 0 in aggregated_results:
+                combined_marker.colors.append(ColorRGBA(1, 1, 0, 1))
+            elif all(value == 0  for value in aggregated_results):
+                combined_marker.colors.append(ColorRGBA(0, 1, 0, 1))
+            combined_marker.colors[best_analyse_index] = ColorRGBA(0, 0, 1, 1)
+            self.bag.write('combined', combined_marker)
+            self.bag.write('gripper', gripper_marker)
+            self.bag.write('hand', hand_marker)
+            self.debug_combined_markers_pub.publish(combined_marker)
         return best_transform, best_hand, best_gripper
 
-    def calculate_fk_diff(self, joint_values, target_pose):
+    def calculate_fk_diff(self, joint_values, target_pose, chain_type):
         target = list(joint_values.position)
         target = [self.robot.get_joint("torso_lift_joint").value()] + target
-        hand_pose_fk = self.kdl_kin.forward(target, base_link = "base_footprint", end_link = "rh_grasp")
+        if chain_type == "hand":
+            pose_fk = self.kdl_kin_hand.forward(target, base_link = "base_footprint", end_link = "rh_grasp")
+        elif chain_type == "gripper":
+            pose_fk = self.kdl_kin_gripper.forward(target, base_link = "base_footprint", end_link = "l_gripper_tool_frame")
 
         # Calculate pos dist
-        fk_pos_list = hand_pose_fk[:3, 3].flatten().tolist()[0]
+        fk_pos_list = pose_fk[:3, 3].flatten().tolist()[0]
         target_pos_list = [target_pose.pose.position.x, target_pose.pose.position.y, target_pose.pose.position.z]
         pos_dist = math.dist(target_pos_list, fk_pos_list)
 
         # Calculate quat dist
-        fk_quat = quaternion_from_matrix(hand_pose_fk)
+        fk_quat = quaternion_from_matrix(pose_fk)
         target_quat = [target_pose.pose.orientation.x, target_pose.pose.orientation.y, target_pose.pose.orientation.z, target_pose.pose.orientation.w]
         inverse_fk_quat = quaternion_inverse(fk_quat)
         quat_dist = quaternion_multiply(target_quat, inverse_fk_quat)

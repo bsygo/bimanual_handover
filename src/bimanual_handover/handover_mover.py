@@ -435,7 +435,6 @@ class HandoverMover():
                         aggregated_results.append(1)
                     else:
                         aggregated_results.append(0)
-                    analyse_counter += 1
                 elif not previous_linear == transformation.transform.translation:
                     previous_linear = transformation.transform.translation
                     x = min(transformed_gripper.pose.position.x, transformed_hand.pose.position.x) + abs(transformed_gripper.pose.position.x - transformed_hand.pose.position.x)/2
@@ -456,7 +455,7 @@ class HandoverMover():
 
                     if all(value >= 1  for value in aggregated_results):
                         combined_marker.colors.append(ColorRGBA(1, 0, 0, 1))
-                    elif all(value == 0  for value in aggregated_results):
+                    elif sum([value == 0 for value in aggregated_results]) > len(aggregated_results)/2:
                         combined_marker.colors.append(ColorRGBA(0, 1, 0, 1))
                     elif 0 in aggregated_results:
                         combined_marker.colors.append(ColorRGBA(1, 1, 0, 1))
@@ -491,10 +490,10 @@ class HandoverMover():
         if self.analyse:
             if all(value >= 1  for value in aggregated_results):
                 combined_marker.colors.append(ColorRGBA(1, 0, 0, 1))
+            elif sum([value == 0 for value in aggregated_results]) > len(aggregated_results)/2:
+                combined_marker.colors.append(ColorRGBA(0, 1, 0, 1))
             elif 0 in aggregated_results:
                 combined_marker.colors.append(ColorRGBA(1, 1, 0, 1))
-            elif all(value == 0  for value in aggregated_results):
-                combined_marker.colors.append(ColorRGBA(0, 1, 0, 1))
             combined_marker.colors[best_analyse_index] = ColorRGBA(0, 0, 1, 1)
             self.bag.write('combined', combined_marker)
             self.bag.write('gripper', gripper_marker)

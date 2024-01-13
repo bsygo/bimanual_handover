@@ -121,11 +121,16 @@ class HandoverMover():
 
     def get_sample_transformations(self):
         # Set which transformations are to sample
-        translation_step = 0.03
+        if self.analyse:
+            translation_step = 0.06
+        else:
+            translation_step = 0.03
         rotation_step = math.pi * 30/180
         if self.analyse:
-            linear_combinations = [[x, y, z] for x in range(-10, 7) for y in range(-9, 20) for z in range(-13, 13)]
-            angular_combinations = [[x, y, z] for x in range(-2, 3) for y in range(-2, 3) for z in range(-2, 3)]
+            #linear_combinations = [[x, y, z] for x in range(0, 1) for y in range(0, 1) for z in range(0, 1)]
+            linear_combinations = [[x, y, z] for x in range(-5, 3) for y in range(-4, 9) for z in range(-6, 5)]
+            angular_combinations = [[x, y, z] for x in range(-3, 4) for y in range(-3, 4) for z in range(-3, 4)]
+            #angular_combinations = [[x, y, z] for x in range(0, 1) for y in range(0, 1) for z in range(0, 1)]
         else:
             linear_combinations = [[x, y, z] for x in range(-1, 3) for y in range(-2, 1) for z in range(-1, 2)]
             angular_combinations = [[x, y, z] for x in range(-1, 2) for y in range(-1, 2) for z in range(-2, 3)]
@@ -233,10 +238,8 @@ class HandoverMover():
     def check_pose(self, gripper_pose, hand_pose):
         # Get hand solution
         request = prepare_bio_ik_request("right_arm", self.robot.get_current_state(), "/handover/robot_description_grasp", timeout_seconds = 0.05)
-        # request.approximate = False
         # request = self.add_can_goals(request, hand_pose, 'rh_grasp')
         request = self.add_pose_goal(request, hand_pose, 'rh_grasp')
-        #request = self.add_limit_goal(request)
         result = self.bio_ik_srv(request).ik_response
         # If result is not feasible, no further checking necessary, return worst score
         if result.error_code.val != 1:
@@ -254,9 +257,7 @@ class HandoverMover():
 
         # Get gripper solution
         request = prepare_bio_ik_request("left_arm", self.robot.get_current_state(), timeout_seconds = 0.05)
-        # request.approximate = False
         request = self.add_pose_goal(request, gripper_pose, 'l_gripper_tool_frame')
-        #request = self.add_limit_goal(request)
         result = self.bio_ik_srv(request).ik_response
         # If result is not feasible, no further checking necessary, return worst score
         if result.error_code.val != 1:
@@ -331,7 +332,7 @@ class HandoverMover():
             hand_marker.action = Marker.ADD
             hand_marker.points = []
             hand_marker.colors = []
-            hand_marker.scale = Vector3(0.01, 0.01, 0.01)
+            hand_marker.scale = Vector3(0.005, 0.005, 0.005)
             gripper_marker = Marker()
             gripper_marker.header.frame_id = "base_footprint"
             gripper_marker.ns = "gripper_markers"
@@ -339,7 +340,7 @@ class HandoverMover():
             gripper_marker.action = Marker.ADD
             gripper_marker.points = []
             gripper_marker.colors = []
-            gripper_marker.scale = Vector3(0.01, 0.01, 0.01)
+            gripper_marker.scale = Vector3(0.005, 0.005, 0.005)
         if self.analyse:
             analyse_counter = 0
             best_analyse_index = None
@@ -352,7 +353,16 @@ class HandoverMover():
             combined_marker.action = Marker.ADD
             combined_marker.points = []
             combined_marker.colors = []
-            combined_marker.scale = Vector3(0.01, 0.01, 0.01)
+            combined_marker.scale = Vector3(0.005, 0.005, 0.005)
+            aggregated_scores = []
+            score_marker = Marker()
+            score_marker.header.frame_id = "base_footprint"
+            score_marker.ns = "score_markers"
+            score_marker.type = Marker.POINTS
+            score_marker.action = Marker.ADD
+            score_marker.points = []
+            score_marker.colors = []
+            score_marker.scale = Vector3(0.005, 0.005, 0.005)
 
         rospy.loginfo("Iterating through sampled transformations.")
         for transformation in transformations:
@@ -408,16 +418,6 @@ class HandoverMover():
                     hand_marker.colors.append(ColorRGBA(1, 0, 0, 1))
                     gripper_marker.colors.append(ColorRGBA(1, 0, 0, 1))
 
-            if score < best_score and not(hand_pos_diff >= deviation_limit or gripper_pos_diff >= deviation_limit):
-                best_score = score
-                best_transform = transformation
-                best_hand = hand_joint_state
-                best_gripper = gripper_joint_state
-                if self.analyse:
-                    best_analyse_index = deepcopy(analyse_counter)
-                if self.debug:
-                    best_debug_index = deepcopy(debug_counter)
-
             if self.analyse:
                 if previous_linear is None:
                     previous_linear = transformation.transform.translation
@@ -429,6 +429,8 @@ class HandoverMover():
                     combined_pose.pose.position = Point(x, y, z)
                     combined_pose.pose.orientation.w = 1.0
                     combined_marker.points.append(combined_pose.pose.position)
+                    score_marker.points.append(combined_pose.pose.position)
+                    aggregated_scores.append(score)
                     if score == 1:
                         aggregated_results.append(2)
                     elif self.debug and (hand_pos_diff >= deviation_limit or gripper_pos_diff >= deviation_limit):
@@ -445,30 +447,48 @@ class HandoverMover():
                     combined_pose.pose.position = Point(x, y, z)
                     combined_pose.pose.orientation.w = 1.0
                     combined_marker.points.append(combined_pose.pose.position)
+                    score_marker.points.append(combined_pose.pose.position)
 
-                    if score == 1:
-                        aggregated_results.append(2)
-                    elif self.debug and (hand_pos_diff >= deviation_limit or gripper_pos_diff >= deviation_limit):
-                        aggregated_results.append(1)
-                    else:
-                        aggregated_results.append(0)
-
+                    avg_score = sum(aggregated_scores)/len(aggregated_scores)
+                    score_marker.colors.append(ColorRGBA(avg_score, 1-avg_score, 0, 1))
                     if all(value >= 1  for value in aggregated_results):
                         combined_marker.colors.append(ColorRGBA(1, 0, 0, 1))
-                    elif sum([value == 0 for value in aggregated_results]) > len(aggregated_results)/2:
+                    elif sum([value == 0 for value in aggregated_results]) > len(aggregated_results)/4:
                         combined_marker.colors.append(ColorRGBA(0, 1, 0, 1))
-                    elif 0 in aggregated_results:
+                    elif sum([value == 0 for value in aggregated_results]) > 1:
                         combined_marker.colors.append(ColorRGBA(1, 1, 0, 1))
+                    elif 0 in aggregated_results:
+                        combined_marker.colors.append(ColorRGBA(1, 0.5, 0, 1))
 
                     aggregated_results = []
-                    analyse_counter += 1
-                else:
+                    aggregated_scores = []
+                    aggregated_scores.append(score)
                     if score == 1:
                         aggregated_results.append(2)
                     elif self.debug and (hand_pos_diff >= deviation_limit or gripper_pos_diff >= deviation_limit):
                         aggregated_results.append(1)
                     else:
                         aggregated_results.append(0)
+
+                    analyse_counter += 1
+                else:
+                    aggregated_scores.append(score)
+                    if score == 1:
+                        aggregated_results.append(2)
+                    elif self.debug and (hand_pos_diff >= deviation_limit or gripper_pos_diff >= deviation_limit):
+                        aggregated_results.append(1)
+                    else:
+                        aggregated_results.append(0)
+
+            if score < best_score and not(hand_pos_diff >= deviation_limit or gripper_pos_diff >= deviation_limit):
+                best_score = score
+                best_transform = transformation
+                best_hand = hand_joint_state
+                best_gripper = gripper_joint_state
+                if self.analyse:
+                    best_analyse_index = deepcopy(analyse_counter)
+                if self.debug:
+                    best_debug_index = deepcopy(debug_counter)
 
             if self.debug:
                 rospy.loginfo("Transform score: {}".format(score))
@@ -488,16 +508,21 @@ class HandoverMover():
             self.debug_gripper_markers_pub.publish(gripper_marker)
 
         if self.analyse:
+            avg_score = sum(aggregated_scores)/len(aggregated_scores)
+            score_marker.colors.append(ColorRGBA(avg_score, 1-avg_score, 0, 1))
             if all(value >= 1  for value in aggregated_results):
                 combined_marker.colors.append(ColorRGBA(1, 0, 0, 1))
-            elif sum([value == 0 for value in aggregated_results]) > len(aggregated_results)/2:
+            elif sum([value == 0 for value in aggregated_results]) > len(aggregated_results)/4:
                 combined_marker.colors.append(ColorRGBA(0, 1, 0, 1))
-            elif 0 in aggregated_results:
+            elif sum([value == 0 for value in aggregated_results]) > 1:
                 combined_marker.colors.append(ColorRGBA(1, 1, 0, 1))
+            elif 0 in aggregated_results:
+                combined_marker.colors.append(ColorRGBA(1, 0.5, 0, 1))
             combined_marker.colors[best_analyse_index] = ColorRGBA(0, 0, 1, 1)
             self.bag.write('combined', combined_marker)
             self.bag.write('gripper', gripper_marker)
             self.bag.write('hand', hand_marker)
+            self.bag.write('score', score_marker)
             self.debug_combined_markers_pub.publish(combined_marker)
         return best_transform, best_hand, best_gripper
 

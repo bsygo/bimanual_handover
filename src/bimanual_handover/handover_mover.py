@@ -79,6 +79,8 @@ class HandoverMover():
             self.debug_state_pub = rospy.Publisher('debug/handover_mover/robot_state', DisplayRobotState, queue_size = 1)
             self.debug_hand_markers_pub = rospy.Publisher('debug/handover_mover/hand_markers', Marker, queue_size = 1, latch = True)
             self.debug_gripper_markers_pub = rospy.Publisher('debug/handover_mover/gripper_markers', Marker, queue_size = 1, latch = True)
+            self.debug_score_markers_pub = rospy.Publisher('debug/handover_mover/score_markers', Marker, queue_size = 1, latch = True)
+            self.debug_min_score_markers_pub = rospy.Publisher('debug/handover_mover/min_score_markers', Marker, queue_size = 1, latch = True)
         self.analyse = analyse
         if self.analyse:
             self.debug_combined_markers_pub = rospy.Publisher('debug/handover_mover/combined_markers', Marker, queue_size = 1, latch = True)
@@ -127,10 +129,10 @@ class HandoverMover():
             translation_step = 0.03
         rotation_step = math.pi * 30/180
         if self.analyse:
-            #linear_combinations = [[x, y, z] for x in range(0, 1) for y in range(0, 1) for z in range(0, 1)]
-            linear_combinations = [[x, y, z] for x in range(-5, 3) for y in range(-4, 9) for z in range(-6, 5)]
-            angular_combinations = [[x, y, z] for x in range(-3, 4) for y in range(-3, 4) for z in range(-3, 4)]
-            #angular_combinations = [[x, y, z] for x in range(0, 1) for y in range(0, 1) for z in range(0, 1)]
+            linear_combinations = [[x, y, z] for x in range(0, 2) for y in range(0, 2) for z in range(0, 2)]
+            #linear_combinations = [[x, y, z] for x in range(-5, 3) for y in range(-4, 9) for z in range(-6, 5)]
+            #angular_combinations = [[x, y, z] for x in range(-3, 4) for y in range(-3, 4) for z in range(-3, 4)]
+            angular_combinations = [[x, y, z] for x in range(0, 2) for y in range(0, 2) for z in range(0, 2)]
         else:
             linear_combinations = [[x, y, z] for x in range(-1, 3) for y in range(-2, 1) for z in range(-1, 2)]
             angular_combinations = [[x, y, z] for x in range(-1, 2) for y in range(-1, 2) for z in range(-2, 3)]
@@ -363,6 +365,14 @@ class HandoverMover():
             score_marker.points = []
             score_marker.colors = []
             score_marker.scale = Vector3(0.005, 0.005, 0.005)
+            min_score_marker = Marker()
+            min_score_marker.header.frame_id = "base_footprint"
+            min_score_marker.ns = "min_score_markers"
+            min_score_marker.type = Marker.POINTS
+            min_score_marker.action = Marker.ADD
+            min_score_marker.points = []
+            min_score_marker.colors = []
+            min_score_marker.scale = Vector3(0.005, 0.005, 0.005)
 
         rospy.loginfo("Iterating through sampled transformations.")
         for transformation in transformations:
@@ -430,6 +440,7 @@ class HandoverMover():
                     combined_pose.pose.orientation.w = 1.0
                     combined_marker.points.append(combined_pose.pose.position)
                     score_marker.points.append(combined_pose.pose.position)
+                    min_score_marker.points.append(combined_pose.pose.position)
                     aggregated_scores.append(score)
                     if score == 1:
                         aggregated_results.append(2)
@@ -448,9 +459,12 @@ class HandoverMover():
                     combined_pose.pose.orientation.w = 1.0
                     combined_marker.points.append(combined_pose.pose.position)
                     score_marker.points.append(combined_pose.pose.position)
+                    min_score_marker.points.append(combined_pose.pose.position)
 
                     avg_score = sum(aggregated_scores)/len(aggregated_scores)
                     score_marker.colors.append(ColorRGBA(avg_score, 1-avg_score, 0, 1))
+                    min_score = min(aggregated_scores)
+                    min_score_marker.colors.append(ColorRGBA(min_score, 1-min_score, 0, 1))
                     if all(value >= 1  for value in aggregated_results):
                         combined_marker.colors.append(ColorRGBA(1, 0, 0, 1))
                     elif sum([value == 0 for value in aggregated_results]) > len(aggregated_results)/4:
@@ -508,6 +522,8 @@ class HandoverMover():
             self.debug_gripper_markers_pub.publish(gripper_marker)
 
         if self.analyse:
+            min_score = min(aggregated_scores)
+            min_score_marker.colors.append(ColorRGBA(min_score, 1-min_score, 0, 1))
             avg_score = sum(aggregated_scores)/len(aggregated_scores)
             score_marker.colors.append(ColorRGBA(avg_score, 1-avg_score, 0, 1))
             if all(value >= 1  for value in aggregated_results):
@@ -524,6 +540,8 @@ class HandoverMover():
             self.bag.write('hand', hand_marker)
             self.bag.write('score', score_marker)
             self.debug_combined_markers_pub.publish(combined_marker)
+            self.debug_score_markers_pub.publish(score_marker)
+            self.debug_min_score_markers_pub.publish(min_score_marker)
         return best_transform, best_hand, best_gripper
 
     def calculate_fk_diff(self, joint_values, target_pose, chain_type):

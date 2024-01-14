@@ -129,10 +129,10 @@ class HandoverMover():
             translation_step = 0.03
         rotation_step = math.pi * 30/180
         if self.analyse:
-            linear_combinations = [[x, y, z] for x in range(0, 2) for y in range(0, 2) for z in range(0, 2)]
-            #linear_combinations = [[x, y, z] for x in range(-5, 3) for y in range(-4, 9) for z in range(-6, 5)]
-            #angular_combinations = [[x, y, z] for x in range(-3, 4) for y in range(-3, 4) for z in range(-3, 4)]
-            angular_combinations = [[x, y, z] for x in range(0, 2) for y in range(0, 2) for z in range(0, 2)]
+            #linear_combinations = [[x, y, z] for x in range(0, 2) for y in range(0, 2) for z in range(0, 2)]
+            linear_combinations = [[x, y, z] for x in range(-5, 3) for y in range(-4, 9) for z in range(-6, 5)]
+            angular_combinations = [[x, y, z] for x in range(-3, 4) for y in range(-3, 4) for z in range(-3, 4)]
+            #angular_combinations = [[x, y, z] for x in range(0, 2) for y in range(0, 2) for z in range(0, 2)]
         else:
             linear_combinations = [[x, y, z] for x in range(-1, 3) for y in range(-2, 1) for z in range(-1, 2)]
             angular_combinations = [[x, y, z] for x in range(-1, 2) for y in range(-1, 2) for z in range(-2, 3)]
@@ -539,6 +539,7 @@ class HandoverMover():
             self.bag.write('gripper', gripper_marker)
             self.bag.write('hand', hand_marker)
             self.bag.write('score', score_marker)
+            self.bag.write('min_score', min_score_marker)
             self.debug_combined_markers_pub.publish(combined_marker)
             self.debug_score_markers_pub.publish(score_marker)
             self.debug_min_score_markers_pub.publish(min_score_marker)

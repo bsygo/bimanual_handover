@@ -24,7 +24,7 @@ def prepare_bio_ik_request(group_name, robot_state, robot_description = "robot_d
     request.robot_state = robot_state
     return request
 
-def filter_joint_state(joint_state, move_group):
+def filter_joint_state(joint_state, joint_names):
     '''
     Filters the given joint state for only the joint specified in the given
     move group.
@@ -35,7 +35,6 @@ def filter_joint_state(joint_state, move_group):
     :return JointState: The filtered joint state.
     '''
     filtered_joint_state = joint_state
-    joint_names = move_group.get_active_joints()
     indices = [filtered_joint_state.name.index(joint_name) for joint_name in joint_names]
     filtered_joint_state.name = joint_names
     filtered_joint_state.position = [joint_state.position[x] for x in indices]
@@ -44,3 +43,4 @@ def filter_joint_state(joint_state, move_group):
     if joint_state.effort:
         filtered_joint_state.effort = [joint_state.effort[x] for x in indices]
     return filtered_joint_state
+

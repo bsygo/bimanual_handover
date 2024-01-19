@@ -31,7 +31,7 @@ from datetime import datetime
 
 class HandoverMover():
 
-    def __init__(self, debug = True, analyse = True):
+    def __init__(self, debug = True, analyse = False):
         rospy.init_node('handover_mover')
         roscpp_initialize('')
         rospy.on_shutdown(self.shutdown)
@@ -106,9 +106,6 @@ class HandoverMover():
             return True
         elif req.mode == "gpd":
             self.move_gpd_pose()
-            return True
-        elif req.mode == "side":
-            self.move_fixed_pose_pc_side()
             return True
         elif req.mode == "sample":
             return self.move_sampled_pose_above(req.object_type)
@@ -528,16 +525,20 @@ class HandoverMover():
         self.fingers.set_joint_value_target(joint_values)
         self.fingers.go()
 
-    def move_sampled_pose_above(self, object_type = None):
-        self.setup_fingers()
-
-        # Pose through initial intuition, just from where to start sampling
+    def get_gripper_pose(self):
         gripper_pose = PoseStamped()
         gripper_pose.header.frame_id = "base_footprint"
         gripper_pose.pose.position.x = 0.4753863391864514
         gripper_pose.pose.position.y = 0.03476345653124885
         gripper_pose.pose.position.z = 0.6746350873056409
         gripper_pose.pose.orientation = Quaternion(*quaternion_from_euler(0, 0, -1.5708))
+        return gripper_pose
+
+    def move_sampled_pose_above(self, object_type = None):
+        self.setup_fingers()
+
+        # Pose through initial intuition, just from where to start sampling
+        gripper_pose = self.get_gripper_pose()
 
         # Setup hand pose
         hand_pose = deepcopy(gripper_pose)
@@ -648,6 +649,10 @@ class HandoverMover():
         while self.pc is None:
             rospy.sleep(1)
         self.setup_fingers()
+        gripper_pose = self.get_gripper_pose()
+        self.left_arm.set_pose_target(gripper_pose)
+        self.left_arm.go()
+
         current_pc = self.pc
         cloud_indexed = CloudIndexed()
         cloud_sources = CloudSources()
@@ -709,6 +714,10 @@ class HandoverMover():
 
     def move_fixed_pose_above(self, object_type = None):
         self.setup_fingers()
+        gripper_pose = self.get_gripper_pose()
+        self.left_arm.set_pose_target(gripper_pose)
+        self.left_arm.go()
+        rospy.sleep(1)
 
         # Calculate desired position and direction relative to l_gripper_tool_frame in base_footprint
         gripper_pose = self.gripper.get_current_pose(end_effector_link = "l_gripper_tool_frame")
@@ -721,7 +730,7 @@ class HandoverMover():
         if object_type == "book":
             transformed_pos.point.x = 0.02
         else:
-            transformed_pos.point.x = 0
+            transformed_pos.point.x = -0.002
         transformed_pos.point.y = 0
         transformed_pos.point.z = 0.167
         transformed_pos = do_transform_point(transformed_pos, gripper_base_transform)
@@ -735,7 +744,6 @@ class HandoverMover():
             debug_pose.pose.position.y = transformed_pos.point.y
             debug_pose.pose.position.z = transformed_pos.point.z
             self.debug_hand_pose_pub.publish(debug_pose)
-            print(rotated_offset)
 
         # Prepare bio_ik request
         request = IKRequest()
@@ -802,6 +810,10 @@ class HandoverMover():
 
     def move_fixed_pose_pc_above(self):
         self.setup_fingers()
+        gripper_pose = self.get_gripper_pose()
+        self.left_arm.set_pose_target(gripper_pose)
+        self.left_arm.go()
+
         rospy.loginfo('Moving to fixed pose.')
         while self.pc is None:
             rospy.sleep(1)

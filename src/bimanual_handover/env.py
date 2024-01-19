@@ -12,7 +12,7 @@ from gymnasium import spaces
 import numpy as np
 import math
 import bimanual_handover.syn_grasp_gen as sgg
-from bimanual_handover_msgs.srv import CCM, GraspTesterSrv, HandoverControllerSrv
+from bimanual_handover_msgs.srv import HandCloserSrv, GraspTesterSrv, HandoverControllerSrv
 import sensor_msgs.point_cloud2 as pc2
 from moveit_msgs.msg import MoveItErrorCodes
 from moveit_commander import MoveItCommanderException
@@ -75,7 +75,7 @@ class RealEnv(gym.Env):
         self.handover_controller_srv = rospy.ServiceProxy('handover_controller_srv', HandoverControllerSrv)
 
         # Initialize reset parameters
-        self.max_attempt_steps = 50
+        self.max_attempt_steps = 20#50
         self.current_attempt_step = 0
         self.reset_steps = 1000
         self.current_reset_step = 1000 # To set an object in first reset call
@@ -257,8 +257,9 @@ class RealEnv(gym.Env):
         current_pca = self.pca_con.get_pca_config()[0][:3]
         for pca in current_pca:
             current_observation.append(pca)
-        for value in self.current_object:
-            current_observation.append(value)
+        if self.env_type == "effort":
+            for value in self.current_object:
+                current_observation.append(value)
         observation = np.array(current_observation, dtype = np.float32)
 
         # Update step values
@@ -349,13 +350,15 @@ class RealEnv(gym.Env):
                 else:
                     print("Object id {} is not known. Please enter one of the known ids [1], [2] or [3].".format(object_id))
             self.current_object = one_hot
-            for value in one_hot:
-                observation.append(value)
+            if self.env_type == "effort":
+                for value in one_hot:
+                    observation.append(value)
             self.current_reset_step = 0
             self.reset_hand_pose()
         else:
-            for value in self.current_object:
-                observation.append(value)
+            if self.env_type == "effort":
+                for value in self.current_object:
+                    observation.append(value)
 
         observation = np.array(observation, dtype = np.float32)
         info = {}
@@ -610,7 +613,7 @@ class InitialEnv(gym.Env):
                                             dtype = np.flaot32) # First 5 values previous biotac diffs, last 3 values previous actions
         self.fingers = fingers
         self.pca_con = sgg.SynGraspGen()
-        self.ccm_srv = rospy.ServiceProxy('handover/ccm', CCM)
+        self.ccm_srv = rospy.ServiceProxy('handover/ccm', HandCloserSrv)
         self.gt_srv = rospy.ServiceProxy('handover/grasp_tester', GraspTesterSrv)
         self.tactile_sub = rospy.Subscriber('/hand/rh/tactile', BiotacAll, self.tactile_callback)
 

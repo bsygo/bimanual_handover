@@ -1,5 +1,8 @@
 data/old_data/
-data/bags/
+data/bags/*
+!data/bags/workspace_analysis_08*
+!data/bags/workspace_analysis_09*
+!data/bags/workspace_analysis_13_01_2024_20_30*
 models/*
 !models/important_models/
 logs/

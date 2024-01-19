@@ -59,11 +59,16 @@ class DemoCloser():
 
 class CloseContactMover():
 
-    def __init__(self, debug = False, collect = False):
+    def __init__(self, debug = True, collect = False):
         rospy.init_node('close_contact_mover')
+        roscpp_initialize('')
+        rospy.on_shutdown(self.shutdown)
+
+        # Setup joint control
         self.joints_dict = {'rh_FFJ2': 0, 'rh_FFJ3': 0, 'rh_MFJ2': 1, 'rh_MFJ3': 1, 'rh_RFJ2': 2, 'rh_RFJ3': 2, 'rh_LFJ2': 3, 'rh_LFJ3': 3, 'rh_THJ5': 4}
         self.closing_joints = list(self.joints_dict.keys())
         self.joint_client = actionlib.SimpleActionClient('/hand/rh_trajectory_controller/follow_joint_trajectory', FollowJointTrajectoryAction)
+        self.joint_client.wait_for_server()
 
         # Initialized based on desired mode
         self.mode = rosparam.get_param("model_type")
@@ -73,7 +78,7 @@ class CloseContactMover():
             self.current_tactile_values = None
             self.tactile_sub = rospy.Subscriber('/hand/rh/tactile', BiotacAll, self.tactile_callback)
         elif self.mode == "effort":
-            self.effort_threshold = 150
+            self.effort_thresholds = [200, 150, 150, 150, 150, 150, 150, 150, 150]
             self.initial_effort_values = None
             self.current_effort_values = None
             self.effort_sub = rospy.Subscriber('/hand/joint_states', JointState, self.effort_callback)
@@ -87,7 +92,9 @@ class CloseContactMover():
         self.debug = debug
         self.collect = collect
         if self.debug:
-            self.debug_pub = rospy.Publisher('debug/ccm', DisplayTrajectory, latch = True, queue_size = 1)
+            self.debug_pub = rospy.Publisher('debug/hand_closer/trajectory', DisplayTrajectory, latch = True, queue_size = 1)
+            self.debug_snapshot_pub = rospy.Publisher('debug/hand_closer/snapshot', Bool, queue_size = 1, latch = True)
+            self.debug_snapshot_pub.publish(False)
         if self.collect:
             rospack = rospkg.RosPack()
             pkg_path = rospack.get_path('bimanual_handover')
@@ -97,11 +104,15 @@ class CloseContactMover():
             self.data_bag = Bag(pkg_path + "/data/" + name, 'w')
 
         # Start service
-        self.joint_client.wait_for_server()
         rospy.Service('hand_closer_srv', HandCloserSrv, self.move_until_contacts)
         rospy.spin()
 
+    def shutdown(self):
+        roscpp_shutdown()
+
     def wait_for_initial_values(self):
+        if self.debug:
+            self.debug_snapshot.publish(True)
         if self.mode == "tactile":
             while self.current_tactile_values is None:
                 pass
@@ -110,14 +121,15 @@ class CloseContactMover():
             while self.current_effort_values is None:
                 pass
             self.initial_effort_values = deepcopy(self.current_effort_values)
+            print(self.initial_effort_values)
         while self.current_joint_state is None:
             pass
 
     def tactile_callback(self, tactile):
-        self.current_tactile = [x.pdc for x in tactile.tactiles]
+        self.current_tactile_values = [x.pdc for x in tactile.tactiles]
 
     def effort_callback(self, joint_state):
-        self.current_effort = [joint_state.effort[joint_state.name.index(name)] for name in self.closing_joints]
+        self.current_effort_values = [joint_state.effort[joint_state.name.index(name)] for name in self.closing_joints]
 
     def joint_callback(self, joint_state):
         indices = [joint_state.name.index(joint_name) for joint_name in self.closing_joints]#joint_state.name.index('rh_FFJ2'), joint_state.name.index('rh_MFJ2'), joint_state.name.index('rh_RFJ2'), joint_state.name.index('rh_THJ5')]
@@ -153,9 +165,11 @@ class CloseContactMover():
         return joint_states
 
     def move_until_contacts(self, req):
+        rospy.sleep(2)
         # Initialize values
         self.wait_for_initial_values()
-        contacts = [False, False, False, False, False]
+        finger_contacts = [False, False, False, False, False]
+        joint_contacts = [False, False, False, False, False, False, False, False, False]
         targets = [1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.0]
 
         # Generate trajectory steps for each joint
@@ -190,9 +204,9 @@ class CloseContactMover():
             # Decide which joints still need to be moved
             used_joints = []
             used_steps = []
-            for i in range(len(self.joints)):
-                if not contacts[self.joints_dict[self.joints[i]]]:
-                    used_joints.append(self.joints[i])
+            for i in range(len(self.closing_joints)):
+                if not finger_contacts[self.joints_dict[self.closing_joints[i]]]:
+                    used_joints.append(self.closing_joints[i])
                     used_steps.append(steps[i][x])
 
             # Move joints one step further
@@ -202,22 +216,25 @@ class CloseContactMover():
             if not self.joint_client.get_result().error_code == 0:
                 rospy.loginfo(self.joint_client.get_result().error_code)
 
-            # Test if any finger has made new contact
-            for i in range(len(contacts)):
-                if not contacts[i]:
+            # Test for each joint if their finger has made contact
+            for i in range(len(self.closing_joints)):
+                if not joint_contacts[i]:
                     if self.mode == "tactile":
-                        if abs(self.current_tactile_values[i] - self.initial_tactile_values) > self.tactile_threshold:
-                            contacts[i] = True
-                            rospy.loginfo('Contact found with finger {}.'.format(i))
+                        if abs(self.current_tactile_values[i] - self.initial_tactile_values[i]) > self.tactile_threshold:
+                            joint_contacts[i] = True
+                            rospy.loginfo('Contact found with joint {}.'.format(i))
                         '''
                         if i == 3:
                             rospy.loginfo('Index: {}, Initial: {}, Contact: {}'.format(j, self.current_tactile_values[i][j], self.initial_tactile_values[i][j]))
                             break
                         '''
                     elif self.mode == "effort":
-                        if abs(self.current_effort_values[i] - self.initial_effort_values) > self.effort_threshold:
-                            contacts[i] = True
-                            rospy.loginfo('Contact found with finger {}.'.format(i))
+                        if abs(self.current_effort_values[i] - self.initial_effort_values[i]) > self.effort_thresholds[i]:
+                            joint_contacts[i] = True
+                            rospy.loginfo('Contact found with joint {}.'.format(i))
+
+            # Update finger contacts
+            finger_contacts = [joint_contacts[0] and joint_contacts[1], joint_contacts[2] and joint_contacts[3], joint_contacts[4] and joint_contacts[5], joint_contacts[6] and joint_contacts[7], joint_contacts[8]]
 
             # Write joint values after movement into the rosbag
             if self.collect:
@@ -225,7 +242,7 @@ class CloseContactMover():
                 self.data_bag.write('res_joints', joints)
 
             # Stop if all fingers have made contact
-            if sum(contacts) == 5:
+            if sum(finger_contacts) == 5:
                 rospy.loginfo('contacts reached')
                 if self.collect:
                     self.data_bag.close()

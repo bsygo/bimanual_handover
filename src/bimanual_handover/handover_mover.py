@@ -104,6 +104,9 @@ class HandoverMover():
         elif req.mode == "above":
             self.move_fixed_pose_pc_above()
             return True
+        elif req.mode == "side":
+            self.move_fixed_pose_side()
+            return True
         elif req.mode == "gpd":
             self.move_gpd_pose()
             return True
@@ -245,7 +248,7 @@ class HandoverMover():
             score = 1
             return score, None, None
         else:
-            filtered_joint_state_hand = filter_joint_state(result.solution.joint_state, self.hand)
+            filtered_joint_state_hand = filter_joint_state(result.solution.joint_state, self.hand.get_active_joints())
             hand_fitness = result.solution_fitness
         result = None
 
@@ -262,7 +265,7 @@ class HandoverMover():
             score = 1
             return score, None, None
         else:
-            filtered_joint_state_gripper = filter_joint_state(result.solution.joint_state, self.left_arm)
+            filtered_joint_state_gripper = filter_joint_state(result.solution.joint_state, self.left_arm.get_active_joints())
             gripper_fitness = result.solution_fitness
 
         # Combine joint_states for combined score
@@ -525,6 +528,11 @@ class HandoverMover():
         self.fingers.set_joint_value_target(joint_values)
         self.fingers.go()
 
+    def setup_fingers_together(self):
+        joint_values = dict(rh_THJ4=1.13446, rh_LFJ4=0, rh_FFJ4=0, rh_MFJ4=0, rh_RFJ4=0)
+        self.fingers.set_joint_value_target(joint_values)
+        self.fingers.go()
+
     def get_gripper_pose(self):
         gripper_pose = PoseStamped()
         gripper_pose.header.frame_id = "base_footprint"
@@ -587,23 +595,6 @@ class HandoverMover():
         self.left_arm.set_joint_value_target(gripper_joint_state)
         self.left_arm.go()
 
-        '''
-        # Get gripper solution
-        request = prepare_bio_ik_request("left_arm", self.robot.get_current_state())
-        # request.approximate = False
-        request = self.add_pose_goal(request, gripper_pose, 'l_gripper_tool_frame')
-        result = self.bio_ik_srv(request).ik_response
-        if result.error_code.val != 1:
-            rospy.logerr("Bio_ik planning request returned error code {}.".format(result.error_code.val))
-            return False
-        filtered_joint_state_gripper = filter_joint_state(result.solution.joint_state, self.left_arm)
-
-        # Move gripper to requested pose
-        rospy.loginfo("Moving left arm to handover pose.")
-        self.left_arm.set_joint_value_target(filtered_joint_state_gripper)
-        self.left_arm.go()
-        '''
-
         if self.debug:
             self.debug_hand_pose_pub.publish(hand_pose)
 
@@ -614,31 +605,13 @@ class HandoverMover():
         if result.error_code.val != 1:
             rospy.logerr("Bio_ik planning request returned error code {}.".format(result.error_code.val))
             return False
-        filtered_joint_state_pre_hand = filter_joint_state(result.solution.joint_state, self.hand)
+        filtered_joint_state_pre_hand = filter_joint_state(result.solution.joint_state, self.hand.get_active_joints())
 
         # Move hand to requested pose
         # Use bio_ik to be able to use rh_grasp as end effector
         rospy.loginfo("Moving right arm to handover pose.")
         self.hand.set_joint_value_target(filtered_joint_state_pre_hand)
         self.hand.go()
-
-        '''
-        # Get hand solution
-        request = prepare_bio_ik_request("right_arm", self.robot.get_current_state(), "/handover/robot_description_grasp")
-        # request.approximate = False
-        request = self.add_pose_goal(request, hand_pose, 'rh_grasp')
-        result = self.bio_ik_srv(request).ik_response
-        if result.error_code.val != 1:
-            rospy.logerr("Bio_ik planning request returned error code {}.".format(result.error_code.val))
-            return False
-        filtered_joint_state_hand = filter_joint_state(result.solution.joint_state, self.hand)
-
-        # Move hand to requested pose
-        # Use bio_ik to be able to use rh_grasp as end effector
-        rospy.loginfo("Moving right arm to handover pose.")
-        self.hand.set_joint_value_target(filtered_joint_state_hand)
-        self.hand.go()
-        '''
 
         self.hand.set_joint_value_target(hand_joint_state)
         self.hand.go()
@@ -746,15 +719,7 @@ class HandoverMover():
             self.debug_hand_pose_pub.publish(debug_pose)
 
         # Prepare bio_ik request
-        request = IKRequest()
-        # Set non-goal parameters for the request
-        # Load robot_model which has rh_grasp as an additional frame
-        request.robot_description = "/handover/robot_description_grasp"
-        request.group_name = "right_arm"
-        request.approximate = True
-        request.timeout = rospy.Duration.from_sec(1)
-        request.avoid_collisions = True
-        request.robot_state = self.robot.get_current_state()
+        request = prepare_bio_ik_request("right_arm", self.robot.get_current_state(), "/handover/robot_description_grasp")
 
         # Set the position goal
         pos_goal = PositionGoal()
@@ -792,21 +757,148 @@ class HandoverMover():
 
         # Get bio_ik solution
         response = self.bio_ik_srv(request).ik_response
+        if self.debug:
+            display_state = DisplayRobotState()
+            display_state.state = response.solution
+            self.debug_state_pub.publish(display_state)
         if not response.error_code.val == 1:
             print(response)
             raise Exception("Bio_ik planning failed with error code {}.".format(response.error_code.val))
 
         # Filter solution for relevante joints
-        joint_names = self.hand.get_active_joints()
-        joint_target_state = JointState()
-        joint_target_state.name = joint_names
-        joint_target_state.position = [response.solution.joint_state.position[response.solution.joint_state.name.index(joint_name)] for joint_name in joint_names]
+        joint_target_state = filter_joint_state(response.solution.joint_state, self.hand.get_active_jonts())
 
         # Execute solution
         self.hand.set_joint_value_target(joint_target_state)
         plan = self.hand.go()
         if not plan:
             raise Exception("No path was found to the joint state \n {}.".format(joint_target_state))
+
+    def move_fixed_pose_side(self, object_type = None):
+        self.setup_fingers_together()
+        gripper_pose = self.get_gripper_pose()
+        self.left_arm.set_pose_target(gripper_pose)
+        self.left_arm.go()
+        rospy.sleep(1)
+
+        hand_pose = PoseStamped()
+        hand_pose.header.frame_id = "l_gripper_tool_frame"
+        # WIP
+        if object_type == "book":
+            hand_pose.pose.position.y += -0.02
+            hand_pose.pose.position.x += -0.03
+            hand_pose.pose.position.z += 0.167
+            hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(-1.5708, 3.14159, -1.5706))
+        else:
+            hand_pose.pose.position.x = 0.055
+            hand_pose.pose.position.y = 0.04
+            hand_pose.pose.position.z = 0.1
+            hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(0, -1.5708, 0))
+
+        self.debug_hand_pose_pub.publish(hand_pose)
+
+        self.hand.set_pose_target(hand_pose)
+        self.hand.go()
+
+        '''
+        # Calculate desired position and direction relative to l_gripper_tool_frame in base_footprint
+        gripper_pose = self.gripper.get_current_pose(end_effector_link = "l_gripper_tool_frame")
+        R = quaternion_matrix([gripper_pose.pose.orientation.x, gripper_pose.pose.orientation.y, gripper_pose.pose.orientation.z, gripper_pose.pose.orientation.w])
+        x_direction = R[:3, 0]
+        y_direction = R[:3, 1]
+        z_direction = R[:3, 2]
+
+        gripper_base_transform = self.tf_buffer.lookup_transform("base_footprint", "l_gripper_tool_frame", rospy.Time(0))
+        transformed_pos = PointStamped()
+        transformed_pos.header.frame_id = "l_gripper_tool_frame"
+        if object_type == "book":
+            transformed_pos.point.x = 0.02
+            transformed_pos.point.y = 0
+            transformed_pos.point.z = 0.167
+        else:
+            transformed_pos.point.x = 0.0
+            transformed_pos.point.y = 0.04
+            transformed_pos.point.z = 0.13
+        transformed_pos = do_transform_point(transformed_pos, gripper_base_transform)
+
+        # Debug stuff
+        if self.debug:
+            debug_pose = PoseStamped()
+            debug_pose.header.frame_id = "base_footprint"
+            debug_pose.pose.position.x = transformed_pos.point.x
+            debug_pose.pose.position.y = transformed_pos.point.y
+            debug_pose.pose.position.z = transformed_pos.point.z
+            self.debug_hand_pose_pub.publish(debug_pose)
+
+        # Prepare bio_ik request
+        request = prepare_bio_ik_request("right_arm", self.robot.get_current_state(), "/handover/robot_description_grasp")
+
+        # Set the position goal
+        pos_goal = PositionGoal()
+        pos_goal.link_name = "rh_grasp"
+        pos_goal.weight = 10.0
+        pos_goal.position.x = transformed_pos.point.x
+        pos_goal.position.y = transformed_pos.point.y
+        pos_goal.position.z = transformed_pos.point.z
+
+        # Set the direction goal
+        if object_type == "book":
+            dir_goal = DirectionGoal()
+            dir_goal.link_name = "rh_grasp"
+            dir_goal.weight = 10.0
+            dir_goal.axis = Vector3(0, -1, 0)
+            dir_goal.direction = Vector3(-z_direction[0], -z_direction[1], -z_direction[2])
+        else:
+            dir_goal = DirectionGoal()
+            dir_goal.link_name = "rh_grasp"
+            dir_goal.weight = 10.0
+            dir_goal.axis = Vector3(1, 0, 0)
+            dir_goal.direction = Vector3(z_direction[0], z_direction[1], z_direction[2])
+
+        # Set secondary goals
+        limit_goal = AvoidJointLimitsGoal()
+        weight = 5.0
+        primary = False
+
+        # Add the previous goals
+        request.position_goals = [pos_goal]
+        request.direction_goals = [dir_goal]
+        request.avoid_joint_limits_goals = [limit_goal]
+
+        # Set additional goals for different objects
+        if object_type == "book":
+            dir_goal = DirectionGoal()
+            dir_goal.link_name = "rh_grasp"
+            dir_goal.weight = 8.0
+            dir_goal.axis = Vector3(0, 0, 1)
+            dir_goal.direction = Vector3(y_direction[0], y_direction[1], y_direction[2])
+            request.direction_goals.append(dir_goal)
+        else:
+            dir_goal = DirectionGoal()
+            dir_goal.link_name = "rh_grasp"
+            dir_goal.weight = 8.0
+            dir_goal.axis = Vector3(0, -1, 0)
+            dir_goal.direction = Vector3(-y_direction[0], -y_direction[1], -y_direction[2])
+            request.direction_goals.append(dir_goal)
+
+        # Get bio_ik solution
+        response = self.bio_ik_srv(request).ik_response
+        if self.debug:
+            display_state = DisplayRobotState()
+            display_state.state = response.solution
+            self.debug_state_pub.publish(display_state)
+        if not response.error_code.val == 1:
+            raise Exception("Bio_ik planning failed with error code {}.".format(response.error_code.val))
+
+        # Filter solution for relevante joints
+        joint_target_state = filter_joint_state(response.solution.joint_state, self.hand.get_active_joints())
+
+        # Execute solution
+        self.hand.set_joint_value_target(joint_target_state)
+        plan = self.hand.go()
+        if not plan:
+            raise Exception("No path was found to the joint state \n {}.".format(joint_target_state))
+        '''
 
     def move_fixed_pose_pc_above(self):
         self.setup_fingers()

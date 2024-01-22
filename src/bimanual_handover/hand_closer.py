@@ -9,7 +9,7 @@ from stable_baselines3 import PPO, SAC
 import bimanual_handover.syn_grasp_gen as sgg
 from rosbag import Bag
 from datetime import datetime
-from std_msgs.msg import Float64
+from std_msgs.msg import Float64, Bool
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from sr_robot_msgs.msg import BiotacAll
@@ -27,10 +27,6 @@ import rosparam
 class DemoCloser():
 
     def __init__(self):
-        rospy.init_node('demo_closer')
-        roscpp_initialize('')
-        rospy.on_shutdown(self.shutdown)
-
         # Setup fingers
         self.fingers = MoveGroupCommander('right_fingers', ns="/")
         self.fingers.set_max_velocity_scaling_factor(1.0)
@@ -38,9 +34,6 @@ class DemoCloser():
 
         rospy.Service('hand_closer_srv', HandCloserSrv, self.move_fixed)
         rospy.spin()
-
-    def shutdown(self):
-        roscpp_shutdown()
 
     def move_fixed(self, req):
         finger_dict = {}
@@ -57,13 +50,9 @@ class DemoCloser():
         self.fingers.go()
         return True
 
-class CloseContactMover():
+class ThresholdCloser():
 
-    def __init__(self, debug = True, collect = False):
-        rospy.init_node('close_contact_mover')
-        roscpp_initialize('')
-        rospy.on_shutdown(self.shutdown)
-
+    def __init__(self):
         # Setup joint control
         self.joints_dict = {'rh_FFJ2': 0, 'rh_FFJ3': 0, 'rh_MFJ2': 1, 'rh_MFJ3': 1, 'rh_RFJ2': 2, 'rh_RFJ3': 2, 'rh_LFJ2': 3, 'rh_LFJ3': 3, 'rh_THJ5': 4}
         self.closing_joints = list(self.joints_dict.keys())
@@ -71,7 +60,7 @@ class CloseContactMover():
         self.joint_client.wait_for_server()
 
         # Initialized based on desired mode
-        self.mode = rosparam.get_param("model_type")
+        self.mode = rosparam.get_param("hand_closer/mode")
         if self.mode == "tactile":
             self.tactile_threshold = 20
             self.initial_tactile_values = None
@@ -89,8 +78,8 @@ class CloseContactMover():
         self.joint_state_sub = rospy.Subscriber('/hand/joint_states', JointState, self.joint_callback)
 
         # Initialize debug and data collection
-        self.debug = debug
-        self.collect = collect
+        self.debug = rosparam.get_param("hand_closer/debug")
+        self.collect = rosparam.get_param("hand_closer/collect")
         if self.debug:
             self.debug_pub = rospy.Publisher('debug/hand_closer/trajectory', DisplayTrajectory, latch = True, queue_size = 1)
             self.debug_snapshot_pub = rospy.Publisher('debug/hand_closer/snapshot', Bool, queue_size = 1, latch = True)
@@ -107,12 +96,9 @@ class CloseContactMover():
         rospy.Service('hand_closer_srv', HandCloserSrv, self.move_until_contacts)
         rospy.spin()
 
-    def shutdown(self):
-        roscpp_shutdown()
-
     def wait_for_initial_values(self):
         if self.debug:
-            self.debug_snapshot.publish(True)
+            self.debug_snapshot_pub.publish(True)
         if self.mode == "tactile":
             while self.current_tactile_values is None:
                 pass
@@ -121,7 +107,6 @@ class CloseContactMover():
             while self.current_effort_values is None:
                 pass
             self.initial_effort_values = deepcopy(self.current_effort_values)
-            print(self.initial_effort_values)
         while self.current_joint_state is None:
             pass
 
@@ -184,7 +169,7 @@ class CloseContactMover():
             # Publish trajectory for debugging
             debug_traj = DisplayTrajectory()
             debug_traj.trajectory = [RobotTrajectory()]
-            debug_traj.trajectory[0].joint_trajectory = self.create_joint_trajectory_msg(self.joints, steps)
+            debug_traj.trajectory[0].joint_trajectory = self.create_joint_trajectory_msg(self.closing_joints, steps)
             debug_traj.trajectory_start.joint_state = self.wait_for_hand_joints()
             self.debug_pub.publish(debug_traj)
 
@@ -253,21 +238,16 @@ class CloseContactMover():
             self.data_bag.close()
         return False
 
-class ModelMover():
+class ModelCloser():
 
     def __init__(self):
-        # Initialize
-        rospy.init_node('model_mover')
-        roscpp_initialize('')
-        rospy.on_shutdown(self.shutdown)
-
         # Setup and load model paths
         rospack = rospkg.RosPack()
         pkg_path = rospack.get_path('bimanual_handover')
-        model_path = pkg_path + rospy.get_param("closing_model_path")
+        model_path = pkg_path + rospy.get_param("hand_closer/model_path")
         self.model = SAC.load(model_path)
-        self.model.load_replay_buffer(pkg_path + rospy.get_param("closing_model_replay_buffer_path"))
-        self.model_type = rosparam.get_param("model_type")
+        self.model.load_replay_buffer(pkg_path + rospy.get_param("hand_closer/model_replay_buffer_path"))
+        self.model_type = rosparam.get_param("hand_closer/model_type")
 
         # Setup fingers
         self.fingers = MoveGroupCommander('right_fingers', ns="/")
@@ -296,9 +276,6 @@ class ModelMover():
         rospy.loginfo("hand_closer_srv ready.")
         rospy.Service('hand_closer_srv', HandCloserSrv, self.close_hand)
         rospy.spin()
-
-    def shutdown(self):
-        roscpp_shutdown()
 
     def tactile_callback(self, tactile):
         self.current_tactile = [x.pdc for x in tactile.tactiles]
@@ -408,16 +385,21 @@ class ModelMover():
             self.exec_action(action)
         return True
 
-def init_mover(mode):
-    if mode == "ccm":
-        CloseContactMover()
-    elif mode == "pca":
-        ModelMover()
+def shutdown():
+    roscpp_shutdown()
+
+def init_mover():
+    rospy.init_node('hand_closer')
+    roscpp_initialize('')
+    rospy.on_shutdown(shutdown)
+
+    mode = rosparam.get_param("hand_closer/closer_type")
+    if mode == "threshold":
+        ThresholdCloser()
+    elif mode == "model":
+        ModelCloser()
     elif mode == "demo":
         DemoCloser()
 
 if __name__ == '__main__':
-    if len(sys.argv) < 2:
-        rospy.logerr("Missing parameters to call hand_closer. Exiting.")
-    else:
-        init_mover(sys.argv[1])
+    init_mover()

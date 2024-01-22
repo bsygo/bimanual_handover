@@ -11,10 +11,11 @@ from bio_ik_msgs.msg import PoseGoal, IKRequest
 from bio_ik_msgs.srv import GetIK
 from tf2_ros import TransformListener, Buffer
 from tf2_geometry_msgs import do_transform_pose
+import rosparam
 
 class GraspTester():
 
-    def __init__(self, debug = True):
+    def __init__(self):
         rospy.init_node('grasp_tester_node')
         roscpp_initialize('')
         rospy.on_shutdown(self.shutdown)
@@ -40,7 +41,7 @@ class GraspTester():
         TransformListener(self.tf_buffer)
 
         # Debug
-        self.debug = debug
+        self.debug = rosparam.get_param("grasp_tester/debug")
         if self.debug:
             self.debug_ik_solution_pub = rospy.Publisher('debug/grasp_tester/ik_solution', DisplayRobotState, queue_size = 1, latch = True)
             self.debug_pub_current = rospy.Publisher('debug/grasp_tester/pre_cartesian', PoseStamped, queue_size = 1, latch = True)

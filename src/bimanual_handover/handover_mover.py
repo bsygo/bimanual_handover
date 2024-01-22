@@ -28,10 +28,11 @@ from std_msgs.msg import ColorRGBA
 import rosbag
 import rospkg
 from datetime import datetime
+import rosparam
 
 class HandoverMover():
 
-    def __init__(self, debug = True, analyse = False):
+    def __init__(self):
         rospy.init_node('handover_mover')
         roscpp_initialize('')
         rospy.on_shutdown(self.shutdown)
@@ -40,9 +41,13 @@ class HandoverMover():
         self.hand = MoveGroupCommander("right_arm", ns = "/")
         self.hand.get_current_pose() # To initiate state monitor: see moveit issue #2715
         self.fingers = MoveGroupCommander("right_fingers", ns = "/")
+        self.fingers.set_max_velocity_scaling_factor(1.0)
+        self.fingers.set_max_acceleration_scaling_factor(1.0)
         self.arm = MoveGroupCommander("right_arm_pr2", ns = "/")
         self.gripper = MoveGroupCommander("left_gripper", ns = "/")
         self.left_arm = MoveGroupCommander("left_arm", ns = "/")
+        self.left_arm.set_max_velocity_scaling_factor(1.0)
+        self.left_arm.set_max_acceleration_scaling_factor(1.0)
         self.psi = PlanningSceneInterface(ns = "/")
         self.robot = RobotCommander()
         self.hand.set_end_effector_link("rh_manipulator")
@@ -59,6 +64,9 @@ class HandoverMover():
         rospy.wait_for_service('/bio_ik/get_bio_ik')
         self.bio_ik_srv = rospy.ServiceProxy('/bio_ik/get_bio_ik', GetIK)
 
+        # Initialize settings for current handover
+        self.side = None
+
         # Setup FK
         self.fk_robot = URDF.from_parameter_server(key = "robot_description_grasp")
         self.kdl_kin_hand = KDLKinematics(self.fk_robot, "base_footprint", "rh_grasp")
@@ -70,20 +78,20 @@ class HandoverMover():
         self.handover_frame_pub = rospy.Publisher("handover_frame_pose", PoseStamped, queue_size = 1)
 
         # Debug
-        self.debug = debug
+        self.debug = rosparam.get_param("debug_handover_mover")
         if self.debug:
-            self.debug_gripper_pose_pub = rospy.Publisher('debug/handover_mover/gripper_pose', PoseStamped, queue_size = 1)
-            self.debug_hand_pose_pub = rospy.Publisher('debug/handover_mover/hand_pose', PoseStamped, queue_size = 1)
-            self.debug_sampled_transforms_pub = rospy.Publisher('debug/handover_mover/sampled_transforms', PoseArray, queue_size = 1)
-            self.debug_sampled_poses_pub = rospy.Publisher('debug/handover_mover/sampled_poses', PoseArray, queue_size = 1)
-            self.debug_state_pub = rospy.Publisher('debug/handover_mover/robot_state', DisplayRobotState, queue_size = 1)
+            self.debug_gripper_pose_pub = rospy.Publisher('debug/handover_mover/gripper_pose', PoseStamped, queue_size = 1, latch = True)
+            self.debug_hand_pose_pub = rospy.Publisher('debug/handover_mover/hand_pose', PoseStamped, queue_size = 1, latch = True)
+            self.debug_sampled_transforms_pub = rospy.Publisher('debug/handover_mover/sampled_transforms', PoseArray, queue_size = 1, latch = True)
+            self.debug_sampled_poses_pub = rospy.Publisher('debug/handover_mover/sampled_poses', PoseArray, queue_size = 1, latch = True)
+            self.debug_state_pub = rospy.Publisher('debug/handover_mover/robot_state', DisplayRobotState, queue_size = 1, latch = True)
             self.debug_hand_markers_pub = rospy.Publisher('debug/handover_mover/hand_markers', Marker, queue_size = 1, latch = True)
             self.debug_gripper_markers_pub = rospy.Publisher('debug/handover_mover/gripper_markers', Marker, queue_size = 1, latch = True)
-            self.debug_score_markers_pub = rospy.Publisher('debug/handover_mover/score_markers', Marker, queue_size = 1, latch = True)
-            self.debug_min_score_markers_pub = rospy.Publisher('debug/handover_mover/min_score_markers', Marker, queue_size = 1, latch = True)
-        self.analyse = analyse
+        self.analyse = rosparam.get_param("analyse_handover_mover")
         if self.analyse:
             self.debug_combined_markers_pub = rospy.Publisher('debug/handover_mover/combined_markers', Marker, queue_size = 1, latch = True)
+            self.debug_score_markers_pub = rospy.Publisher('debug/handover_mover/score_markers', Marker, queue_size = 1, latch = True)
+            self.debug_min_score_markers_pub = rospy.Publisher('debug/handover_mover/min_score_markers', Marker, queue_size = 1, latch = True)
             self.time = datetime.now().strftime("%d_%m_%Y_%H_%M")
             pkg_path = rospkg.RosPack().get_path('bimanual_handover')
             path = pkg_path + "/data/bags/"
@@ -100,20 +108,22 @@ class HandoverMover():
 
     def move_handover(self, req):
         rospy.loginfo('Request received.')
-        if req.mode == "fixed":
+        self.side = req.side
+        hand_pose = self.get_hand_pose(req.object_type)
+        if req.mode == "ik":
             self.move_fixed_pose_above(req.object_type)
             return True
-        elif req.mode == "above":
+        elif req.mode == "pc":
             self.move_fixed_pose_pc_above()
             return True
-        elif req.mode == "side":
-            self.move_fixed_pose_side()
+        elif req.mode == "fixed":
+            self.move_fixed_pose(hand_pose)
             return True
         elif req.mode == "gpd":
             self.move_gpd_pose()
             return True
         elif req.mode == "sample":
-            return self.move_sampled_pose_above(req.object_type)
+            return self.move_sampled_pose_above(hand_pose, req.object_type)
         else:
             rospy.loginfo("Unknown mode {}".format(req.mode))
             return False
@@ -126,7 +136,7 @@ class HandoverMover():
         if self.analyse:
             translation_step = 0.06
         else:
-            translation_step = 0.03
+            translation_step = 0.06#0.03
         rotation_step = math.pi * 30/180
         if self.analyse:
             #linear_combinations = [[x, y, z] for x in range(0, 2) for y in range(0, 2) for z in range(0, 2)]
@@ -134,8 +144,8 @@ class HandoverMover():
             angular_combinations = [[x, y, z] for x in range(-3, 4) for y in range(-3, 4) for z in range(-3, 4)]
             #angular_combinations = [[x, y, z] for x in range(0, 2) for y in range(0, 2) for z in range(0, 2)]
         else:
-            linear_combinations = [[x, y, z] for x in range(-1, 3) for y in range(-2, 1) for z in range(-1, 2)]
-            angular_combinations = [[x, y, z] for x in range(-1, 2) for y in range(-1, 2) for z in range(-2, 3)]
+            linear_combinations = [[x, y, z] for x in range(0, 2) for y in range(0, 5) for z in range(-3, 1)]
+            angular_combinations = [[x, y, z] for x in range(-1, 2) for y in range(-1, 2) for z in range(-1, 2)]
         transformations = []
 
         # Aggregate transforms to show for debugging
@@ -313,7 +323,7 @@ class HandoverMover():
         if self.analyse:
             score_limit = 0.0
         else:
-            score_limit = 0.22 # old: can->0.51 book->0.56/0.57 new: can->0.2/0.21 book->0.38
+            score_limit = 0.5#0.22 # old: can->0.51 book->0.56/0.57 new: can->0.2/0.21 book->0.38
         deviation_limit = 0.01
         best_score = 1
         best_transform = None
@@ -396,6 +406,11 @@ class HandoverMover():
             if score < 1:
                 hand_pos_diff, hand_quat_diff = self.calculate_fk_diff(hand_joint_state, transformed_hand, "hand")
                 gripper_pos_diff, gripper_quat_diff = self.calculate_fk_diff(gripper_joint_state, transformed_gripper, "gripper")
+                if self.debug:
+                    rospy.loginfo("Hand pos diff: {}".format(hand_pos_diff))
+                    rospy.loginfo("Gripper pos diff: {}".format(gripper_pos_diff))
+                if (hand_pos_diff or gripper_pos_diff) > deviation_limit:
+                    score = 1
 
             if self.debug:
                 self.debug_gripper_pose_pub.publish(transformed_gripper)
@@ -414,16 +429,8 @@ class HandoverMover():
                 hand_marker.points.append(transformed_hand.pose.position)
                 gripper_marker.points.append(transformed_gripper.pose.position)
                 if score < 1:
-                    hand_pos_diff, hand_quat_diff = self.calculate_fk_diff(hand_joint_state, transformed_hand, "hand")
-                    gripper_pos_diff, gripper_quat_diff = self.calculate_fk_diff(gripper_joint_state, transformed_gripper, "gripper")
-                    if hand_pos_diff > deviation_limit:
-                        hand_marker.colors.append(ColorRGBA(1, 1, 0, 1))
-                    else:
-                        hand_marker.colors.append(ColorRGBA(0, 1, 0, 1))
-                    if gripper_pos_diff > deviation_limit:
-                        gripper_marker.colors.append(ColorRGBA(1, 1, 0, 1))
-                    else:
-                        gripper_marker.colors.append(ColorRGBA(0, 1, 0, 1))
+                    hand_marker.colors.append(ColorRGBA(0, 1, 0, 1))
+                    gripper_marker.colors.append(ColorRGBA(0, 1, 0, 1))
                 else:
                     hand_marker.colors.append(ColorRGBA(1, 0, 0, 1))
                     gripper_marker.colors.append(ColorRGBA(1, 0, 0, 1))
@@ -443,8 +450,6 @@ class HandoverMover():
                     min_score_marker.points.append(combined_pose.pose.position)
                     aggregated_scores.append(score)
                     if score == 1:
-                        aggregated_results.append(2)
-                    elif self.debug and (hand_pos_diff >= deviation_limit or gripper_pos_diff >= deviation_limit):
                         aggregated_results.append(1)
                     else:
                         aggregated_results.append(0)
@@ -488,13 +493,11 @@ class HandoverMover():
                 else:
                     aggregated_scores.append(score)
                     if score == 1:
-                        aggregated_results.append(2)
-                    elif self.debug and (hand_pos_diff >= deviation_limit or gripper_pos_diff >= deviation_limit):
                         aggregated_results.append(1)
                     else:
                         aggregated_results.append(0)
 
-            if score < best_score and not(hand_pos_diff >= deviation_limit or gripper_pos_diff >= deviation_limit):
+            if score < best_score:
                 best_score = score
                 best_transform = transformation
                 best_hand = hand_joint_state
@@ -507,6 +510,7 @@ class HandoverMover():
             if self.debug:
                 rospy.loginfo("Transform score: {}".format(score))
                 debug_counter += 1
+                rospy.loginfo("---")
 
             # Stop if score already good enough
             if best_score < score_limit:
@@ -577,32 +581,16 @@ class HandoverMover():
         self.fingers.set_joint_value_target(joint_values)
         self.fingers.go()
 
-    def get_gripper_pose(self):
-        gripper_pose = PoseStamped()
-        gripper_pose.header.frame_id = "base_footprint"
-        gripper_pose.pose.position.x = 0.4753863391864514
-        gripper_pose.pose.position.y = 0.03476345653124885
-        gripper_pose.pose.position.z = 0.6746350873056409
-        gripper_pose.pose.orientation = Quaternion(*quaternion_from_euler(0, 0, -1.5708))
-        return gripper_pose
-
-    def move_sampled_pose_above(self, object_type = None):
-        self.setup_fingers()
-
+    def move_sampled_pose_above(self, hand_pose, object_type = None):
         # Pose through initial intuition, just from where to start sampling
         gripper_pose = self.get_gripper_pose()
 
         # Setup hand pose
-        hand_pose = deepcopy(gripper_pose)
-        if object_type == "book":
-            hand_pose.pose.position.y += -0.02
-            hand_pose.pose.position.x += -0.03
-            hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(-1.5708, 3.14159, -1.5706))
-        else:
-            hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(-1.5708, 3.14159, 0))
-        hand_pose.pose.position.z += 0.167
         pre_hand_pose = deepcopy(hand_pose)
-        pre_hand_pose.pose.position.z += 0.08
+        if self.side == "top":
+            pre_hand_pose.pose.position.z += 0.08
+        elif self.side == "side":
+            pre_hand_pose.pose.position.y += -0.08
 
         if self.debug:
             self.debug_hand_pose_pub.publish(hand_pose)
@@ -618,24 +606,15 @@ class HandoverMover():
             rospy.logerr("No handover pose found.")
             return False
 
-        # Transform poses into handover_frame
-        gripper_pose = do_transform_pose(gripper_pose, base_handover_transform)
-        hand_pose = do_transform_pose(hand_pose, base_handover_transform)
+        # Setup pre_hand_pose
         pre_hand_pose = do_transform_pose(pre_hand_pose, base_handover_transform)
-
-        # Apply handover_transform
-        gripper_pose = do_transform_pose(gripper_pose, handover_transform)
-        hand_pose = do_transform_pose(hand_pose, handover_transform)
         pre_hand_pose = do_transform_pose(pre_hand_pose, handover_transform)
-
-        # Tranform poses back into base_footprint
-        gripper_pose = do_transform_pose(gripper_pose, handover_base_transform)
-        hand_pose = do_transform_pose(hand_pose, handover_base_transform)
         pre_hand_pose = do_transform_pose(pre_hand_pose, handover_base_transform)
 
         if self.debug:
             self.debug_gripper_pose_pub.publish(gripper_pose)
 
+        # Move gripper to generated joint state
         self.left_arm.set_joint_value_target(gripper_joint_state)
         self.left_arm.go()
 
@@ -648,15 +627,32 @@ class HandoverMover():
         result = self.bio_ik_srv(request).ik_response
         if result.error_code.val != 1:
             rospy.logerr("Bio_ik planning request returned error code {}.".format(result.error_code.val))
-            return False
-        filtered_joint_state_pre_hand = filter_joint_state(result.solution.joint_state, self.hand.get_active_joints())
+            rospy.loginfo("The calculated approach hand joint configuration has not found a correct solution. Continuing with moving directly to the target pose.")
+        else:
+            filtered_joint_state_pre_hand = filter_joint_state(result.solution.joint_state, self.hand.get_active_joints())
+            # Move hand to requested pre_hand_pose
+            pre_hand_pos_diff, pre_hand_quat_diff = self.calculate_fk_diff(filtered_joint_state_pre_hand, pre_hand_pose, "hand")
+            if pre_hand_pos_diff < 0.01:
+                rospy.loginfo("Moving right arm to handover pose.")
+                self.hand.set_joint_value_target(filtered_joint_state_pre_hand)
+                self.hand.go()
+            else:
+                rospy.loginfo("The calculated approach hand joint configuration has not found a correct solution. Continuing with moving directly to the target pose.")
 
-        # Move hand to requested pose
-        # Use bio_ik to be able to use rh_grasp as end effector
-        rospy.loginfo("Moving right arm to handover pose.")
-        self.hand.set_joint_value_target(filtered_joint_state_pre_hand)
-        self.hand.go()
+        if self.debug:
+            display_state = DisplayRobotState()
+            display_state.state = self.robot.get_current_state()
+            positions = list(display_state.state.joint_state.position)
+            for joint in hand_joint_state.name:
+                index = hand_joint_state.name.index(joint)
+                new_value = hand_joint_state.position[index]
+                display_index = display_state.state.joint_state.name.index(joint)
+                positions[display_index] = new_value
+            positions = tuple(positions)
+            display_state.state.joint_state.position = positions
+            self.debug_state_pub.publish(display_state)
 
+        # Move hand to generated joint state
         self.hand.set_joint_value_target(hand_joint_state)
         self.hand.go()
 
@@ -730,7 +726,6 @@ class HandoverMover():
                 print(e)
 
     def move_fixed_pose_above(self, object_type = None):
-        self.setup_fingers()
         gripper_pose = self.get_gripper_pose()
         self.left_arm.set_pose_target(gripper_pose)
         self.left_arm.go()
@@ -818,131 +813,17 @@ class HandoverMover():
         if not plan:
             raise Exception("No path was found to the joint state \n {}.".format(joint_target_state))
 
-    def move_fixed_pose_side(self, object_type = None):
-        self.setup_fingers_together()
+    def move_fixed_pose(self, hand_pose):
         gripper_pose = self.get_gripper_pose()
         self.left_arm.set_pose_target(gripper_pose)
         self.left_arm.go()
         rospy.sleep(1)
 
-        hand_pose = PoseStamped()
-        hand_pose.header.frame_id = "l_gripper_tool_frame"
-        # WIP
-        if object_type == "book":
-            hand_pose.pose.position.y += -0.02
-            hand_pose.pose.position.x += -0.03
-            hand_pose.pose.position.z += 0.167
-            hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(-1.5708, 3.14159, -1.5706))
-        else:
-            hand_pose.pose.position.x = 0.055
-            hand_pose.pose.position.y = 0.04
-            hand_pose.pose.position.z = 0.1
-            hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(0, -1.5708, 0))
-
-        self.debug_hand_pose_pub.publish(hand_pose)
+        if self.debug:
+            self.debug_hand_pose_pub.publish(hand_pose)
 
         self.hand.set_pose_target(hand_pose)
         self.hand.go()
-
-        '''
-        # Calculate desired position and direction relative to l_gripper_tool_frame in base_footprint
-        gripper_pose = self.gripper.get_current_pose(end_effector_link = "l_gripper_tool_frame")
-        R = quaternion_matrix([gripper_pose.pose.orientation.x, gripper_pose.pose.orientation.y, gripper_pose.pose.orientation.z, gripper_pose.pose.orientation.w])
-        x_direction = R[:3, 0]
-        y_direction = R[:3, 1]
-        z_direction = R[:3, 2]
-
-        gripper_base_transform = self.tf_buffer.lookup_transform("base_footprint", "l_gripper_tool_frame", rospy.Time(0))
-        transformed_pos = PointStamped()
-        transformed_pos.header.frame_id = "l_gripper_tool_frame"
-        if object_type == "book":
-            transformed_pos.point.x = 0.02
-            transformed_pos.point.y = 0
-            transformed_pos.point.z = 0.167
-        else:
-            transformed_pos.point.x = 0.0
-            transformed_pos.point.y = 0.04
-            transformed_pos.point.z = 0.13
-        transformed_pos = do_transform_point(transformed_pos, gripper_base_transform)
-
-        # Debug stuff
-        if self.debug:
-            debug_pose = PoseStamped()
-            debug_pose.header.frame_id = "base_footprint"
-            debug_pose.pose.position.x = transformed_pos.point.x
-            debug_pose.pose.position.y = transformed_pos.point.y
-            debug_pose.pose.position.z = transformed_pos.point.z
-            self.debug_hand_pose_pub.publish(debug_pose)
-
-        # Prepare bio_ik request
-        request = prepare_bio_ik_request("right_arm", self.robot.get_current_state(), "/handover/robot_description_grasp")
-
-        # Set the position goal
-        pos_goal = PositionGoal()
-        pos_goal.link_name = "rh_grasp"
-        pos_goal.weight = 10.0
-        pos_goal.position.x = transformed_pos.point.x
-        pos_goal.position.y = transformed_pos.point.y
-        pos_goal.position.z = transformed_pos.point.z
-
-        # Set the direction goal
-        if object_type == "book":
-            dir_goal = DirectionGoal()
-            dir_goal.link_name = "rh_grasp"
-            dir_goal.weight = 10.0
-            dir_goal.axis = Vector3(0, -1, 0)
-            dir_goal.direction = Vector3(-z_direction[0], -z_direction[1], -z_direction[2])
-        else:
-            dir_goal = DirectionGoal()
-            dir_goal.link_name = "rh_grasp"
-            dir_goal.weight = 10.0
-            dir_goal.axis = Vector3(1, 0, 0)
-            dir_goal.direction = Vector3(z_direction[0], z_direction[1], z_direction[2])
-
-        # Set secondary goals
-        limit_goal = AvoidJointLimitsGoal()
-        weight = 5.0
-        primary = False
-
-        # Add the previous goals
-        request.position_goals = [pos_goal]
-        request.direction_goals = [dir_goal]
-        request.avoid_joint_limits_goals = [limit_goal]
-
-        # Set additional goals for different objects
-        if object_type == "book":
-            dir_goal = DirectionGoal()
-            dir_goal.link_name = "rh_grasp"
-            dir_goal.weight = 8.0
-            dir_goal.axis = Vector3(0, 0, 1)
-            dir_goal.direction = Vector3(y_direction[0], y_direction[1], y_direction[2])
-            request.direction_goals.append(dir_goal)
-        else:
-            dir_goal = DirectionGoal()
-            dir_goal.link_name = "rh_grasp"
-            dir_goal.weight = 8.0
-            dir_goal.axis = Vector3(0, -1, 0)
-            dir_goal.direction = Vector3(-y_direction[0], -y_direction[1], -y_direction[2])
-            request.direction_goals.append(dir_goal)
-
-        # Get bio_ik solution
-        response = self.bio_ik_srv(request).ik_response
-        if self.debug:
-            display_state = DisplayRobotState()
-            display_state.state = response.solution
-            self.debug_state_pub.publish(display_state)
-        if not response.error_code.val == 1:
-            raise Exception("Bio_ik planning failed with error code {}.".format(response.error_code.val))
-
-        # Filter solution for relevante joints
-        joint_target_state = filter_joint_state(response.solution.joint_state, self.hand.get_active_joints())
-
-        # Execute solution
-        self.hand.set_joint_value_target(joint_target_state)
-        plan = self.hand.go()
-        if not plan:
-            raise Exception("No path was found to the joint state \n {}.".format(joint_target_state))
-        '''
 
     def move_fixed_pose_pc_above(self):
         self.setup_fingers()
@@ -1006,18 +887,50 @@ class HandoverMover():
         self.hand.set_pose_target(hand_pose)
         self.hand.go()
 
-        # spawn a collision object in the rough shape of the pointloud
-        # Unused, maybe later for visualization or collision checking
-        '''
-        can_pose = hand_pose
-        can_pose.pose.position.y += 0.05
-        can_pose.pose.position.z = min_point[2] + math.dist([max_point[2]], [min_point[2]])/2
-        can_pose.pose.orientation = Quaternion(*quaternion_from_euler(0, 0, 0).tolist())
-        self.psi.add_cylinder('can', can_pose, math.dist([max_point[2]],[min_point[2]]), math.dist([max_point[0]], [min_point[0]])/2)
-        self.psi.disable_collision_detections('can', self.robot.get_link_names("right_fingers"))
-        self.psi.disable_collision_detections('can', ['rh_ff_biotac_link', 'rh_mf_biotac_link', 'rh_rf_biotac_link', 'rh_lf_biotac_link', 'rh_th_biotac_link', 'rh_ffdistal', 'rh_mfdistal', 'rh_rfdistal', 'rh_lfdistal', 'rh_thdistal'])
-        '''
         return True
+
+    def get_gripper_pose(self):
+        gripper_pose = PoseStamped()
+        gripper_pose.header.frame_id = "base_footprint"
+        gripper_pose.pose.position.x = 0.4753863391864514
+        gripper_pose.pose.position.y = 0.03476345653124885
+        gripper_pose.pose.position.z = 0.6746350873056409
+        gripper_pose.pose.orientation = Quaternion(*quaternion_from_euler(0, 0, -1.5708))
+        return gripper_pose
+
+    def get_hand_pose(self, object_type):
+        hand_pose = self.get_gripper_pose()
+        if object_type == "can":
+            if self.side == "top":
+                self.setup_fingers()
+                hand_pose.pose.position.x += 0
+                hand_pose.pose.position.y += 0
+                hand_pose.pose.position.z += 0.167
+                hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(-1.5708, 3.14159, 0))
+                return hand_pose
+            elif self.side == "side":
+                self.setup_fingers_together()
+                hand_pose.pose.position.x += 0.04
+                hand_pose.pose.position.y += -0.055
+                hand_pose.pose.position.z += 0.1
+                hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(0, -1.5708, -1.5708))
+                return hand_pose
+        elif object_type == "book":
+            if self.side == "top":
+                self.setup_fingers()
+                hand_pose.pose.position.y += -0.02
+                hand_pose.pose.position.x += -0.03
+                hand_pose.pose.position.z += 0.167
+                hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(-1.5708, 3.14159, -1.5706))
+                return hand_pose
+            # Not correct numbers
+            elif self.side == "side":
+                self.setup_fingers_together()
+                hand_pose.pose.position.x += 0.055
+                hand_pose.pose.position.y += 0.04
+                hand_pose.pose.position.z += 0.1
+                hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(0, -1.5708, 0))
+                return None
 
 if __name__ == "__main__":
     mover = HandoverMover()

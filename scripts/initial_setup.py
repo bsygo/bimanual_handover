@@ -47,8 +47,10 @@ def move_fixed():
     head.go()
     torso.set_joint_value_target([0.0167])
     torso.go()
-    #joint_values = dict(l_shoulder_pan_joint=0.6877300386981536, l_shoulder_lift_joint=0.0014527860014343034, l_upper_arm_roll_joint=1.988643872487468, l_forearm_roll_joint=-0.48605351559908117, l_elbow_flex_joint=-1.7236114019354039, l_wrist_flex_joint=-0.6663365621588351, l_wrist_roll_joint=-0.9874690540253139)
-    #left_arm.set_joint_value_target(joint_values)
+    '''
+    joint_values = dict(l_shoulder_pan_joint=0.6877300386981536, l_shoulder_lift_joint=0.0014527860014343034, l_upper_arm_roll_joint=1.988643872487468, l_forearm_roll_joint=-0.48605351559908117, l_elbow_flex_joint=-1.7236114019354039, l_wrist_flex_joint=-0.6663365621588351, l_wrist_roll_joint=-0.9874690540253139)
+    left_arm.set_joint_value_target(joint_values)
+    '''
     target_pose = PoseStamped()
     target_pose.header.frame_id = "base_footprint"
     target_pose.pose.position.x = 0.5027
@@ -78,10 +80,18 @@ def main():
     rospy.init_node('init_gripper_stub')
     rospy.on_shutdown(shutdown)
     left_arm = MoveGroupCommander('left_arm', ns = "/")
+    left_arm.set_max_velocity_scaling_factor(1.0)
+    left_arm.set_max_acceleration_scaling_factor(1.0)
     gripper = MoveGroupCommander('left_gripper', ns = "/")
+    gripper.set_max_velocity_scaling_factor(1.0)
+    gripper.set_max_acceleration_scaling_factor(1.0)
     head = MoveGroupCommander('head', ns = "/")
     right_arm = MoveGroupCommander('right_arm_pr2', ns = "/")
+    right_arm.set_max_velocity_scaling_factor(1.0)
+    right_arm.set_max_acceleration_scaling_factor(1.0)
     hand = MoveGroupCommander('right_hand', ns = "/")
+    hand.set_max_velocity_scaling_factor(1.0)
+    hand.set_max_acceleration_scaling_factor(1.0)
     torso = MoveGroupCommander('torso', ns = "/")
     torso.set_max_velocity_scaling_factor(1.0)
     torso.set_max_acceleration_scaling_factor(1.0)

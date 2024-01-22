@@ -1,12 +1,6 @@
 <?xml version="1.0"?>
 <launch>
     <arg name="demo" default="false" />
-    <!-- Choose between "full" and "train". -->
-    <arg name="handover_type" default="full" />
-    <!-- Choose grasp mode between "ccm" and "pca". -->
-    <arg name="grasp_mode" default="ccm" /> 
-    <!-- Choose object_type between "can" and "book" -->
-    <arg name="object_type" default="can" />
     <group ns="handover" >
     <include file="$(find bimanual_handover)/launch/pc_filter.launch" >
         <arg name="demo_pc" value="$(arg demo)" />
@@ -21,7 +15,7 @@
     <node name="initial_setup_node" pkg="bimanual_handover" type="initial_setup.py" output="screen" />
     <node name="process_pc_node" pkg="bimanual_handover" type="process_pc_stub.py" output="screen" />
     <node name="capture_pc_node" pkg="bimanual_handover" type="capture_pc.py" output="screen" args="$(arg demo)"/>
-    <node name="hand_closer_node" pkg="bimanual_handover" type="hand_closer.py" output="screen" args="$(arg grasp_mode)" />
+    <node name="hand_closer_node" pkg="bimanual_handover" type="hand_closer.py" output="screen" />
     <node name="grasp_tester_node" pkg="bimanual_handover" type="grasp_tester.py" output="screen" />
     <node name="handover_frame_publisher_node" pkg="bimanual_handover" type="handover_frame_publisher.py" output="screen" />
     <node name="handover_mover_node" pkg="bimanual_handover" type="handover_mover.py" output="screen" />

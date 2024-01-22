@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import rospy
+import rosparam
 from bimanual_handover_msgs.srv import InitialSetupSrv, ProcessPC, MoveHandover, GraspTesterSrv, FinishHandoverSrv, HandoverControllerSrv, HandCloserSrv
 
 class HandoverCommander():
@@ -34,6 +35,7 @@ class HandoverCommander():
 
         self.handover_controller_srv = rospy.Service('handover_controller_srv', HandoverControllerSrv, self.handover_controller_srv)
         rospy.loginfo('handover_controller_srv initialized.')
+
         rospy.spin()
 
     def handover_controller_srv(self, req):
@@ -44,11 +46,12 @@ class HandoverCommander():
         else:
             rospy.loginfo("Unknown handover command {}.".format(req.handover_type))
             return False
-        return self.full_pipeline(req.handover_type, req.grasp_type, req.object_type)
+        return self.full_pipeline(req.handover_type, req.object_type)
 
-    def full_pipeline(self, handover_type, grasp_type, object_type):
+    def full_pipeline(self, handover_type, object_type):
         rospy.loginfo('Sending service request to initial_setup_srv.')
-        if not self.initial_setup_srv('fixed', None):
+        setup_mode = rosparam.get_param("initial_setup")
+        if not self.initial_setup_srv(setup_mode, None):
             rospy.logerr('Moving to inital setup failed.')
             return False
 
@@ -56,7 +59,9 @@ class HandoverCommander():
         self.process_pc_srv(True)
 
         rospy.loginfo('Sending service request to handover_mover_srv.')
-        if not self.handover_mover_srv('sample', object_type):
+        side = rosparam.get_param("handover_mover/side")
+        mode = rosparam.get_param("handover_mover/mode")
+        if not self.handover_mover_srv(side, mode, object_type):
             rospy.logerr('Moving to handover pose failed.')
             return False
 
@@ -72,7 +77,8 @@ class HandoverCommander():
             return False
 
         rospy.loginfo('Sending service request to grasp_tester_srv.')
-        grasp_response = self.grasp_tester_srv('y', False)
+        direction = rosparam.get_param("grasp_tester/direction")
+        grasp_response = self.grasp_tester_srv(direction, False)
         rospy.loginfo('Grasp response: {}'.format(grasp_response))
         if not grasp_response:
             rospy.logerr('Executing grasp failed.')

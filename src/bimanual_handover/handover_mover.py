@@ -66,6 +66,7 @@ class HandoverMover():
 
         # Initialize settings for current handover
         self.side = None
+        self.mode = None
 
         # Setup FK
         self.fk_robot = URDF.from_parameter_server(key = "robot_description_grasp")
@@ -78,16 +79,18 @@ class HandoverMover():
         self.handover_frame_pub = rospy.Publisher("handover_frame_pose", PoseStamped, queue_size = 1)
 
         # Debug
-        self.debug = rosparam.get_param("debug_handover_mover")
+        self.debug = rosparam.get_param("handover_mover/debug")
         if self.debug:
             self.debug_gripper_pose_pub = rospy.Publisher('debug/handover_mover/gripper_pose', PoseStamped, queue_size = 1, latch = True)
             self.debug_hand_pose_pub = rospy.Publisher('debug/handover_mover/hand_pose', PoseStamped, queue_size = 1, latch = True)
             self.debug_sampled_transforms_pub = rospy.Publisher('debug/handover_mover/sampled_transforms', PoseArray, queue_size = 1, latch = True)
             self.debug_sampled_poses_pub = rospy.Publisher('debug/handover_mover/sampled_poses', PoseArray, queue_size = 1, latch = True)
             self.debug_state_pub = rospy.Publisher('debug/handover_mover/robot_state', DisplayRobotState, queue_size = 1, latch = True)
+            self.debug_gripper_state_pub = rospy.Publisher('debug/handover_mover/gripper_state', DisplayRobotState, queue_size = 1, latch = True)
+            self.debug_hand_state_pub = rospy.Publisher('debug/handover_mover/hand_state', DisplayRobotState, queue_size = 1, latch = True)
             self.debug_hand_markers_pub = rospy.Publisher('debug/handover_mover/hand_markers', Marker, queue_size = 1, latch = True)
             self.debug_gripper_markers_pub = rospy.Publisher('debug/handover_mover/gripper_markers', Marker, queue_size = 1, latch = True)
-        self.analyse = rosparam.get_param("analyse_handover_mover")
+        self.analyse = rosparam.get_param("handover_mover/analyse")
         if self.analyse:
             self.debug_combined_markers_pub = rospy.Publisher('debug/handover_mover/combined_markers', Marker, queue_size = 1, latch = True)
             self.debug_score_markers_pub = rospy.Publisher('debug/handover_mover/score_markers', Marker, queue_size = 1, latch = True)
@@ -109,6 +112,7 @@ class HandoverMover():
     def move_handover(self, req):
         rospy.loginfo('Request received.')
         self.side = req.side
+        self.mode = req.mode
         hand_pose = self.get_hand_pose(req.object_type)
         if req.mode == "ik":
             self.move_fixed_pose_above(req.object_type)
@@ -247,52 +251,73 @@ class HandoverMover():
 
         return score
 
-    def check_pose(self, gripper_pose, hand_pose):
-        # Get hand solution
-        request = prepare_bio_ik_request("right_arm", self.robot.get_current_state(), "/handover/robot_description_grasp", timeout_seconds = 0.05)
-        # request = self.add_can_goals(request, hand_pose, 'rh_grasp')
-        request = self.add_pose_goal(request, hand_pose, 'rh_grasp')
+    def check_pose(self, pose, manipulator, robot_state):
+        # Set parameters based on manipulator and mode
+        if manipulator == "hand":
+            group_name = "right_arm"
+            joints = self.hand.get_active_joints()
+            if self.mode == "ik":
+                robot_description =  "/handover/robot_description_grasp"
+                eef = "rh_grasp"
+                goal_type = "rot_inv"
+            else:
+                robot_description = "/robot_description"
+                eef = "rh_manipulator"
+                goal_type = "fixed"
+        elif manipulator == "gripper":
+            group_name = "left_arm"
+            joints = self.left_arm.get_active_joints()
+            robot_description = "/robot_description"
+            eef = "l_gripper_tool_frame"
+            goal_type = "fixed"
+
+        request = prepare_bio_ik_request(group_name, robot_state, robot_description, timeout_seconds = 0.05)
+        if goal_type == "rot_inv":
+            request = self.add_can_goals(request, pose, eef)
+        elif goal_type == "fixed":
+            request = self.add_pose_goal(request, pose, eef)
         result = self.bio_ik_srv(request).ik_response
-        # If result is not feasible, no further checking necessary, return worst score
+        # If result is not feasible, no further checking necessary
         if result.error_code.val != 1:
             if self.debug:
-                rospy.loginfo("Hand failed.")
+                rospy.loginfo("{} failed.".format(manipulator))
                 display_state = DisplayRobotState()
                 display_state.state.joint_state = result.solution.joint_state
-                self.debug_state_pub.publish(display_state)
-            score = 1
-            return score, None, None
+                if manipulator == "hand":
+                    self.debug_hand_state_pub.publish(display_state)
+                elif manipulator == "gripper":
+                    self.debug_gripper_state_pub.publish(display_state)
+            return None, None
         else:
-            filtered_joint_state_hand = filter_joint_state(result.solution.joint_state, self.hand.get_active_joints())
-            hand_fitness = result.solution_fitness
-        result = None
+            filtered_joint_state = filter_joint_state(result.solution.joint_state, joints)
+            return filtered_joint_state, result.solution_fitness
+        
+    def check_poses(self, gripper_pose, hand_pose):
+        # To have the same initial state for both planning approaches
+        initial_state = self.robot.get_current_state()
+
+        # Get hand solution
+        hand_state, hand_fitness = self.check_pose(hand_pose, "hand", initial_state)
+        if hand_state is None:
+            return 1, None, None
 
         # Get gripper solution
-        request = prepare_bio_ik_request("left_arm", self.robot.get_current_state(), timeout_seconds = 0.05)
-        request = self.add_pose_goal(request, gripper_pose, 'l_gripper_tool_frame')
-        result = self.bio_ik_srv(request).ik_response
-        # If result is not feasible, no further checking necessary, return worst score
-        if result.error_code.val != 1:
-            if self.debug:
-                rospy.loginfo("Gripper failed.")
-            score = 1
-            return score, None, None
-        else:
-            filtered_joint_state_gripper = filter_joint_state(result.solution.joint_state, self.left_arm.get_active_joints())
-            gripper_fitness = result.solution_fitness
+        gripper_state, gripper_fitness = self.check_pose(gripper_pose, "gripper", initial_state)
+        if gripper_state is None:
+            return 1, None, None
 
         # Combine joint_states for combined score
         combined_joint_state = JointState()
-        combined_joint_state.name = filtered_joint_state_hand.name + filtered_joint_state_gripper.name
-        combined_joint_state.position = filtered_joint_state_hand.position + filtered_joint_state_gripper.position
+        combined_joint_state.name = hand_state.name + gripper_state.name
+        combined_joint_state.position = hand_state.position + gripper_state.position
 
         if self.debug:
-            rospy.loginfo("Score hand: {}".format(self.score(filtered_joint_state_hand)))
-            rospy.loginfo("Score gripper: {}".format(self.score(filtered_joint_state_gripper)))
+            rospy.loginfo("Score hand: {}".format(self.score(hand_state)))
+            rospy.loginfo("Score gripper: {}".format(self.score(gripper_state)))
             rospy.loginfo("Hand fitness: {}".format(hand_fitness))
             rospy.loginfo("Gripper fitness: {}".format(gripper_fitness))
 
-        return self.score(combined_joint_state), filtered_joint_state_hand, filtered_joint_state_gripper
+        return self.score(combined_joint_state), hand_state, gripper_state
 
     def send_handover_frame(self, gripper_pose, hand_pose):
         rospy.sleep(1)
@@ -402,7 +427,7 @@ class HandoverMover():
             transformed_hand = do_transform_pose(transformed_hand, handover_base_transform)
 
             # Evaluate
-            score, hand_joint_state, gripper_joint_state = self.check_pose(transformed_gripper, transformed_hand)
+            score, hand_joint_state, gripper_joint_state = self.check_poses(transformed_gripper, transformed_hand)
             if score < 1:
                 hand_pos_diff, hand_quat_diff = self.calculate_fk_diff(hand_joint_state, transformed_hand, "hand")
                 gripper_pos_diff, gripper_quat_diff = self.calculate_fk_diff(gripper_joint_state, transformed_gripper, "gripper")
@@ -414,6 +439,7 @@ class HandoverMover():
 
             if self.debug:
                 self.debug_gripper_pose_pub.publish(transformed_gripper)
+                self.debug_hand_pose_pub.publish(transformed_hand)
                 if not gripper_joint_state is None:
                     display_state = DisplayRobotState()
                     display_state.state = initial_robot_state
@@ -425,7 +451,19 @@ class HandoverMover():
                         positions[display_index] = new_value
                     positions = tuple(positions)
                     display_state.state.joint_state.position = positions
-                    self.debug_state_pub.publish(display_state)
+                    self.debug_gripper_state_pub.publish(display_state)
+                if not hand_joint_state is None:
+                    display_state = DisplayRobotState()
+                    display_state.state = initial_robot_state
+                    positions = list(display_state.state.joint_state.position)
+                    for joint in hand_joint_state.name:
+                        index = hand_joint_state.name.index(joint)
+                        new_value = hand_joint_state.position[index]
+                        display_index = display_state.state.joint_state.name.index(joint)
+                        positions[display_index] = new_value
+                    positions = tuple(positions)
+                    display_state.state.joint_state.position = positions
+                    self.debug_hand_state_pub.publish(display_state)
                 hand_marker.points.append(transformed_hand.pose.position)
                 gripper_marker.points.append(transformed_gripper.pose.position)
                 if score < 1:
@@ -553,7 +591,10 @@ class HandoverMover():
         target = list(joint_values.position)
         target = [self.robot.get_joint("torso_lift_joint").value()] + target
         if chain_type == "hand":
-            pose_fk = self.kdl_kin_hand.forward(target, base_link = "base_footprint", end_link = "rh_grasp")
+            if self.mode == "ik":
+                pose_fk = self.kdl_kin_hand.forward(target, base_link = "base_footprint", end_link = "rh_grasp")
+            else:
+                pose_fk = self.kdl_kin_hand.forward(target, base_link = "base_footprint", end_link = "rh_manipulator")
         elif chain_type == "gripper":
             pose_fk = self.kdl_kin_gripper.forward(target, base_link = "base_footprint", end_link = "l_gripper_tool_frame")
 
@@ -594,6 +635,7 @@ class HandoverMover():
 
         if self.debug:
             self.debug_hand_pose_pub.publish(hand_pose)
+            self.debug_gripper_pose_pub.publish(gripper_pose)
 
         # Get required transforms
         handover_transform, hand_joint_state, gripper_joint_state = self.get_handover_transform(gripper_pose, hand_pose)
@@ -622,8 +664,12 @@ class HandoverMover():
             self.debug_hand_pose_pub.publish(hand_pose)
 
         # Get hand approach solution
-        request = prepare_bio_ik_request("right_arm", self.robot.get_current_state(), "/handover/robot_description_grasp")
-        request = self.add_pose_goal(request, pre_hand_pose, 'rh_grasp')
+        if self.mode == "ik":
+            request = prepare_bio_ik_request("right_arm", self.robot.get_current_state(), "/handover/robot_description_grasp")
+            request = self.add_pose_goal(request, pre_hand_pose, 'rh_grasp')
+        else:
+            request = prepare_bio_ik_request("right_arm", self.robot.get_current_state(), "/robot_description")
+            request = self.add_pose_goal(request, pre_hand_pose, 'rh_manipulator')
         result = self.bio_ik_srv(request).ik_response
         if result.error_code.val != 1:
             rospy.logerr("Bio_ik planning request returned error code {}.".format(result.error_code.val))
@@ -651,6 +697,10 @@ class HandoverMover():
             positions = tuple(positions)
             display_state.state.joint_state.position = positions
             self.debug_state_pub.publish(display_state)
+            hand_pose = do_transform_pose(hand_pose, base_handover_transform)
+            hand_pose = do_transform_pose(hand_pose, handover_transform)
+            hand_pose = do_transform_pose(hand_pose, handover_base_transform)
+            self.debug_hand_pose_pub.publish(hand_pose)
 
         # Move hand to generated joint state
         self.hand.set_joint_value_target(hand_joint_state)

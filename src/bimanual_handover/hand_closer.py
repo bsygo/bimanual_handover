@@ -152,10 +152,17 @@ class ThresholdCloser():
     def move_until_contacts(self, req):
         rospy.sleep(2)
         # Initialize values
-        self.wait_for_initial_values()
         finger_contacts = [False, False, False, False, False]
         joint_contacts = [False, False, False, False, False, False, False, False, False]
         targets = [1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.0]
+
+        # Move joints a small step for deadband compensation
+        msg = self.create_joint_trajectory_goal_msg(self.closing_joints, [0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01])
+        self.joint_client.send_goal(msg)
+        self.joint_client.wait_for_result()
+
+        # Take snapshot of initial values after deadband compensation
+        self.wait_for_initial_values()
 
         # Generate trajectory steps for each joint
         steps = []
@@ -198,8 +205,6 @@ class ThresholdCloser():
             msg = self.create_joint_trajectory_goal_msg(used_joints, used_steps)
             self.joint_client.send_goal(msg)
             self.joint_client.wait_for_result()
-            if not self.joint_client.get_result().error_code == 0:
-                rospy.loginfo(self.joint_client.get_result().error_code)
 
             # Test for each joint if their finger has made contact
             for i in range(len(self.closing_joints)):

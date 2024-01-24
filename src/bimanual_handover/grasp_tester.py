@@ -11,7 +11,6 @@ from bio_ik_msgs.msg import PoseGoal, IKRequest
 from bio_ik_msgs.srv import GetIK
 from tf2_ros import TransformListener, Buffer
 from tf2_geometry_msgs import do_transform_pose
-import rosparam
 
 class GraspTester():
 
@@ -41,7 +40,7 @@ class GraspTester():
         TransformListener(self.tf_buffer)
 
         # Debug
-        self.debug = rosparam.get_param("grasp_tester/debug")
+        self.debug = rospy.get_param("grasp_tester/debug")
         if self.debug:
             self.debug_ik_solution_pub = rospy.Publisher('debug/grasp_tester/ik_solution', DisplayRobotState, queue_size = 1, latch = True)
             self.debug_pub_current = rospy.Publisher('debug/grasp_tester/pre_cartesian', PoseStamped, queue_size = 1, latch = True)
@@ -121,7 +120,6 @@ class GraspTester():
 
     def move_bio_ik(self, target_pose):
         request = self.prepare_bio_ik_request('right_arm')
-        #request.avoid_collisions = False
         request = self.add_goals(request, target_pose.pose)
         response = self.bio_ik_srv(request).ik_response
         if not response.error_code.val == 1:
@@ -191,7 +189,9 @@ class GraspTester():
             cur_ft = deepcopy(self.current_force_y)
         elif req.direction == 'z':
             cur_ft = deepcopy(self.current_force_z)
-        #rospy.loginfo("Afterwards force value: {}".format(cur_ft))
+
+        if self.debug:
+            rospy.loginfo("Afterwards force value: {}".format(cur_ft))
 
         if req.train:
             self.fingers.set_named_target('open')
@@ -213,7 +213,9 @@ class GraspTester():
                 rospy.logerr("Encountered exception [ {} ] while moving to pre-test pose with bounded joints.".format(e))
                 input("Please decide how to solve this issue and press Enter to continue.")
 
-        print("Force diff: {}".format(abs(prev_ft - cur_ft)))
+        if self.debug:
+            rospy.loginfo("Force diff: {}".format(abs(prev_ft - cur_ft)))
+
         if abs(prev_ft - cur_ft) >= 2:
             return True
         else:

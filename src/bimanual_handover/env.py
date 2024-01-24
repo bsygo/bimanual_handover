@@ -27,7 +27,7 @@ import rosbag
 # Environment used for training on the real robot
 class RealEnv(gym.Env):
 
-    def __init__(self, fingers, record = True, env_type = "tactile", time = None):
+    def __init__(self, fingers, record, env_type, time):
         super().__init__()
         rospy.on_shutdown(self.close)
         self.env_type = env_type
@@ -75,7 +75,7 @@ class RealEnv(gym.Env):
         self.handover_controller_srv = rospy.ServiceProxy('handover_controller_srv', HandoverControllerSrv)
 
         # Initialize reset parameters
-        self.max_attempt_steps = 20#50
+        self.max_attempt_steps = 50
         self.current_attempt_step = 0
         self.reset_steps = 1000
         self.current_reset_step = 1000 # To set an object in first reset call
@@ -119,6 +119,18 @@ class RealEnv(gym.Env):
         array_msg = Float32MultiArray()
         array_msg.data = array
         self.bag.write(topic, array_msg)
+
+    def setup_fingers(self):
+        self.fingers.set_named_target('open')
+        joint_values = dict(rh_THJ4 = 1.13446, rh_LFJ4 = -0.31699402670752413, rh_FFJ4 = -0.23131151280059523, rh_MFJ4 = 0.008929532157657268, rh_RFJ4 = -0.11378487918959583)
+        self.fingers.set_joint_value_target(joint_values)
+        self.fingers.go()
+
+    def setup_fingers_together(self):
+        self.fingers.set_named_target('open')
+        joint_values = dict(rh_THJ4=1.13446, rh_LFJ4=0, rh_FFJ4=0, rh_MFJ4=0, rh_RFJ4=0)
+        self.fingers.set_joint_value_target(joint_values)
+        self.fingers.go()
 
     def reset_hand_pose(self):
         if self.current_object[0] == 1:
@@ -303,10 +315,10 @@ class RealEnv(gym.Env):
             rospy.sleep(1)
 
         # Reset hand into default position
-        self.fingers.set_named_target('open')
-        joint_values = dict(rh_THJ4 = 1.13446, rh_LFJ4 = -0.31699402670752413, rh_FFJ4 = -0.23131151280059523, rh_MFJ4 = 0.008929532157657268, rh_RFJ4 = -0.11378487918959583)
-        self.fingers.set_joint_value_target(joint_values)
-        self.fingers.go()
+        if self.current_object == [1, 0, 0]:
+            self.setup_fingers()
+        elif self.current_object == [0, 1, 0]:
+            self.setup_fingers_together()
 
         # Set new initial values
         self.initial_tactile = deepcopy(self.current_tactile)

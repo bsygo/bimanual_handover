@@ -11,6 +11,7 @@ from stable_baselines3.common.env_checker import check_env
 from stable_baselines3 import PPO, SAC
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.logger import configure
+import torch as th
 from sensor_msgs.msg import PointCloud2
 from tqdm.auto import tqdm
 from stable_baselines3.common.callbacks import CheckpointCallback
@@ -38,6 +39,11 @@ def main():
     env_check = rospy.get_param("env_check")
     checkpoint = rospy.get_param("checkpoint")
     model_path = rospy.get_param("model_path")
+    record = rospy.get_param("record")
+    actor_architecture = rospy.get_param("architecture/actor")
+    critic_architecture = rospy.get_param("architecture/critic")
+    policy_kwargs = dict(activation_fn=th.nn.ReLU,
+                         net_arch=dict(pi=actor_architecture, vf=critic_architecture))
 
     # Set logging parameters
     if model_path == '':
@@ -55,7 +61,7 @@ def main():
 
     # Setup environment
     rospy.loginfo('Setting up env.')
-    env = handover_env.RealEnv(fingers, env_type = env_type, time = str_date)
+    env = handover_env.RealEnv(fingers, record, env_type, str_date)
     if env_check:
         check_env(env)
         rospy.loginfo('Env check completed.')
@@ -65,10 +71,10 @@ def main():
         # Create new model
         rospy.loginfo('Creating {} model.'.format(model_type))
         if model_type == "ppo":
-            model = PPO("MlpPolicy", env, n_steps = 50, batch_size = 5, n_epochs = 50, verbose = 1, tensorboard_log = "{}/logs/tensorboard".format(path))
+            model = PPO("MlpPolicy", env, policy_kwargs = policy_kwargs, n_steps = 50, batch_size = 5, n_epochs = 50, verbose = 1, tensorboard_log = "{}/logs/tensorboard".format(path))
             rospy.loginfo('PPO model created.')
         elif model_type == "sac":
-            model = SAC("MlpPolicy", env, batch_size = 50, buffer_size = 10000, verbose = 1, tensorboard_log = "{}/logs/tensorboard".format(path))
+            model = SAC("MlpPolicy", env, policy_kwargs = policy_kwargs, batch_size = 50, buffer_size = 10000, verbose = 1, tensorboard_log = "{}/logs/tensorboard".format(path))
             rospy.loginfo('SAC model created.')
     else:
         # Update parameters if loaded from checkpoint or finished model

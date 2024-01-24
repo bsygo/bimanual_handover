@@ -22,7 +22,6 @@ from moveit_msgs.msg import DisplayTrajectory, RobotTrajectory
 from sr_robot_msgs.msg import BiotacAll
 from pr2_msgs.msg import PressureState
 from geometry_msgs.msg import WrenchStamped
-import rosparam
 
 class DemoCloser():
 
@@ -60,7 +59,7 @@ class ThresholdCloser():
         self.joint_client.wait_for_server()
 
         # Initialized based on desired mode
-        self.mode = rosparam.get_param("hand_closer/mode")
+        self.mode = rospy.get_param("hand_closer/mode")
         if self.mode == "tactile":
             self.tactile_threshold = 20
             self.initial_tactile_values = None
@@ -78,8 +77,8 @@ class ThresholdCloser():
         self.joint_state_sub = rospy.Subscriber('/hand/joint_states', JointState, self.joint_callback)
 
         # Initialize debug and data collection
-        self.debug = rosparam.get_param("hand_closer/debug")
-        self.collect = rosparam.get_param("hand_closer/collect")
+        self.debug = rospy.get_param("hand_closer/debug")
+        self.collect = rospy.get_param("hand_closer/collect")
         if self.debug:
             self.debug_pub = rospy.Publisher('debug/hand_closer/trajectory', DisplayTrajectory, latch = True, queue_size = 1)
             self.debug_snapshot_pub = rospy.Publisher('debug/hand_closer/snapshot', Bool, queue_size = 1, latch = True)
@@ -117,7 +116,7 @@ class ThresholdCloser():
         self.current_effort_values = [joint_state.effort[joint_state.name.index(name)] for name in self.closing_joints]
 
     def joint_callback(self, joint_state):
-        indices = [joint_state.name.index(joint_name) for joint_name in self.closing_joints]#joint_state.name.index('rh_FFJ2'), joint_state.name.index('rh_MFJ2'), joint_state.name.index('rh_RFJ2'), joint_state.name.index('rh_THJ5')]
+        indices = [joint_state.name.index(joint_name) for joint_name in self.closing_joints]
         self.current_joint_values = [joint_state.position[x] for x in indices]
         self.current_joint_state = joint_state
 
@@ -234,6 +233,13 @@ class ThresholdCloser():
             # Stop if all fingers have made contact
             if sum(finger_contacts) == 5:
                 rospy.loginfo('contacts reached')
+                # Move joints a small step to apply more pressure to the object
+                goal_values = self.current_joint_values
+                goal_values = [value + 0.02 for value in goal_values]
+                msg = self.create_joint_trajectory_goal_msg(self.closing_joints, goal_values)
+                self.joint_client.send_goal(msg)
+                self.joint_client.wait_for_result()
+
                 if self.collect:
                     self.data_bag.close()
                 return True
@@ -252,7 +258,7 @@ class ModelCloser():
         model_path = pkg_path + rospy.get_param("hand_closer/model_path")
         self.model = SAC.load(model_path)
         self.model.load_replay_buffer(pkg_path + rospy.get_param("hand_closer/model_replay_buffer_path"))
-        self.model_type = rosparam.get_param("hand_closer/model_type")
+        self.model_type = rospy.get_param("hand_closer/model_type")
 
         # Setup fingers
         self.fingers = MoveGroupCommander('right_fingers', ns="/")
@@ -398,7 +404,7 @@ def init_mover():
     roscpp_initialize('')
     rospy.on_shutdown(shutdown)
 
-    mode = rosparam.get_param("hand_closer/closer_type")
+    mode = rospy.get_param("hand_closer/closer_type")
     if mode == "threshold":
         ThresholdCloser()
     elif mode == "model":

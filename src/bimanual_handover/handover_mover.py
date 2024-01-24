@@ -28,7 +28,6 @@ from std_msgs.msg import ColorRGBA
 import rosbag
 import rospkg
 from datetime import datetime
-import rosparam
 
 class HandoverMover():
 
@@ -67,6 +66,7 @@ class HandoverMover():
         # Initialize settings for current handover
         self.side = None
         self.mode = None
+        self.object_type = None
 
         # Setup FK
         self.fk_robot = URDF.from_parameter_server(key = "robot_description_grasp")
@@ -79,7 +79,7 @@ class HandoverMover():
         self.handover_frame_pub = rospy.Publisher("handover_frame_pose", PoseStamped, queue_size = 1)
 
         # Debug
-        self.debug = rosparam.get_param("handover_mover/debug")
+        self.debug = rospy.get_param("handover_mover/debug")
         if self.debug:
             self.debug_gripper_pose_pub = rospy.Publisher('debug/handover_mover/gripper_pose', PoseStamped, queue_size = 1, latch = True)
             self.debug_hand_pose_pub = rospy.Publisher('debug/handover_mover/hand_pose', PoseStamped, queue_size = 1, latch = True)
@@ -90,7 +90,7 @@ class HandoverMover():
             self.debug_hand_state_pub = rospy.Publisher('debug/handover_mover/hand_state', DisplayRobotState, queue_size = 1, latch = True)
             self.debug_hand_markers_pub = rospy.Publisher('debug/handover_mover/hand_markers', Marker, queue_size = 1, latch = True)
             self.debug_gripper_markers_pub = rospy.Publisher('debug/handover_mover/gripper_markers', Marker, queue_size = 1, latch = True)
-        self.analyse = rosparam.get_param("handover_mover/analyse")
+        self.analyse = rospy.get_param("handover_mover/analyse")
         if self.analyse:
             self.debug_combined_markers_pub = rospy.Publisher('debug/handover_mover/combined_markers', Marker, queue_size = 1, latch = True)
             self.debug_score_markers_pub = rospy.Publisher('debug/handover_mover/score_markers', Marker, queue_size = 1, latch = True)
@@ -113,9 +113,10 @@ class HandoverMover():
         rospy.loginfo('Request received.')
         self.side = req.side
         self.mode = req.mode
-        hand_pose = self.get_hand_pose(req.object_type)
+        self.object_type = req.object_type
+        hand_pose = self.get_hand_pose()
         if req.mode == "ik":
-            self.move_fixed_pose_above(req.object_type)
+            self.move_fixed_pose_above()
             return True
         elif req.mode == "pc":
             self.move_fixed_pose_pc_above()
@@ -127,7 +128,7 @@ class HandoverMover():
             self.move_gpd_pose()
             return True
         elif req.mode == "sample":
-            return self.move_sampled_pose_above(hand_pose, req.object_type)
+            return self.move_sampled_pose_above(hand_pose)
         else:
             rospy.loginfo("Unknown mode {}".format(req.mode))
             return False
@@ -333,6 +334,17 @@ class HandoverMover():
         self.handover_frame_pub.publish(frame_pose)
         rospy.sleep(1)
 
+    def create_marker(self, name):
+        marker = Marker()
+        marker.header.frame_id = "base_footprint"
+        marker.ns = name
+        marker.type = Marker.POINTS
+        marker.action = Marker.ADD
+        marker.points = []
+        marker.colors = []
+        marker.scale = Vector3(0.005, 0.005, 0.005)
+        return marker
+
     def get_handover_transform(self, gripper_pose, hand_pose):
         self.send_handover_frame(gripper_pose, hand_pose)
 
@@ -348,7 +360,10 @@ class HandoverMover():
         if self.analyse:
             score_limit = 0.0
         else:
-            score_limit = 0.5#0.22 # old: can->0.51 book->0.56/0.57 new: can->0.2/0.21 book->0.38
+            if self.object_type == "can":
+                score_limit = 0.15#0.22 # old: can->0.51 book->0.56/0.57 new: can->0.2/0.21 book->0.38
+            elif self.object_type == "book":
+                score_limit = 0.2
         deviation_limit = 0.01
         best_score = 1
         best_transform = None
@@ -362,52 +377,16 @@ class HandoverMover():
             poses.header.frame_id = "handover_frame"
             poses.poses = []
             initial_robot_state = self.robot.get_current_state()
-            hand_marker = Marker()
-            hand_marker.header.frame_id = "base_footprint"
-            hand_marker.ns = "hand_markers"
-            hand_marker.type = Marker.POINTS
-            hand_marker.action = Marker.ADD
-            hand_marker.points = []
-            hand_marker.colors = []
-            hand_marker.scale = Vector3(0.005, 0.005, 0.005)
-            gripper_marker = Marker()
-            gripper_marker.header.frame_id = "base_footprint"
-            gripper_marker.ns = "gripper_markers"
-            gripper_marker.type = Marker.POINTS
-            gripper_marker.action = Marker.ADD
-            gripper_marker.points = []
-            gripper_marker.colors = []
-            gripper_marker.scale = Vector3(0.005, 0.005, 0.005)
+            hand_marker = self.create_marker("hand_markers")
+            gripper_marker = self.create_marker("gripper_markers")
         if self.analyse:
             analyse_counter = 0
             best_analyse_index = None
             previous_linear = None
             aggregated_results = []
-            combined_marker = Marker()
-            combined_marker.header.frame_id = "base_footprint"
-            combined_marker.ns = "combined_markers"
-            combined_marker.type = Marker.POINTS
-            combined_marker.action = Marker.ADD
-            combined_marker.points = []
-            combined_marker.colors = []
-            combined_marker.scale = Vector3(0.005, 0.005, 0.005)
-            aggregated_scores = []
-            score_marker = Marker()
-            score_marker.header.frame_id = "base_footprint"
-            score_marker.ns = "score_markers"
-            score_marker.type = Marker.POINTS
-            score_marker.action = Marker.ADD
-            score_marker.points = []
-            score_marker.colors = []
-            score_marker.scale = Vector3(0.005, 0.005, 0.005)
-            min_score_marker = Marker()
-            min_score_marker.header.frame_id = "base_footprint"
-            min_score_marker.ns = "min_score_markers"
-            min_score_marker.type = Marker.POINTS
-            min_score_marker.action = Marker.ADD
-            min_score_marker.points = []
-            min_score_marker.colors = []
-            min_score_marker.scale = Vector3(0.005, 0.005, 0.005)
+            combined_marker = self.create_marker("combined_markers")
+            score_marker = self.create_marker("score_markers")
+            min_score_marker = self.create_marker("min_score_markers")
 
         rospy.loginfo("Iterating through sampled transformations.")
         for transformation in transformations:
@@ -622,7 +601,7 @@ class HandoverMover():
         self.fingers.set_joint_value_target(joint_values)
         self.fingers.go()
 
-    def move_sampled_pose_above(self, hand_pose, object_type = None):
+    def move_sampled_pose_above(self, hand_pose):
         # Pose through initial intuition, just from where to start sampling
         gripper_pose = self.get_gripper_pose()
 
@@ -775,7 +754,7 @@ class HandoverMover():
             except MoveItCommanderException as e:
                 print(e)
 
-    def move_fixed_pose_above(self, object_type = None):
+    def move_fixed_pose_above(self):
         gripper_pose = self.get_gripper_pose()
         self.left_arm.set_pose_target(gripper_pose)
         self.left_arm.go()
@@ -789,7 +768,7 @@ class HandoverMover():
         gripper_base_transform = self.tf_buffer.lookup_transform("base_footprint", "l_gripper_tool_frame", rospy.Time(0))
         transformed_pos = PointStamped()
         transformed_pos.header.frame_id = "l_gripper_tool_frame"
-        if object_type == "book":
+        if self.object_type == "book":
             transformed_pos.point.x = 0.02
         else:
             transformed_pos.point.x = -0.002
@@ -836,7 +815,7 @@ class HandoverMover():
         request.avoid_joint_limits_goals = [limit_goal]
 
         # Set additional goals for different objects
-        if object_type == "book":
+        if self.object_type == "book":
             dir_goal = DirectionGoal()
             dir_goal.link_name = "rh_grasp"
             dir_goal.weight = 8.0
@@ -948,9 +927,9 @@ class HandoverMover():
         gripper_pose.pose.orientation = Quaternion(*quaternion_from_euler(0, 0, -1.5708))
         return gripper_pose
 
-    def get_hand_pose(self, object_type):
+    def get_hand_pose(self):
         hand_pose = self.get_gripper_pose()
-        if object_type == "can":
+        if self.object_type == "can":
             if self.side == "top":
                 self.setup_fingers()
                 hand_pose.pose.position.x += 0
@@ -965,21 +944,21 @@ class HandoverMover():
                 hand_pose.pose.position.z += 0.1
                 hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(0, -1.5708, -1.5708))
                 return hand_pose
-        elif object_type == "book":
+        elif self.object_type == "book":
             if self.side == "top":
                 self.setup_fingers()
                 hand_pose.pose.position.y += -0.02
-                hand_pose.pose.position.x += -0.03
+                hand_pose.pose.position.x += -0.05
                 hand_pose.pose.position.z += 0.167
-                hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(-1.5708, 3.14159, -1.5706))
+                hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(-1.5708, 3.14159, -1.5708))
                 return hand_pose
             # Not correct numbers
             elif self.side == "side":
                 self.setup_fingers_together()
-                hand_pose.pose.position.x += 0.055
-                hand_pose.pose.position.y += 0.04
+                hand_pose.pose.position.x += 0.04
+                hand_pose.pose.position.y += -0.055
                 hand_pose.pose.position.z += 0.1
-                hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(0, -1.5708, 0))
+                hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(0, -1.5708, -1.5708))
                 return None
 
 if __name__ == "__main__":

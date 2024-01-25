@@ -19,7 +19,6 @@ from moveit_commander import MoveItCommanderException
 from pr2_msgs.msg import PressureState
 from sr_robot_msgs.msg import BiotacAll, MechanismStatistics
 from sensor_msgs.msg import JointState
-from copy import deepcopy
 import os
 import glob
 import rosbag
@@ -570,7 +569,7 @@ class MimicEnv(gym.Env):
                 elif topic == 'res_joints':
                     res_joints_arr.append(msg)
             finished_indices.append(len(res_joints_arr))
-            bag.close()
+            self.bag.close()
         finished_arr = [0] * len(res_joints_arr)
         for index in finished_indices:
             finished_arr[index-1] = 1

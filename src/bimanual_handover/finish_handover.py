@@ -65,7 +65,7 @@ class FinishHandover():
         final_pose.pose.position.x = 0.255
         final_pose.pose.position.y = -0.662
         final_pose.pose.position.z = 0.675
-        final_pose.pose.orientation = Quaternion(*quaternion_from_euler(1.5707, 1.5708, 0))
+        final_pose.pose.orientation = Quaternion(*quaternion_from_euler(1.5708, 0, 1.5708))
 
         if self.debug:
             self.debug_pub.publish(final_pose)

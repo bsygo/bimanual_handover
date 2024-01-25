@@ -5,7 +5,8 @@ initial_setup: fixed
 # Handover mover
 handover_mover: 
     side: side # top or side
-    mode: sample # ik, pc, fixed, sample
+    grasp_pose_mode: fixed # ik, pc or fixed
+    handover_pose_mode: fixed # fixed or sample
     debug: True
     analyse: False
 
@@ -15,7 +16,7 @@ grasp_tester:
     direction: y
 
 hand_closer: 
-    closer_type: threshold # threshold, model or demo
+    closer_type: demo # threshold, model or demo
 
     # Threshold closer
     debug: False
@@ -28,4 +29,4 @@ hand_closer:
     model_type: "effort" # effort or tactile
 
 finish_handover:
-    debug: False
+    debug: True

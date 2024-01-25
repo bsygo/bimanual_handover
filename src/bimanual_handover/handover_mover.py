@@ -65,7 +65,8 @@ class HandoverMover():
 
         # Initialize settings for current handover
         self.side = None
-        self.mode = None
+        self.grasp_pose_mode = None
+        self.handover_pose_mode = None
         self.object_type = None
 
         # Setup FK
@@ -112,25 +113,26 @@ class HandoverMover():
     def move_handover(self, req):
         rospy.loginfo('Request received.')
         self.side = req.side
-        self.mode = req.mode
+        self.grasp_pose_mode = req.grasp_pose_mode
+        self.handover_pose_mode = req.handover_pose_mode
         self.object_type = req.object_type
-        hand_pose = self.get_hand_pose()
-        if req.mode == "ik":
-            self.move_fixed_pose_above()
-            return True
-        elif req.mode == "pc":
-            self.move_fixed_pose_pc_above()
-            return True
-        elif req.mode == "fixed":
-            self.move_fixed_pose(hand_pose)
-            return True
-        elif req.mode == "gpd":
-            self.move_gpd_pose()
-            return True
-        elif req.mode == "sample":
+        if self.grasp_pose_mode == "fixed":
+            hand_pose = self.get_hand_pose_fixed()
+        elif self.grasp_pose_mode == "pc":
+            hand_pose = self.get_hand_pose_pc()
+        else:
+            rospy.loginfo("Unknown grasp_pose_mode {}".format(req.grasp_pose_mode))
+            return False
+        if req.handover_pose_mode == "ik":
+            return self.move_fixed_pose_above()
+        elif req.handover_pose_mode == "fixed":
+            return self.move_fixed_pose(hand_pose)
+        elif req.handover_pose_mode == "gpd":
+            return self.move_gpd_pose()
+        elif req.handover_pose_mode == "sample":
             return self.move_sampled_pose_above(hand_pose)
         else:
-            rospy.loginfo("Unknown mode {}".format(req.mode))
+            rospy.loginfo("Unknown mode {}".format(req.handover_pose_mode))
             return False
 
     def update_pc(self, pc):
@@ -257,7 +259,7 @@ class HandoverMover():
         if manipulator == "hand":
             group_name = "right_arm"
             joints = self.hand.get_active_joints()
-            if self.mode == "ik":
+            if self.handover_pose_mode == "ik":
                 robot_description =  "/handover/robot_description_grasp"
                 eef = "rh_grasp"
                 goal_type = "rot_inv"
@@ -292,7 +294,7 @@ class HandoverMover():
         else:
             filtered_joint_state = filter_joint_state(result.solution.joint_state, joints)
             return filtered_joint_state, result.solution_fitness
-        
+
     def check_poses(self, gripper_pose, hand_pose):
         # To have the same initial state for both planning approaches
         initial_state = self.robot.get_current_state()
@@ -570,7 +572,7 @@ class HandoverMover():
         target = list(joint_values.position)
         target = [self.robot.get_joint("torso_lift_joint").value()] + target
         if chain_type == "hand":
-            if self.mode == "ik":
+            if self.handover_pose_mode == "ik":
                 pose_fk = self.kdl_kin_hand.forward(target, base_link = "base_footprint", end_link = "rh_grasp")
             else:
                 pose_fk = self.kdl_kin_hand.forward(target, base_link = "base_footprint", end_link = "rh_manipulator")
@@ -643,7 +645,7 @@ class HandoverMover():
             self.debug_hand_pose_pub.publish(hand_pose)
 
         # Get hand approach solution
-        if self.mode == "ik":
+        if self.handover_pose_mode == "ik":
             request = prepare_bio_ik_request("right_arm", self.robot.get_current_state(), "/handover/robot_description_grasp")
             request = self.add_pose_goal(request, pre_hand_pose, 'rh_grasp')
         else:
@@ -754,6 +756,8 @@ class HandoverMover():
             except MoveItCommanderException as e:
                 print(e)
 
+        return True
+
     def move_fixed_pose_above(self):
         gripper_pose = self.get_gripper_pose()
         self.left_arm.set_pose_target(gripper_pose)
@@ -842,6 +846,8 @@ class HandoverMover():
         if not plan:
             raise Exception("No path was found to the joint state \n {}.".format(joint_target_state))
 
+        return True
+
     def move_fixed_pose(self, hand_pose):
         gripper_pose = self.get_gripper_pose()
         self.left_arm.set_pose_target(gripper_pose)
@@ -853,6 +859,8 @@ class HandoverMover():
 
         self.hand.set_pose_target(hand_pose)
         self.hand.go()
+
+        return True
 
     def move_fixed_pose_pc_above(self):
         self.setup_fingers()
@@ -918,6 +926,53 @@ class HandoverMover():
 
         return True
 
+    def get_hand_pose_pc(self):
+        hand_pose = self.get_gripper_pose()
+
+        # find max and min values of the pointcloud
+        gen = pc2.read_points(self.pc, field_names = ("x", "y", "z"), skip_nans = True)
+        max_point = [-100, -100, -100]
+        min_point = [100, 100, 100]
+        for point in gen:
+            for x in range(len(point)):
+                if point[x] > max_point[x]:
+                    max_point[x] = point[x]
+                if point[x] < min_point[x]:
+                    min_point[x] = point[x]
+
+        # Offsets need to be tested
+        if self.object_type == "can":
+            if self.side == "top":
+                self.setup_fingers()
+                hand_pose.pose.position.x = min_point[0] + math.dist([max_point[0]], [min_point[0]])/2 - 0.01
+                hand_pose.pose.position.y = min_point[1] + math.dist([max_point[1]], [min_point[1]])/2 - 0.07
+                hand_pose.pose.position.z = max_point[2] + 0.05
+                hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(-1.5708, 3.14159, 0))
+                return hand_pose
+            elif self.side == "side":
+                self.setup_fingers_together()
+                hand_pose.pose.position.x = min_point[0] + math.dist([max_point[0]], [min_point[0]])/2 + 0.04
+                hand_pose.pose.position.y = min_point[1] - 0.03
+                hand_pose.pose.position.z += 0.1
+                hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(0, -1.5708, -1.5708))
+                return hand_pose
+        elif self.object_type == "book":
+            if self.side == "top":
+                self.setup_fingers()
+                hand_pose.pose.position.x = min_point[0] + math.dist([max_point[0]], [min_point[0]])/2 - 0.05
+                hand_pose.pose.position.y = min_point[1] + math.dist([max_point[1]], [min_point[1]])/2 - 0.02
+                hand_pose.pose.position.z = max_point[2] + 0.05
+                hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(-1.5708, 3.14159, -1.5708))
+                return hand_pose
+            # Not correct numbers
+            elif self.side == "side":
+                self.setup_fingers_together()
+                hand_pose.pose.position.x = min_point[0] + math.dist([max_point[0]], [min_point[0]])/2 + 0.04
+                hand_pose.pose.position.y = min_point[1] - 0.03
+                hand_pose.pose.position.z += 0.1
+                hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(0, -1.5708, -1.5708))
+                return hand_pose
+
     def get_gripper_pose(self):
         gripper_pose = PoseStamped()
         gripper_pose.header.frame_id = "base_footprint"
@@ -927,7 +982,7 @@ class HandoverMover():
         gripper_pose.pose.orientation = Quaternion(*quaternion_from_euler(0, 0, -1.5708))
         return gripper_pose
 
-    def get_hand_pose(self):
+    def get_hand_pose_fixed(self):
         hand_pose = self.get_gripper_pose()
         if self.object_type == "can":
             if self.side == "top":
@@ -947,8 +1002,8 @@ class HandoverMover():
         elif self.object_type == "book":
             if self.side == "top":
                 self.setup_fingers()
-                hand_pose.pose.position.y += -0.02
                 hand_pose.pose.position.x += -0.05
+                hand_pose.pose.position.y += -0.02
                 hand_pose.pose.position.z += 0.167
                 hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(-1.5708, 3.14159, -1.5708))
                 return hand_pose
@@ -959,7 +1014,7 @@ class HandoverMover():
                 hand_pose.pose.position.y += -0.055
                 hand_pose.pose.position.z += 0.1
                 hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(0, -1.5708, -1.5708))
-                return None
+                return hand_pose
 
 if __name__ == "__main__":
     mover = HandoverMover()

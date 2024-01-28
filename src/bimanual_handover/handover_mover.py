@@ -28,6 +28,7 @@ from std_msgs.msg import ColorRGBA
 import rosbag
 import rospkg
 from datetime import datetime
+from std_msgs.msg import Float32MultiArray, MultiArrayLayout, MultiArrayDimension
 
 class HandoverMover():
 
@@ -146,10 +147,10 @@ class HandoverMover():
             translation_step = 0.06#0.03
         rotation_step = math.pi * 30/180
         if self.analyse:
-            #linear_combinations = [[x, y, z] for x in range(0, 2) for y in range(0, 2) for z in range(0, 2)]
-            linear_combinations = [[x, y, z] for x in range(-5, 3) for y in range(-4, 9) for z in range(-6, 5)]
-            angular_combinations = [[x, y, z] for x in range(-3, 4) for y in range(-3, 4) for z in range(-3, 4)]
-            #angular_combinations = [[x, y, z] for x in range(0, 2) for y in range(0, 2) for z in range(0, 2)]
+            linear_combinations = [[x, y, z] for x in range(0, 2) for y in range(0, 2) for z in range(0, 2)]
+            #linear_combinations = [[x, y, z] for x in range(-5, 3) for y in range(-4, 9) for z in range(-6, 5)]
+            #angular_combinations = [[x, y, z] for x in range(-3, 4) for y in range(-3, 4) for z in range(-3, 4)]
+            angular_combinations = [[x, y, z] for x in range(0, 2) for y in range(0, 2) for z in range(0, 2)]
         else:
             linear_combinations = [[x, y, z] for x in range(0, 2) for y in range(0, 5) for z in range(-3, 1)]
             angular_combinations = [[x, y, z] for x in range(-1, 2) for y in range(-1, 2) for z in range(-1, 2)]
@@ -340,12 +341,17 @@ class HandoverMover():
         marker = Marker()
         marker.header.frame_id = "base_footprint"
         marker.ns = name
-        marker.type = Marker.POINTS
+        marker.type = Marker.CUBE_LIST
         marker.action = Marker.ADD
         marker.points = []
         marker.colors = []
-        marker.scale = Vector3(0.005, 0.005, 0.005)
+        marker.scale = Vector3(0.06, 0.06, 0.06)
         return marker
+
+    def write_float_array_to_bag(self, topic, array):
+        array_msg = Float32MultiArray()
+        array_msg.data = array
+        self.bag.write(topic, array_msg)
 
     def get_handover_transform(self, gripper_pose, hand_pose):
         self.send_handover_frame(gripper_pose, hand_pose)
@@ -385,7 +391,11 @@ class HandoverMover():
             analyse_counter = 0
             best_analyse_index = None
             previous_linear = None
-            aggregated_results = []
+            iteration_results = []
+            all_results = []
+            iteration_scores = []
+            all_min_scores = []
+            all_avg_scores = []
             combined_marker = self.create_marker("combined_markers")
             score_marker = self.create_marker("score_markers")
             min_score_marker = self.create_marker("min_score_markers")
@@ -467,11 +477,11 @@ class HandoverMover():
                     combined_marker.points.append(combined_pose.pose.position)
                     score_marker.points.append(combined_pose.pose.position)
                     min_score_marker.points.append(combined_pose.pose.position)
-                    aggregated_scores.append(score)
+                    iteration_scores.append(score)
                     if score == 1:
-                        aggregated_results.append(1)
+                        iteration_results.append(1)
                     else:
-                        aggregated_results.append(0)
+                        iteration_results.append(0)
                 elif not previous_linear == transformation.transform.translation:
                     previous_linear = transformation.transform.translation
                     x = min(transformed_gripper.pose.position.x, transformed_hand.pose.position.x) + abs(transformed_gripper.pose.position.x - transformed_hand.pose.position.x)/2
@@ -485,36 +495,39 @@ class HandoverMover():
                     score_marker.points.append(combined_pose.pose.position)
                     min_score_marker.points.append(combined_pose.pose.position)
 
-                    avg_score = sum(aggregated_scores)/len(aggregated_scores)
+                    avg_score = sum(iteration_scores)/len(iteration_scores)
+                    all_avg_scores.append(avg_score)
                     score_marker.colors.append(ColorRGBA(avg_score, 1-avg_score, 0, 1))
-                    min_score = min(aggregated_scores)
+                    min_score = min(iteration_scores)
+                    all_min_scores.append(min_score)
                     min_score_marker.colors.append(ColorRGBA(min_score, 1-min_score, 0, 1))
-                    if all(value >= 1  for value in aggregated_results):
+                    if all(value >= 1  for value in iteration_results):
                         combined_marker.colors.append(ColorRGBA(1, 0, 0, 1))
-                    elif sum([value == 0 for value in aggregated_results]) > len(aggregated_results)/4:
+                    elif sum([value == 0 for value in iteration_results]) > len(iteration_results)/4:
                         combined_marker.colors.append(ColorRGBA(0, 1, 0, 1))
-                    elif sum([value == 0 for value in aggregated_results]) > 1:
+                    elif sum([value == 0 for value in iteration_results]) > 1:
                         combined_marker.colors.append(ColorRGBA(1, 1, 0, 1))
-                    elif 0 in aggregated_results:
+                    elif 0 in iteration_results:
                         combined_marker.colors.append(ColorRGBA(1, 0.5, 0, 1))
 
-                    aggregated_results = []
-                    aggregated_scores = []
-                    aggregated_scores.append(score)
+                    all_results.append(sum(iteration_results))
+                    iteration_results = []
+                    iteration_scores = []
+                    iteration_scores.append(score)
                     if score == 1:
-                        aggregated_results.append(2)
+                        iteration_results.append(2)
                     elif self.debug and (hand_pos_diff >= deviation_limit or gripper_pos_diff >= deviation_limit):
-                        aggregated_results.append(1)
+                        iteration_results.append(1)
                     else:
-                        aggregated_results.append(0)
+                        iteration_results.append(0)
 
                     analyse_counter += 1
                 else:
-                    aggregated_scores.append(score)
+                    iteration_scores.append(score)
                     if score == 1:
-                        aggregated_results.append(1)
+                        iteration_results.append(1)
                     else:
-                        aggregated_results.append(0)
+                        iteration_results.append(0)
 
             if score < best_score:
                 best_score = score
@@ -545,17 +558,20 @@ class HandoverMover():
             self.debug_gripper_markers_pub.publish(gripper_marker)
 
         if self.analyse:
-            min_score = min(aggregated_scores)
+            all_results.append(sum(iteration_results))
+            min_score = min(iteration_scores)
+            all_min_scores.append(min_score)
             min_score_marker.colors.append(ColorRGBA(min_score, 1-min_score, 0, 1))
-            avg_score = sum(aggregated_scores)/len(aggregated_scores)
+            avg_score = sum(iteration_scores)/len(iteration_scores)
+            all_avg_scores.append(avg_score)
             score_marker.colors.append(ColorRGBA(avg_score, 1-avg_score, 0, 1))
-            if all(value >= 1  for value in aggregated_results):
+            if all(value >= 1  for value in iteration_results):
                 combined_marker.colors.append(ColorRGBA(1, 0, 0, 1))
-            elif sum([value == 0 for value in aggregated_results]) > len(aggregated_results)/4:
+            elif sum([value == 0 for value in iteration_results]) > len(iteration_results)/4:
                 combined_marker.colors.append(ColorRGBA(0, 1, 0, 1))
-            elif sum([value == 0 for value in aggregated_results]) > 1:
+            elif sum([value == 0 for value in iteration_results]) > 1:
                 combined_marker.colors.append(ColorRGBA(1, 1, 0, 1))
-            elif 0 in aggregated_results:
+            elif 0 in iteration_results:
                 combined_marker.colors.append(ColorRGBA(1, 0.5, 0, 1))
             combined_marker.colors[best_analyse_index] = ColorRGBA(0, 0, 1, 1)
             self.bag.write('combined', combined_marker)
@@ -563,6 +579,9 @@ class HandoverMover():
             self.bag.write('hand', hand_marker)
             self.bag.write('score', score_marker)
             self.bag.write('min_score', min_score_marker)
+            self.write_float_array_to_bag('all_avg_scores', all_avg_scores)
+            self.write_float_array_to_bag('all_min_scores', all_min_scores)
+            self.write_float_array_to_bag('all_results', all_results)
             self.debug_combined_markers_pub.publish(combined_marker)
             self.debug_score_markers_pub.publish(score_marker)
             self.debug_min_score_markers_pub.publish(min_score_marker)

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import rospy
-import rosparam
 from bimanual_handover_msgs.srv import InitialSetupSrv, ProcessPC, MoveHandover, GraspTesterSrv, FinishHandoverSrv, HandoverControllerSrv, HandCloserSrv
 
 class HandoverCommander():
@@ -50,18 +49,20 @@ class HandoverCommander():
 
     def full_pipeline(self, handover_type, object_type):
         rospy.loginfo('Sending service request to initial_setup_srv.')
-        setup_mode = rosparam.get_param("initial_setup")
+        setup_mode = rospy.get_param("initial_setup")
         if not self.initial_setup_srv(setup_mode, None).success:
             rospy.logerr('Moving to inital setup failed.')
             return False
 
-        rospy.loginfo('Sending service request to process_pc_srv.')
-        self.process_pc_srv(True)
+        grasp_pose_mode = rospy.get_param("handover_mover/grasp_pose_mode")
+        if grasp_pose_mode == "pc":
+            rospy.loginfo('Sending service request to process_pc_srv.')
+            self.process_pc_srv(True)
 
         rospy.loginfo('Sending service request to handover_mover_srv.')
-        side = rosparam.get_param("handover_mover/side")
-        mode = rosparam.get_param("handover_mover/mode")
-        if not self.handover_mover_srv(side, mode, object_type).success:
+        side = rospy.get_param("handover_mover/side")
+        handover_pose_mode = rospy.get_param("handover_mover/handover_pose_mode")
+        if not self.handover_mover_srv(side, grasp_pose_mode, handover_pose_mode, object_type).success:
             rospy.logerr('Moving to handover pose failed.')
             return False
 
@@ -76,13 +77,15 @@ class HandoverCommander():
             rospy.logerr('Closing hand failed.')
             return False
 
-        rospy.loginfo('Sending service request to grasp_tester_srv.')
-        direction = rosparam.get_param("grasp_tester/direction")
-        grasp_response = self.grasp_tester_srv(direction, False)
-        rospy.loginfo('Grasp response: {}'.format(grasp_response.success))
-        if not grasp_response.success:
-            rospy.logerr('Executing grasp failed.')
-            return False
+        closer_type = rospy.get_param("hand_closer/closer_type")
+        if not closer_type == "demo":
+            rospy.loginfo('Sending service request to grasp_tester_srv.')
+            direction = rospy.get_param("grasp_tester/direction")
+            grasp_response = self.grasp_tester_srv(direction, False)
+            rospy.loginfo('Grasp response: {}'.format(grasp_response.success))
+            if not grasp_response.success:
+                rospy.logerr('Executing grasp failed.')
+                return False
 
         rospy.loginfo('Sending service request to finish_handover_srv.')
         self.finish_handover_srv('placeholder')

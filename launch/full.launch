@@ -13,7 +13,7 @@
         <rosparam command="load" file="$(find bimanual_handover)/robots/kinematics.yaml" />
     </group>
     <node name="initial_setup_node" pkg="bimanual_handover" type="initial_setup.py" output="screen" />
-    <node name="process_pc_node" pkg="bimanual_handover" type="process_pc_stub.py" output="screen" />
+    <node name="process_pc_node" pkg="bimanual_handover" type="process_pc.py" output="screen" />
     <node name="capture_pc_node" pkg="bimanual_handover" type="capture_pc.py" output="screen" args="$(arg demo)"/>
     <node name="hand_closer_node" pkg="bimanual_handover" type="hand_closer.py" output="screen" />
     <node name="grasp_tester_node" pkg="bimanual_handover" type="grasp_tester.py" output="screen" />

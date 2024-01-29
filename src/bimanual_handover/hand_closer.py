@@ -45,7 +45,7 @@ class DemoCloser():
         finger_dict["rh_LFJ2"] = 0.785398
         finger_dict["rh_LFJ3"] = 0.785398
         finger_dict["rh_THJ5"] = 0.436332
-        self.fingers.set_joint_target_value(finger_dict)
+        self.fingers.set_joint_value_target(finger_dict)
         self.fingers.go()
         return True
 
@@ -181,7 +181,7 @@ class ThresholdCloser():
 
         # Go through each generated trajectory step
         for x in range(len(steps[0])):
-            # Write data into rosbag for later reuse 
+            # Write data into rosbag for later reuse
             if self.collect:
                 pressure = rospy.wait_for_message('/pressure/l_gripper_motor', PressureState)
                 tactile = rospy.wait_for_message('/hand/rh/tactile', BiotacAll)

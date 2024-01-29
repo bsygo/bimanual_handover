@@ -81,6 +81,7 @@ class HandoverMover():
         self.handover_frame_pub = rospy.Publisher("handover_frame_pose", PoseStamped, queue_size = 1)
 
         # Debug
+        self.verbose = rospy.get_param("handover_mover/verbose")
         self.debug = rospy.get_param("handover_mover/debug")
         if self.debug:
             self.debug_gripper_pose_pub = rospy.Publisher('debug/handover_mover/gripper_pose', PoseStamped, queue_size = 1, latch = True)
@@ -248,7 +249,7 @@ class HandoverMover():
 
         min_score = 1 - min(delta)
 
-        if self.debug:
+        if self.debug and self.verbose:
             rospy.loginfo("Score with old epsilon: {}".format(score_old))
             rospy.loginfo("Score with new epsilon: {}".format(score))
             rospy.loginfo("Min score: {}".format(min_score))
@@ -315,7 +316,7 @@ class HandoverMover():
         combined_joint_state.name = hand_state.name + gripper_state.name
         combined_joint_state.position = hand_state.position + gripper_state.position
 
-        if self.debug:
+        if self.debug and self.verbose:
             rospy.loginfo("Score hand: {}".format(self.score(hand_state)))
             rospy.loginfo("Score gripper: {}".format(self.score(gripper_state)))
             rospy.loginfo("Hand fitness: {}".format(hand_fitness))
@@ -422,7 +423,7 @@ class HandoverMover():
             if score < 1:
                 hand_pos_diff, hand_quat_diff = self.calculate_fk_diff(hand_joint_state, transformed_hand, "hand")
                 gripper_pos_diff, gripper_quat_diff = self.calculate_fk_diff(gripper_joint_state, transformed_gripper, "gripper")
-                if self.debug:
+                if self.debug and self.verbose:
                     rospy.loginfo("Hand pos diff: {}".format(hand_pos_diff))
                     rospy.loginfo("Gripper pos diff: {}".format(gripper_pos_diff))
                 if (hand_pos_diff or gripper_pos_diff) > deviation_limit:
@@ -501,6 +502,7 @@ class HandoverMover():
                     min_score = min(iteration_scores)
                     all_min_scores.append(min_score)
                     min_score_marker.colors.append(ColorRGBA(min_score, 1-min_score, 0, 1))
+                    '''
                     if all(value >= 1  for value in iteration_results):
                         combined_marker.colors.append(ColorRGBA(1, 0, 0, 1))
                     elif sum([value == 0 for value in iteration_results]) > len(iteration_results)/4:
@@ -509,6 +511,7 @@ class HandoverMover():
                         combined_marker.colors.append(ColorRGBA(1, 1, 0, 1))
                     elif 0 in iteration_results:
                         combined_marker.colors.append(ColorRGBA(1, 0.5, 0, 1))
+                    '''
 
                     all_results.append(sum(iteration_results))
                     iteration_results = []
@@ -540,19 +543,21 @@ class HandoverMover():
                     best_debug_index = deepcopy(debug_counter)
 
             if self.debug:
-                rospy.loginfo("Transform score: {}".format(score))
+                if self.verbose:
+                    rospy.loginfo("Transform score: {}".format(score))
+                    rospy.loginfo("---")
                 debug_counter += 1
-                rospy.loginfo("---")
 
             # Stop if score already good enough
             if best_score < score_limit:
                 break
 
         if self.debug:
-            hand_marker.colors[best_debug_index] = ColorRGBA(0, 0, 1, 1)
-            gripper_marker.colors[best_debug_index] = ColorRGBA(0, 0, 1, 1)
-            rospy.loginfo("Best score: {}".format(best_score))
-            rospy.loginfo("Best transform: {}".format(best_transform))
+            #hand_marker.colors[best_debug_index] = ColorRGBA(0, 0, 1, 1)
+            #gripper_marker.colors[best_debug_index] = ColorRGBA(0, 0, 1, 1)
+            if self.verbose:
+                rospy.loginfo("Best score: {}".format(best_score))
+                rospy.loginfo("Best transform: {}".format(best_transform))
             self.debug_sampled_poses_pub.publish(poses)
             self.debug_hand_markers_pub.publish(hand_marker)
             self.debug_gripper_markers_pub.publish(gripper_marker)
@@ -565,6 +570,7 @@ class HandoverMover():
             avg_score = sum(iteration_scores)/len(iteration_scores)
             all_avg_scores.append(avg_score)
             score_marker.colors.append(ColorRGBA(avg_score, 1-avg_score, 0, 1))
+            '''
             if all(value >= 1  for value in iteration_results):
                 combined_marker.colors.append(ColorRGBA(1, 0, 0, 1))
             elif sum([value == 0 for value in iteration_results]) > len(iteration_results)/4:
@@ -573,7 +579,15 @@ class HandoverMover():
                 combined_marker.colors.append(ColorRGBA(1, 1, 0, 1))
             elif 0 in iteration_results:
                 combined_marker.colors.append(ColorRGBA(1, 0.5, 0, 1))
-            combined_marker.colors[best_analyse_index] = ColorRGBA(0, 0, 1, 1)
+            '''
+            # Add colors to combined_markers
+            max_result = max(all_results)
+            for result in all_results:
+                normalized_result = result/max_result
+                combined_marker.colors.append(ColorRGBA(1 - normalized_result, normalized_result, 0, 1))
+            # combined_marker.colors[best_analyse_index] = ColorRGBA(0, 0, 1, 1)
+
+            # Write recorded data to bag
             self.bag.write('combined', combined_marker)
             self.bag.write('gripper', gripper_marker)
             self.bag.write('hand', hand_marker)
@@ -582,6 +596,8 @@ class HandoverMover():
             self.write_float_array_to_bag('all_avg_scores', all_avg_scores)
             self.write_float_array_to_bag('all_min_scores', all_min_scores)
             self.write_float_array_to_bag('all_results', all_results)
+
+            # Publish created markers
             self.debug_combined_markers_pub.publish(combined_marker)
             self.debug_score_markers_pub.publish(score_marker)
             self.debug_min_score_markers_pub.publish(min_score_marker)

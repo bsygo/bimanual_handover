@@ -1,14 +1,15 @@
 # Handover controller
-handover_type: full # full or train
+handover_type: train # full or train
 initial_setup: fixed
 
 # Handover mover
 handover_mover: 
     side: side # top or side
     grasp_pose_mode: fixed # ik, pc or fixed
-    handover_pose_mode: fixed # fixed or sample
+    handover_pose_mode: sample # fixed or sample
+    verbose: False
     debug: True
-    analyse: False
+    analyse: True
 
 # Grasp tester
 grasp_tester: 
@@ -29,4 +30,4 @@ hand_closer:
     model_type: "effort" # effort or tactile
 
 finish_handover:
-    debug: True
+    debug: False

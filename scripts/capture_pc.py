@@ -52,7 +52,6 @@ def main():
         rospy.logerr("Missing argument for capture_pc.")
         return
     elif sys.argv[1] == "true":
-        rospy.loginfo(sys.argv[1])
         input_topic = 'pc/cloud_pcd'
     elif sys.argv[1] == "false":
         input_topic = '/azure_kinect/points2'

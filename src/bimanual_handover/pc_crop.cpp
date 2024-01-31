@@ -35,7 +35,7 @@ tf2::Transform getSamplePoseTransform(){
     sample_pose.pose.position = position;
     sample_pose.pose.orientation = rotation_msg;
     debug_sample_pose_pub.publish(sample_pose);
-    ROS_INFO_STREAM(sample_pose);
+    //ROS_INFO_STREAM(sample_pose);
     
     tf2::Transform sample_pose_transform;
     tf2::fromMsg(sample_pose.pose, sample_pose_transform);
@@ -69,17 +69,16 @@ void cropPC(const sensor_msgs::PointCloud2ConstPtr& input_cloud){
     tf2::Transform sample_pose_transform;
 
     debug_gripper_pose_pub.publish(gripper_pose);
-    ROS_INFO_STREAM(gripper_pose);
+    //ROS_INFO_STREAM(gripper_pose);
     tf2::fromMsg(gripper_pose.pose, gripper_pose_transform);
     sample_pose_transform = getSamplePoseTransform();
 
     geometry_msgs::Pose sample_pose;
     tf2::toMsg(sample_pose_transform, sample_pose);
-
     tf2::Transform pc_transform = gripper_pose_transform.inverseTimes(sample_pose_transform);
     geometry_msgs::Transform pc_transform_msg = tf2::toMsg(pc_transform);
 
-    cropped_pub.publish(cloud_filtered_msg);
+    debug_pub.publish(cloud_filtered_msg);
     sensor_msgs::PointCloud2 base_transformed_cloud_filtered_msg;
     geometry_msgs::TransformStamped azure_base_transform_msg = tfBuffer->lookupTransform("l_gripper_tool_frame", "azure_kinect_rgb_camera_link", ros::Time(0));
     Eigen::Matrix4f azure_base_transform_matrix;
@@ -91,8 +90,7 @@ void cropPC(const sensor_msgs::PointCloud2ConstPtr& input_cloud){
     Eigen::Matrix4f pc_transform_matrix;
     pcl_ros::transformAsMatrix(pc_transform_msg, pc_transform_matrix);
     pcl_ros::transformPointCloud(pc_transform_matrix, base_transformed_cloud_filtered_msg, transformed_cloud_filtered_msg);
-    debug_pub.publish(transformed_cloud_filtered_msg);
-    //cropped_pub.publish(transformed_cloud_filtered_msg);
+    cropped_pub.publish(transformed_cloud_filtered_msg);
 }
 
 int main(int argc, char **argv){

@@ -36,10 +36,10 @@ class RealEnv(gym.Env):
         self.action_space = spaces.Box(low = -1, high = 1, shape = (3,), dtype = np.float32)
         if self.env_type == "tactile":
             # First 5 values for biotac diff, last 3 values for current joint config in pca space
-            self.observation_space = spaces.Box(low = -100, high = 100, shape = (8,), dtype = np.float32)
+            self.observation_space = spaces.Box(low = -1, high = 1, shape = (8,), dtype = np.float32)
         elif self.env_type == "effort":
             # First 3 values for current joint config in pca space, next 9 values for efforts, last 3 values for one-hot encoding of object
-            self.observation_space = spaces.Box(low = -1000, high = 1000, shape = (15,), dtype = np.float32)
+            self.observation_space = spaces.Box(low = -1, high = 1, shape = (15,), dtype = np.float32)
 
         # Initialize observation values
         self.last_joints = None
@@ -148,6 +148,9 @@ class RealEnv(gym.Env):
         if self.env_type == "tactile":
             current_tactile = deepcopy(self.current_tactile)
             current_tactile_diff = [current_tactile[x] - self.initial_tactile[x] for x in range(len(current_tactile))]
+            for diff in current_tactile_diff:
+                if diff > 40:
+                    diff = 40
             contacts = [True if diff >=20 else False for diff in current_tactile_diff]
             contact_threshold = 5
         elif self.env_type == "effort":
@@ -259,15 +262,38 @@ class RealEnv(gym.Env):
                     rospy.sleep(1)
 
         # Update observation for next step
-        if self.env_type == "tactile":
-            current_tactile = deepcopy(self.current_tactile)
-            current_observation = [current_tactile[x] - self.initial_tactile[x] for x in range(len(current_tactile))]
-        elif self.env_type == "effort":
-            current_effort = deepcopy(self.current_effort)
-            current_observation = [current_effort[x] - self.initial_effort[x] for x in range(len(current_effort))]
+        observation = []
+
+        # Add pca values
         current_pca = self.pca_con.get_pca_config()[0][:3]
         for pca in current_pca:
-            current_observation.append(pca)
+            observation.append(pca)
+
+        # Add tactile or effort values
+        if self.env_type == "tactile":
+            current_tactile = deepcopy(self.current_tactile)
+            tactile_diff = [current_tactile[x] - self.initial_tactile[x] for x in range(len(current_tactile))]
+            # Normalize diff values between -1 and 1
+            for diff in tactile_diff:
+                if diff > 40:
+                    observation.append(1)
+                elif diff < -40:
+                    observation.append(-1)
+                else:
+                    observation.append(diff/40)
+        elif self.env_type == "effort":
+            current_effort = deepcopy(self.current_effort)
+            effort_diff = [current_effort[x] - self.initial_effort[x] for x in range(len(current_effort))]
+            # Normalize diff values between -1 and 1
+            for diff in effort_diff:
+                if diff > 300:
+                    observation.append(1)
+                elif diff < -300:
+                    observation.append(-1)
+                else:
+                    observation.append(diff/300)
+
+        # Add one-hot encoding
         if self.env_type == "effort":
             for value in self.current_object:
                 current_observation.append(value)
@@ -325,15 +351,35 @@ class RealEnv(gym.Env):
         self.last_joints = deepcopy(self.fingers.get_current_joint_values())
 
         # Set new observation
-        if self.env_type == "tactile":
-            current_tactile = deepcopy(self.current_tactile)
-            observation = [current_tactile[x] - self.initial_tactile[x] for x in range(len(current_tactile))]
-        elif self.env_type == "effort":
-            current_effort = deepcopy(self.current_effort)
-            observation = [current_effort[x] - self.initial_effort[x] for x in range(len(current_effort))]
+        observation = []
+        # Add pca values
         current_pca = self.pca_con.get_pca_config()[0][:3]
         for pca in current_pca:
             observation.append(pca)
+
+        # Add tactile or effort values
+        if self.env_type == "tactile":
+            current_tactile = deepcopy(self.current_tactile)
+            tactile_diff = [current_tactile[x] - self.initial_tactile[x] for x in range(len(current_tactile))]
+            # Normalize diff values between -1 and 1
+            for diff in tactile_diff:
+                if diff > 40:
+                    observation.append(1)
+                elif diff < -40:
+                    observation.append(-1)
+                else:
+                    observation.append(diff/40)
+        elif self.env_type == "effort":
+            current_effort = deepcopy(self.current_effort)
+            effort_diff = [current_effort[x] - self.initial_effort[x] for x in range(len(current_effort))]
+            # Normalize diff values between -1 and 1
+            for diff in effort_diff:
+                if diff > 300:
+                    observation.append(1)
+                elif diff < -300:
+                    observation.append(-1)
+                else:
+                    observation.append(diff/300)
 
         # Setup with new object specified by user input
         self.current_attempt_step = 0
@@ -361,12 +407,14 @@ class RealEnv(gym.Env):
                 else:
                     print("Object id {} is not known. Please enter one of the known ids [1], [2] or [3].".format(object_id))
             self.current_object = one_hot
+            # Add one-hot encoding
             if self.env_type == "effort":
                 for value in one_hot:
                     observation.append(value)
             self.current_reset_step = 0
             self.reset_hand_pose()
         else:
+            # Add one-hot encoding
             if self.env_type == "effort":
                 for value in self.current_object:
                     observation.append(value)
@@ -569,7 +617,7 @@ class MimicEnv(gym.Env):
                 elif topic == 'res_joints':
                     res_joints_arr.append(msg)
             finished_indices.append(len(res_joints_arr))
-            self.bag.close()
+            bag.close()
         finished_arr = [0] * len(res_joints_arr)
         for index in finished_indices:
             finished_arr[index-1] = 1

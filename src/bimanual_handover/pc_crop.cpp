@@ -15,6 +15,7 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
 ros::Publisher cropped_pub;
+ros::Publisher final_pub;
 ros::Publisher debug_pub;
 ros::Publisher debug_gripper_pose_pub;
 ros::Publisher debug_sample_pose_pub;
@@ -63,6 +64,11 @@ void cropPC(const sensor_msgs::PointCloud2ConstPtr& input_cloud){
     sensor_msgs::PointCloud2 cloud_filtered_msg;
     pcl_conversions::moveFromPCL(pcl_pc2, cloud_filtered_msg);
     cloud_filtered_msg.header.stamp = ros::Time::now();
+    cropped_pub.publish(cloud_filtered_msg);
+}
+
+void transformPC(const sensor_msgs::PointCloud2ConstPtr& input_cloud){
+    geometry_msgs::PoseStamped gripper_pose = left_arm->getCurrentPose(); 
 
     // Transform pointcloud to sampling pose
     tf2::Transform gripper_pose_transform;
@@ -78,12 +84,12 @@ void cropPC(const sensor_msgs::PointCloud2ConstPtr& input_cloud){
     tf2::Transform pc_transform = gripper_pose_transform.inverseTimes(sample_pose_transform);
     geometry_msgs::Transform pc_transform_msg = tf2::toMsg(pc_transform);
 
-    debug_pub.publish(cloud_filtered_msg);
+    debug_pub.publish(input_cloud);
     sensor_msgs::PointCloud2 base_transformed_cloud_filtered_msg;
     geometry_msgs::TransformStamped azure_base_transform_msg = tfBuffer->lookupTransform("l_gripper_tool_frame", "azure_kinect_rgb_camera_link", ros::Time(0));
     Eigen::Matrix4f azure_base_transform_matrix;
     pcl_ros::transformAsMatrix(azure_base_transform_msg.transform, azure_base_transform_matrix);
-    pcl_ros::transformPointCloud(azure_base_transform_matrix, cloud_filtered_msg, base_transformed_cloud_filtered_msg);
+    pcl_ros::transformPointCloud(azure_base_transform_matrix, *input_cloud, base_transformed_cloud_filtered_msg);
     base_transformed_cloud_filtered_msg.header.frame_id = "l_gripper_tool_frame";
     
     sensor_msgs::PointCloud2 transformed_cloud_filtered_msg;
@@ -93,6 +99,7 @@ void cropPC(const sensor_msgs::PointCloud2ConstPtr& input_cloud){
     cropped_pub.publish(transformed_cloud_filtered_msg);
 }
 
+
 int main(int argc, char **argv){
     ros::init(argc, argv, "pc_cropping");
     ros::NodeHandle n;
@@ -101,8 +108,10 @@ int main(int argc, char **argv){
     // Call this way to set correct namespace
     moveit::planning_interface::MoveGroupInterface::Options opt("left_arm", "robot_description", ros::NodeHandle("/move_group"));
     left_arm = new moveit::planning_interface::MoveGroupInterface(opt);
-    ros::Subscriber sub = n.subscribe("pc_raw", 10, cropPC);
+    ros::Subscriber raw_sub = n.subscribe("pc_raw", 10, cropPC);
     cropped_pub = n.advertise<sensor_msgs::PointCloud2>("pc_cropped", 10, true);
+    ros::Subscriber filtered_sub = n.subscribe("pc_filtered", 10, transformPC);
+    final_pub = n.advertise<sensor_msgs::PointCloud2>("pc_final", 10, true);
     debug_pub = n.advertise<sensor_msgs::PointCloud2>("debug/pc_cropped_orig", 10, true);
     debug_gripper_pose_pub = n.advertise<geometry_msgs::PoseStamped>("debug/pc_gripper_pose", 10, true);
     debug_sample_pose_pub = n.advertise<geometry_msgs::PoseStamped>("debug/pc_sample_pose", 10, true);

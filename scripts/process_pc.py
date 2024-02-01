@@ -38,7 +38,7 @@ def main():
     left_arm.set_max_velocity_scaling_factor(1.0)
     left_arm.set_max_acceleration_scaling_factor(1.0)
     pub = rospy.Publisher('publish_pc', Bool, queue_size = 5)
-    sub = rospy.Subscriber('pc/pc_filtered', PointCloud2, pc_received)
+    sub = rospy.Subscriber('pc/pc_final', PointCloud2, pc_received)
     rospy.Service('process_pc_srv', ProcessPC, process_pc)
     rospy.spin()
 

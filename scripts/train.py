@@ -35,11 +35,9 @@ def main():
     # Load parameters
     timesteps = rospy.get_param("timesteps")
     model_type = rospy.get_param("model_type")
-    env_type = rospy.get_param("env_type")
     env_check = rospy.get_param("env_check")
     checkpoint = rospy.get_param("checkpoint")
     model_path = rospy.get_param("model_path")
-    record = rospy.get_param("record")
     actor_architecture = rospy.get_param("architecture/actor")
     critic_architecture = rospy.get_param("architecture/critic")
     policy_kwargs = dict(activation_fn=th.nn.ReLU,
@@ -61,7 +59,7 @@ def main():
 
     # Setup environment
     rospy.loginfo('Setting up env.')
-    env = handover_env.RealEnv(fingers, record, env_type, str_date)
+    env = handover_env.RealEnv(fingers, str_date)
     if env_check:
         check_env(env)
         rospy.loginfo('Env check completed.')

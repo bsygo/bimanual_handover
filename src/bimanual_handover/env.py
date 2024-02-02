@@ -26,20 +26,34 @@ import rosbag
 # Environment used for training on the real robot
 class RealEnv(gym.Env):
 
-    def __init__(self, fingers, record, env_type, time):
+    def __init__(self, fingers, time):
         super().__init__()
         rospy.on_shutdown(self.close)
-        self.env_type = env_type
+        self.contact_modality = rospy.get_param("contact_modality")
+
+        # Set observation inputs
+        self.joint_states_input = rospy.get_param("observation_space/joint_states")
+        self.pca_input = rospy.get_param("observation_space/pca")
+        self.effort_input = rospy.get_param("observation_space/effort")
+        self.tactile_input = rospy.get_param("observation_space/tactile")
+        self.one_hot_input = rospy.get_param("observation_space/one_hot")
+        obs_size = 0
+        if joint_values_input:
+            obs_size += 9
+        if pca_input:
+            obs_size += 3
+        if effort_input:
+            obs_size += 9
+        if tactile_input:
+            obs_size += 5
+        if one_hot_input:
+            obs_size += 3
 
         # Setup action and observation space
         # 3 values for finger synergies
         self.action_space = spaces.Box(low = -1, high = 1, shape = (3,), dtype = np.float32)
-        if self.env_type == "tactile":
-            # First 5 values for biotac diff, last 3 values for current joint config in pca space
-            self.observation_space = spaces.Box(low = -1, high = 1, shape = (8,), dtype = np.float32)
-        elif self.env_type == "effort":
-            # First 3 values for current joint config in pca space, next 9 values for efforts, last 3 values for one-hot encoding of object
-            self.observation_space = spaces.Box(low = -1, high = 1, shape = (15,), dtype = np.float32)
+        # Values depending on above selection
+        self.observation_space = spaces.Box(low = -1, high = 1, shape = (obs_size,), dtype = np.float32)
 
         # Initialize observation values
         self.last_joints = None
@@ -48,6 +62,7 @@ class RealEnv(gym.Env):
         self.initial_effort = None
         self.current_effort = None
         self.current_object = [0, 0, 0]
+        self.current_joint_values = None
 
         # Setup information about relevant finger structure
         self.fingers = fingers
@@ -57,8 +72,7 @@ class RealEnv(gym.Env):
         # Setup observation callbacks
         self.tactile_sub = rospy.Subscriber('/hand/rh/tactile', BiotacAll, self.tactile_callback)
         self.effort_sub = rospy.Subscriber('/hand/joint_states', JointState, self.effort_callback)
-        #self.force_sub = rospy.Subscriber('/ft/l_gripper_motor', WrenchStamped, self.force_callback)
-        #self.pressure_sub = rospy.Subscriber('/pressure/l_gripper_motor', PressureState, self.pressure_callback)
+        self.joint_values_sub = rospy.Subscriber('/hand/joint_states', JointState, self.joint_values_callback)
 
         # Setup relevant structures for action and reward generation
         self.pca_con = sgg.SynGraspGen()
@@ -80,7 +94,7 @@ class RealEnv(gym.Env):
         self.current_reset_step = 1000 # To set an object in first reset call
 
         # Further initializations if data should be recorded
-        self.record = record
+        self.record = rospy.get_param("record")
         if self.record:
             if time is None:
                 self.time = datetime.now().strftime("%d_%m_%Y_%H_%M")
@@ -101,15 +115,8 @@ class RealEnv(gym.Env):
     def effort_callback(self, joint_state):
         self.current_effort = [joint_state.effort[joint_state.name.index(name)] for name in self.closing_joints]
 
-    '''
-    def force_callback(self, force):
-        self.current_force = force
-    '''
-
-    '''
-    def pressure_callback(self, pressure):
-        self.current_pressure = pressure
-    '''
+    def joint_values_callback(self, joint_state):
+        self.current_joint_values = [joint_state.position[joint_state.name.index(name)] for name in self.closing_joints]
 
     def interrupt_callback(self, command):
         self.interrupted = command.data
@@ -145,18 +152,21 @@ class RealEnv(gym.Env):
             rospy.sleep(1)
 
         # Check number of contacts
-        if self.env_type == "tactile":
+        if self.contact_modality == "tactile":
             current_tactile = deepcopy(self.current_tactile)
-            current_tactile_diff = [current_tactile[x] - self.initial_tactile[x] for x in range(len(current_tactile))]
-            for diff in current_tactile_diff:
-                if diff > 40:
-                    diff = 40
-            contacts = [True if diff >=20 else False for diff in current_tactile_diff]
+            current_tactile_diff = [abs((current_tactile[x]) - (self.initial_tactile[x])) for x in range(len(current_tactile))]
+            contacts = []
+            thresholds = [20, 20, 20, 20, 20]
+            for i in range(len(current_tactile_diff)):
+                contacts.append(current_tactile_diff[i] >= thresholds [i])
             contact_threshold = 5
-        elif self.env_type == "effort":
+        elif self.contact_modality == "effort":
             current_effort = deepcopy(self.current_effort)
             current_effort_diff = [abs((current_effort[x]) - (self.initial_effort[x])) for x in range(len(current_effort))]
-            contacts = [True if diff >=150 else False for diff in current_effort_diff]
+            contacts = []
+            thresholds = [150, 150, 150, 150, 150, 150, 150, 150, 150]
+            for i in range(len(current_effort_diff)):
+                contacts.append(current_effort_diff[i] >= thresholds [i])
             contact_threshold = 9
 
         # Stop if enough contacts have been made or max steps were reached
@@ -171,9 +181,9 @@ class RealEnv(gym.Env):
                 reward = -1
 
             # Add bonus reward depending on number of contacts
-            if self.env_type == "tactile":
+            if self.contact_modality == "tactile":
                 reward += 0.1 * sum(contacts)
-            elif self.env_type == "effort":
+            elif self.contact_modality == "effort":
                 reward += 0.1 * sum(contacts)/2
 
             # Set termination reason
@@ -198,9 +208,9 @@ class RealEnv(gym.Env):
             del result['rh_WRJ2']
 
             # Remove fingers with contact
-            if self.env_type == "tactile":
+            if self.contact_modality == "tactile":
                 checks = contacts
-            elif self.env_type == "effort":
+            elif self.contact_modality == "effort":
                 checks = [contacts[0] and contacts[1], contacts[2] and contacts[3], contacts[4] and contacts[5], contacts[6] and contacts[7], contacts[8]]
             del_keys = []
             if checks[0]:
@@ -264,13 +274,19 @@ class RealEnv(gym.Env):
         # Update observation for next step
         observation = []
 
-        # Add pca values
-        current_pca = self.pca_con.get_pca_config()[0][:3]
-        for pca in current_pca:
-            observation.append(pca)
+        # Add joint values
+        if self.joint_values_input:
+            for value in self.current_joint_values:
+                observation.append(value)
 
-        # Add tactile or effort values
-        if self.env_type == "tactile":
+        # Add pca values
+        if self.pca_input:
+            current_pca = self.pca_con.get_pca_config()[0][:3]
+            for pca in current_pca:
+                observation.append(pca)
+
+        # Add tactile values
+        if self.tactile_input:
             current_tactile = deepcopy(self.current_tactile)
             tactile_diff = [current_tactile[x] - self.initial_tactile[x] for x in range(len(current_tactile))]
             # Normalize diff values between -1 and 1
@@ -281,7 +297,9 @@ class RealEnv(gym.Env):
                     observation.append(-1)
                 else:
                     observation.append(diff/40)
-        elif self.env_type == "effort":
+
+        # Add effort values
+        if self.effort_input:
             current_effort = deepcopy(self.current_effort)
             effort_diff = [current_effort[x] - self.initial_effort[x] for x in range(len(current_effort))]
             # Normalize diff values between -1 and 1
@@ -294,7 +312,7 @@ class RealEnv(gym.Env):
                     observation.append(diff/300)
 
         # Add one-hot encoding
-        if self.env_type == "effort":
+        if self.one_hot_input:
             for value in self.current_object:
                 current_observation.append(value)
         observation = np.array(current_observation, dtype = np.float32)
@@ -320,11 +338,17 @@ class RealEnv(gym.Env):
             terminated_reason_msg = String()
             terminated_reason_msg.data = terminated_reason
             self.bag.write('terminated', terminated_reason_msg)
-            if self.env_type == "tactile":
+            if not self.joint_values_input:
+                current_joint_values = deepcopy(self.current_joint_values)
+                self.write_float_array_to_bag('joint_values', current_joint_values)
+            if not self.pca_input:
+                current_pca = self.pca_con.get_pca_config()[0][:3]
+                self.write_float_array_to_bag('pca', current_pca)
+            if not self.effort_input:
                 current_effort = deepcopy(self.current_effort)
                 effort_diff = [current_effort[x] - self.initial_effort[x] for x in range(len(current_effort))]
                 self.write_float_array_to_bag('effort', effort_diff)
-            elif self.env_type == "effort":
+            if not self.tactile_input:
                 current_tactile = deepcopy(self.current_tactile)
                 tactile_diff = [current_tactile[x] - self.initial_tactile[x] for x in range(len(current_tactile))]
                 self.write_float_array_to_bag('tactile', tactile_diff)
@@ -352,13 +376,20 @@ class RealEnv(gym.Env):
 
         # Set new observation
         observation = []
-        # Add pca values
-        current_pca = self.pca_con.get_pca_config()[0][:3]
-        for pca in current_pca:
-            observation.append(pca)
 
-        # Add tactile or effort values
-        if self.env_type == "tactile":
+        # Add joint values
+        if self.joint_values_input:
+            for value in self.current_joint_values:
+                observation.append(value)
+
+        # Add pca values
+        if self.pca_input:
+            current_pca = self.pca_con.get_pca_config()[0][:3]
+            for pca in current_pca:
+                observation.append(pca)
+
+        # Add tactile values
+        if self.tactile_input:
             current_tactile = deepcopy(self.current_tactile)
             tactile_diff = [current_tactile[x] - self.initial_tactile[x] for x in range(len(current_tactile))]
             # Normalize diff values between -1 and 1
@@ -369,7 +400,9 @@ class RealEnv(gym.Env):
                     observation.append(-1)
                 else:
                     observation.append(diff/40)
-        elif self.env_type == "effort":
+
+        # Add effort values
+        if self.efffort_values:
             current_effort = deepcopy(self.current_effort)
             effort_diff = [current_effort[x] - self.initial_effort[x] for x in range(len(current_effort))]
             # Normalize diff values between -1 and 1
@@ -387,7 +420,7 @@ class RealEnv(gym.Env):
             # Reset, insert new object, move to pose
             accepted_input = False
             while not accepted_input:
-                # IDs: 1 - can, 2 - , 3 -
+                # IDs: 1 - can, 2 - book, 3 -
                 object_id = input("Please enter the id of the next used object:")
                 if object_id in ["1", "2", "3"]:
                     check = input("Object set to {}. Press enter to continue. If the wrong object was selected, please enter [a].".format(object_id))
@@ -407,15 +440,15 @@ class RealEnv(gym.Env):
                 else:
                     print("Object id {} is not known. Please enter one of the known ids [1], [2] or [3].".format(object_id))
             self.current_object = one_hot
-            # Add one-hot encoding
-            if self.env_type == "effort":
+            # Add one-hot encoding to observation
+            if self.one_hot_input:
                 for value in one_hot:
                     observation.append(value)
             self.current_reset_step = 0
             self.reset_hand_pose()
         else:
             # Add one-hot encoding
-            if self.env_type == "effort":
+            if self.one_hot_input:
                 for value in self.current_object:
                     observation.append(value)
 

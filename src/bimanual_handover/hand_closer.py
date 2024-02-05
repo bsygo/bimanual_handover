@@ -156,7 +156,7 @@ class ThresholdCloser():
         targets = [1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.0]
 
         # Move joints a small step for deadband compensation
-        msg = self.create_joint_trajectory_goal_msg(self.closing_joints, [0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01])
+        msg = self.create_joint_trajectory_goal_msg(self.closing_joints, [0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05])
         self.joint_client.send_goal(msg)
         self.joint_client.wait_for_result()
 
@@ -235,7 +235,7 @@ class ThresholdCloser():
                 rospy.loginfo('contacts reached')
                 # Move joints a small step to apply more pressure to the object
                 goal_values = self.current_joint_values
-                goal_values = [value + 0.02 for value in goal_values]
+                goal_values = [value + 0.05 for value in goal_values]
                 msg = self.create_joint_trajectory_goal_msg(self.closing_joints, goal_values)
                 self.joint_client.send_goal(msg)
                 self.joint_client.wait_for_result()

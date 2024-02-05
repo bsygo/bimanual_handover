@@ -56,7 +56,7 @@ void cropPC(const sensor_msgs::PointCloud2ConstPtr& input_cloud){
     geometry_msgs::PoseStamped transformed_pose;
     geometry_msgs::TransformStamped base_azure_transform = tfBuffer->lookupTransform("azure_kinect_rgb_camera_link", "base_footprint", ros::Time(0));
     tf2::doTransform(gripper_pose, transformed_pose, base_azure_transform);
-    box.setMin(Eigen::Vector4f(transformed_pose.pose.position.x - 0.1, transformed_pose.pose.position.y - 0.1, transformed_pose.pose.position.z - 0.1, 1.0));
+    box.setMin(Eigen::Vector4f(transformed_pose.pose.position.x - 0.1, transformed_pose.pose.position.y - 0.3, transformed_pose.pose.position.z - 0.1, 1.0));
     box.setMax(Eigen::Vector4f(transformed_pose.pose.position.x + 0.1, transformed_pose.pose.position.y + 0.1, transformed_pose.pose.position.z + 0.1, 1.0));
     box.setInputCloud(cloud);
     box.filter(*cloud_filtered);
@@ -64,10 +64,14 @@ void cropPC(const sensor_msgs::PointCloud2ConstPtr& input_cloud){
     sensor_msgs::PointCloud2 cloud_filtered_msg;
     pcl_conversions::moveFromPCL(pcl_pc2, cloud_filtered_msg);
     cloud_filtered_msg.header.stamp = ros::Time::now();
+    debug_pub.publish(cloud_filtered_msg);
     cropped_pub.publish(cloud_filtered_msg);
 }
 
 void transformPC(const sensor_msgs::PointCloud2ConstPtr& input_cloud){
+    ros::AsyncSpinner spinner(1);
+    spinner.start();
+
     geometry_msgs::PoseStamped gripper_pose = left_arm->getCurrentPose(); 
 
     // Transform pointcloud to sampling pose
@@ -84,19 +88,27 @@ void transformPC(const sensor_msgs::PointCloud2ConstPtr& input_cloud){
     tf2::Transform pc_transform = gripper_pose_transform.inverseTimes(sample_pose_transform);
     geometry_msgs::Transform pc_transform_msg = tf2::toMsg(pc_transform);
 
-    debug_pub.publish(input_cloud);
-    sensor_msgs::PointCloud2 base_transformed_cloud_filtered_msg;
-    geometry_msgs::TransformStamped azure_base_transform_msg = tfBuffer->lookupTransform("l_gripper_tool_frame", "azure_kinect_rgb_camera_link", ros::Time(0));
-    Eigen::Matrix4f azure_base_transform_matrix;
-    pcl_ros::transformAsMatrix(azure_base_transform_msg.transform, azure_base_transform_matrix);
-    pcl_ros::transformPointCloud(azure_base_transform_matrix, *input_cloud, base_transformed_cloud_filtered_msg);
-    base_transformed_cloud_filtered_msg.header.frame_id = "l_gripper_tool_frame";
+    //debug_pub.publish(input_cloud);
+    sensor_msgs::PointCloud2 gripper_transformed_cloud_filtered_msg;
+    geometry_msgs::TransformStamped base_gripper_transform_msg = tfBuffer->lookupTransform("l_gripper_tool_frame", "base_footprint", ros::Time(0));
+    Eigen::Matrix4f base_gripper_transform_matrix;
+    pcl_ros::transformAsMatrix(base_gripper_transform_msg.transform, base_gripper_transform_matrix);
+    pcl_ros::transformPointCloud(base_gripper_transform_matrix, *input_cloud, gripper_transformed_cloud_filtered_msg);
+    gripper_transformed_cloud_filtered_msg.header.frame_id = "l_gripper_tool_frame";
     
     sensor_msgs::PointCloud2 transformed_cloud_filtered_msg;
     Eigen::Matrix4f pc_transform_matrix;
     pcl_ros::transformAsMatrix(pc_transform_msg, pc_transform_matrix);
-    pcl_ros::transformPointCloud(pc_transform_matrix, base_transformed_cloud_filtered_msg, transformed_cloud_filtered_msg);
-    cropped_pub.publish(transformed_cloud_filtered_msg);
+    pcl_ros::transformPointCloud(pc_transform_matrix, gripper_transformed_cloud_filtered_msg, transformed_cloud_filtered_msg);
+
+    sensor_msgs::PointCloud2 base_transformed_cloud_filtered_msg;
+    geometry_msgs::TransformStamped gripper_base_transform_msg = tfBuffer->lookupTransform("base_footprint", "l_gripper_tool_frame", ros::Time(0));
+    Eigen::Matrix4f gripper_base_transform_matrix;
+    pcl_ros::transformAsMatrix(gripper_base_transform_msg.transform, gripper_base_transform_matrix);
+    pcl_ros::transformPointCloud(gripper_base_transform_matrix, transformed_cloud_filtered_msg, base_transformed_cloud_filtered_msg);
+    base_transformed_cloud_filtered_msg.header.frame_id = "base_footprint";
+
+    final_pub.publish(base_transformed_cloud_filtered_msg);
 }
 
 

@@ -54,7 +54,7 @@ class HandoverMover():
 
         # Setup pc subscriber
         self.pc = None
-        self.pc_sub = rospy.Subscriber("pc/pc_filtered", PointCloud2, self.update_pc)
+        self.pc_sub = rospy.Subscriber("pc/pc_final", PointCloud2, self.update_pc)
 
         # Setup required services
         #rospy.wait_for_service('pc/gpd_service/detect_grasps')
@@ -129,7 +129,7 @@ class HandoverMover():
             return self.move_fixed_pose_above()
         elif req.handover_pose_mode == "fixed":
             return self.move_fixed_pose(hand_pose)
-        elif req.handover_pose_mode == ("sample" or "random_sample"):
+        elif req.handover_pose_mode == "sample" or req.handover_pose_mode == "random_sample":
             return self.move_sampled_pose_above(hand_pose)
         else:
             rospy.loginfo("Unknown mode {}".format(req.handover_pose_mode))
@@ -141,15 +141,15 @@ class HandoverMover():
     def get_random_sample_transformations(self, number_transforms):
         translation_step = 0.06
         min_linear_limits = [0, 0, -3]
-        min_linear_limits = [translation_step * limit in min_linear_limits]
+        min_linear_limits = [translation_step * limit for limit in min_linear_limits]
         max_linear_limits = [1, 4, 0]
-        max_linear_limits = [translation_step * limit in max_linear_limits]
+        max_linear_limits = [translation_step * limit for limit in max_linear_limits]
 
         rotation_step = math.pi * 30/180
-        min_angular_limits = [-1, 1, -1]
-        min_angular_limits = [rotation_step * limit in min_linear_limits]
-        max_angular_limits = [1, 1, 1]
-        max_angular_limits = [rotation_Step * limit in max_linear_limits]
+        min_angular_limits = [-3, -3, -3]
+        min_angular_limits = [rotation_step * limit for limit in min_angular_limits]
+        max_angular_limits = [3, 3, 3]
+        max_angular_limits = [rotation_step * limit for limit in max_angular_limits]
 
         transformations = []
         for i in range(number_transforms):
@@ -942,8 +942,8 @@ class HandoverMover():
                 return hand_pose
             elif self.side == "side":
                 self.setup_fingers_together()
-                hand_pose.pose.position.x = min_point[0] + math.dist([max_point[0]], [min_point[0]])/2 + 0.04
-                hand_pose.pose.position.y = min_point[1] - 0.03
+                hand_pose.pose.position.x = min_point[0] + math.dist([max_point[0]], [min_point[0]])/2 + 0.05
+                hand_pose.pose.position.y = min_point[1] - 0.02
                 hand_pose.pose.position.z += 0.1
                 hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(0, -1.5708, -1.5708))
                 return hand_pose
@@ -978,8 +978,8 @@ class HandoverMover():
         if self.object_type == "can":
             if self.side == "top":
                 self.setup_fingers()
-                hand_pose.pose.position.x += 0
-                hand_pose.pose.position.y += 0
+                hand_pose.pose.position.x += 0.0
+                hand_pose.pose.position.y += -0.04
                 hand_pose.pose.position.z += 0.167
                 hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(-1.5708, 3.14159, 0))
                 return hand_pose
@@ -1001,9 +1001,9 @@ class HandoverMover():
             # Not correct numbers
             elif self.side == "side":
                 self.setup_fingers_together()
-                hand_pose.pose.position.x += 0.04
-                hand_pose.pose.position.y += -0.055
-                hand_pose.pose.position.z += 0.1
+                hand_pose.pose.position.x += 0.03
+                hand_pose.pose.position.y += -0.13
+                hand_pose.pose.position.z += 0.09
                 hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(0, -1.5708, -1.5708))
                 return hand_pose
 

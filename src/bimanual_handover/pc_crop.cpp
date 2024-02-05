@@ -57,7 +57,7 @@ void cropPC(const sensor_msgs::PointCloud2ConstPtr& input_cloud){
     geometry_msgs::TransformStamped base_azure_transform = tfBuffer->lookupTransform("azure_kinect_rgb_camera_link", "base_footprint", ros::Time(0));
     tf2::doTransform(gripper_pose, transformed_pose, base_azure_transform);
     box.setMin(Eigen::Vector4f(transformed_pose.pose.position.x - 0.1, transformed_pose.pose.position.y - 0.3, transformed_pose.pose.position.z - 0.1, 1.0));
-    box.setMax(Eigen::Vector4f(transformed_pose.pose.position.x + 0.1, transformed_pose.pose.position.y + 0.1, transformed_pose.pose.position.z + 0.1, 1.0));
+    box.setMax(Eigen::Vector4f(transformed_pose.pose.position.x + 0.1, transformed_pose.pose.position.y , transformed_pose.pose.position.z + 0.1, 1.0));
     box.setInputCloud(cloud);
     box.filter(*cloud_filtered);
     pcl::toPCLPointCloud2(*cloud_filtered, pcl_pc2);

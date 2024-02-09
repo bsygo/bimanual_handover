@@ -403,7 +403,7 @@ class HandoverMover():
         if self.handover_pose_mode == "sample":
             transformations = self.get_sample_transformations()
         elif self.handover_pose_mode == "random_sample":
-            transformations = self.get_random_sample_transformations(100)
+            transformations = self.get_random_sample_transformations(1000)
         if self.debug:
             debug_counter = 0
             best_debug_index = None
@@ -950,8 +950,8 @@ class HandoverMover():
         elif self.object_type == "book":
             if self.side == "top":
                 self.setup_fingers()
-                hand_pose.pose.position.x = min_point[0] + math.dist([max_point[0]], [min_point[0]])/2 - 0.05
-                hand_pose.pose.position.y = min_point[1] + math.dist([max_point[1]], [min_point[1]])/2 - 0.02
+                hand_pose.pose.position.x = min_point[0] + math.dist([max_point[0]], [min_point[0]])/2 - 0.06
+                hand_pose.pose.position.y = min_point[1] + math.dist([max_point[1]], [min_point[1]])/2 + 0.02
                 hand_pose.pose.position.z = max_point[2] + 0.05
                 hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(-1.5708, 3.14159, -1.5708))
                 return hand_pose

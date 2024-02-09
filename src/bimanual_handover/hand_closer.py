@@ -54,6 +54,7 @@ class PCACloser():
     def __init__(self):
         self.joint_client = actionlib.SimpleActionClient('/hand/rh_trajectory_controller/follow_joint_trajectory', FollowJointTrajectoryAction)
         self.joint_client.wait_for_server()
+        self.closing_joints = ['rh_FFJ2', 'rh_FFJ3', 'rh_MFJ2', 'rh_MFJ3', 'rh_RFJ2', 'rh_RFJ3', 'rh_LFJ2', 'rh_LFJ3', 'rh_THJ2']
 
         # Initialized based on desired mode
         self.mode = rospy.get_param("hand_closer/mode")
@@ -70,7 +71,7 @@ class PCACloser():
 
         # Setup grasp generator
         self.sgg = sgg.SynGraspGen()
-        self.constant_aplhas = [1.0, 0.5, -0.3]
+        self.constant_alphas = [-1.0, -0.5, 0.3]
         self.contacts_made = False
 
         # Start service
@@ -95,18 +96,18 @@ class PCACloser():
 
     def move_step(self):
         # Stop moving if enough contacts have been made
-        if self.contact_modality == "tactile":
-            current_tactile = deepcopy(self.current_tactile)
-            current_tactile_diff = [abs((current_tactile[x]) - (self.initial_tactile[x])) for x in range(len(current_tactile))]
+        if self.mode == "tactile":
+            current_tactile = deepcopy(self.current_tactile_values)
+            current_tactile_diff = [abs((current_tactile[x]) - (self.initial_tactile_values[x])) for x in range(len(current_tactile))]
             contacts = [True if diff >=20 else False for diff in current_tactile_diff]
             contacts = []
             thresholds = [20, 20, 20, 20, 20]
             for i in range(len(current_tactile_diff)):
                 contacts.append(current_tactile_diff[i] >= thresholds[i])
             contact_threshold = 5
-        elif self.contact_modality == "effort":
-            current_effort = deepcopy(self.current_effort)
-            current_effort_diff = [abs((current_effort[x]) - (self.initial_effort[x])) for x in range(len(current_effort))]
+        elif self.mode == "effort":
+            current_effort = deepcopy(self.current_effort_values)
+            current_effort_diff = [abs((current_effort[x]) - (self.initial_effort_values[x])) for x in range(len(current_effort))]
             contacts = []
             thresholds = [150, 150, 150, 150, 150, 150, 150, 150, 150]
             for i in range(len(current_effort_diff)):
@@ -121,9 +122,9 @@ class PCACloser():
         del result['rh_WRJ2']
 
         # Remove fingers with contact
-        if self.contact_modality == "tactile":
+        if self.mode == "tactile":
             checks = contacts
-        elif self.contact_modality == "effort":
+        elif self.mode == "effort":
             checks = [contacts[0] and contacts[1], contacts[2] and contacts[3], contacts[4] and contacts[5], contacts[6] and contacts[7], contacts[8]]
         # Break early if all contacts have already been made
         if all(checks):
@@ -154,15 +155,12 @@ class PCACloser():
             del result[key]
 
         # Create Trjaectory msg
-        traj = JointTrajectory()
-        traj.joint_names = list(result.keys())
-        point = JointTrajectoryPoint()
-        point.positions = list(result.values())
-        point.time_from_start = rospy.Duration.from_sec(0.5)
-        traj.points = [point]
+        point = JointTrajectoryPoint(positions = list(result.values()), time_from_start = rospy.Duration.from_sec(0.5))
+        traj = JointTrajectory(joint_names = list(result.keys()), points = [point])
+        follow_traj = FollowJointTrajectoryGoal(trajectory = traj)
 
         # Move to the trajectory
-        self.joint_client.send_goal(traj)
+        self.joint_client.send_goal(follow_traj)
         self.joint_client.wait_for_result()
 
     def move_until_contacts(self, req):

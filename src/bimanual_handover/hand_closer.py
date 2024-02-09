@@ -49,6 +49,129 @@ class DemoCloser():
         self.fingers.go()
         return True
 
+class PCACloser():
+
+    def __init__(self):
+        self.joint_client = actionlib.SimpleActionClient('/hand/rh_trajectory_controller/follow_joint_trajectory', FollowJointTrajectoryAction)
+        self.joint_client.wait_for_server()
+
+        # Initialized based on desired mode
+        self.mode = rospy.get_param("hand_closer/mode")
+        if self.mode == "tactile":
+            self.tactile_threshold = 20
+            self.initial_tactile_values = None
+            self.current_tactile_values = None
+            self.tactile_sub = rospy.Subscriber('/hand/rh/tactile', BiotacAll, self.tactile_callback)
+        elif self.mode == "effort":
+            self.effort_thresholds = [200, 150, 150, 150, 150, 150, 150, 150, 150]
+            self.initial_effort_values = None
+            self.current_effort_values = None
+            self.effort_sub = rospy.Subscriber('/hand/joint_states', JointState, self.effort_callback)
+
+        # Setup grasp generator
+        self.sgg = sgg.SynGraspGen()
+        self.constant_aplhas = [1.0, 0.5, -0.3]
+        self.contacts_made = False
+
+        # Start service
+        rospy.Service('hand_closer_srv', HandCloserSrv, self.move_until_contacts)
+        rospy.spin()
+
+    def tactile_callback(self, tactile):
+        self.current_tactile_values = [x.pdc for x in tactile.tactiles]
+
+    def effort_callback(self, joint_state):
+        self.current_effort_values = [joint_state.effort[joint_state.name.index(name)] for name in self.closing_joints]
+
+    def wait_for_initial_values(self):
+        if self.mode == "tactile":
+            while self.current_tactile_values is None:
+                pass
+            self.initial_tactile_values = deepcopy(self.current_tactile_values)
+        elif self.mode == "effort":
+            while self.current_effort_values is None:
+                pass
+            self.initial_effort_values = deepcopy(self.current_effort_values)
+
+    def move_step(self):
+        # Stop moving if enough contacts have been made
+        if self.contact_modality == "tactile":
+            current_tactile = deepcopy(self.current_tactile)
+            current_tactile_diff = [abs((current_tactile[x]) - (self.initial_tactile[x])) for x in range(len(current_tactile))]
+            contacts = [True if diff >=20 else False for diff in current_tactile_diff]
+            contacts = []
+            thresholds = [20, 20, 20, 20, 20]
+            for i in range(len(current_tactile_diff)):
+                contacts.append(current_tactile_diff[i] >= thresholds[i])
+            contact_threshold = 5
+        elif self.contact_modality == "effort":
+            current_effort = deepcopy(self.current_effort)
+            current_effort_diff = [abs((current_effort[x]) - (self.initial_effort[x])) for x in range(len(current_effort))]
+            contacts = []
+            thresholds = [150, 150, 150, 150, 150, 150, 150, 150, 150]
+            for i in range(len(current_effort_diff)):
+                contacts.append(current_effort_diff[i] >= thresholds[i])
+            contact_threshold = 9
+
+        # Get new config
+        result = self.sgg.gen_joint_config(self.constant_alphas)
+
+        # Remove wrist joints
+        del result['rh_WRJ1']
+        del result['rh_WRJ2']
+
+        # Remove fingers with contact
+        if self.contact_modality == "tactile":
+            checks = contacts
+        elif self.contact_modality == "effort":
+            checks = [contacts[0] and contacts[1], contacts[2] and contacts[3], contacts[4] and contacts[5], contacts[6] and contacts[7], contacts[8]]
+        # Break early if all contacts have already been made
+        if all(checks):
+            self.contacts_made = True
+            return
+        del_keys = []
+        if checks[0]:
+            for key in result.keys():
+                if 'rh_FFJ' in key:
+                    del_keys.append(key)
+        if checks[1]:
+            for key in result.keys():
+                if 'rh_MFJ' in key:
+                    del_keys.append(key)
+        if checks[2]:
+            for key in result.keys():
+                if 'rh_RFJ' in key:
+                    del_keys.append(key)
+        if checks[3]:
+            for key in result.keys():
+                if 'rh_LFJ' in key:
+                    del_keys.append(key)
+        if checks[4]:
+            for key in result.keys():
+                if 'rh_THJ' in key:
+                    del_keys.append(key)
+        for key in del_keys:
+            del result[key]
+
+        # Create Trjaectory msg
+        traj = JointTrajectory()
+        traj.joint_names = list(result.keys())
+        point = JointTrajectoryPoint()
+        point.positions = list(result.values())
+        point.time_from_start = rospy.Duration.from_sec(0.5)
+        traj.points = [point]
+
+        # Move to the trajectory
+        self.joint_client.send_goal(traj)
+        self.joint_client.wait_for_result()
+
+    def move_until_contacts(self, req):
+        self.wait_for_initial_values()
+        while not self.contacts_made:
+            self.move_step()
+        self.contacts_made = False
+        return True
+
 class ThresholdCloser():
 
     def __init__(self):
@@ -156,7 +279,7 @@ class ThresholdCloser():
         targets = [1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.0]
 
         # Move joints a small step for deadband compensation
-        msg = self.create_joint_trajectory_goal_msg(self.closing_joints, [0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01])
+        msg = self.create_joint_trajectory_goal_msg(self.closing_joints, [0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05])
         self.joint_client.send_goal(msg)
         self.joint_client.wait_for_result()
 
@@ -212,11 +335,6 @@ class ThresholdCloser():
                         if abs(self.current_tactile_values[i] - self.initial_tactile_values[i]) > self.tactile_threshold:
                             joint_contacts[i] = True
                             rospy.loginfo('Contact found with joint {}.'.format(i))
-                        '''
-                        if i == 3:
-                            rospy.loginfo('Index: {}, Initial: {}, Contact: {}'.format(j, self.current_tactile_values[i][j], self.initial_tactile_values[i][j]))
-                            break
-                        '''
                     elif self.mode == "effort":
                         if abs(self.current_effort_values[i] - self.initial_effort_values[i]) > self.effort_thresholds[i]:
                             joint_contacts[i] = True
@@ -235,7 +353,7 @@ class ThresholdCloser():
                 rospy.loginfo('contacts reached')
                 # Move joints a small step to apply more pressure to the object
                 goal_values = self.current_joint_values
-                goal_values = [value + 0.02 for value in goal_values]
+                goal_values = [value + 0.05 for value in goal_values]
                 msg = self.create_joint_trajectory_goal_msg(self.closing_joints, goal_values)
                 self.joint_client.send_goal(msg)
                 self.joint_client.wait_for_result()
@@ -247,7 +365,7 @@ class ThresholdCloser():
         # Return failure if any finger still hsan't made contact
         if self.collect:
             self.data_bag.close()
-        return False
+        return True
 
 class ModelCloser():
 
@@ -255,10 +373,17 @@ class ModelCloser():
         # Setup and load model paths
         rospack = rospkg.RosPack()
         pkg_path = rospack.get_path('bimanual_handover')
-        model_path = pkg_path + rospy.get_param("hand_closer/model_path")
+        model_path = pkg_path + rospy.get_param("hand_closer/model_closer/model_path")
         self.model = SAC.load(model_path)
-        self.model.load_replay_buffer(pkg_path + rospy.get_param("hand_closer/model_replay_buffer_path"))
-        self.model_type = rospy.get_param("hand_closer/model_type")
+        self.model.load_replay_buffer(pkg_path + rospy.get_param("hand_closer/model_closer/model_replay_buffer_path"))
+        self.contact_modality = rospy.get_param("hand_closer/model_closer/contact_modality")
+
+        # Set observation inputs
+        self.joint_states_input = rospy.get_param("hand_closer/model_closer/observation_space/joint_states")
+        self.pca_input = rospy.get_param("hand_closer/model_closer/observation_space/pca")
+        self.effort_input = rospy.get_param("hand_closer/model_closer/observation_space/effort")
+        self.tactile_input = rospy.get_param("hand_closer/model_closer/observation_space/tactile")
+        self.one_hot_input = rospy.get_param("hand_closer/model_closer/observation_space/one_hot")
 
         # Setup fingers
         self.fingers = MoveGroupCommander('right_fingers', ns="/")
@@ -272,16 +397,17 @@ class ModelCloser():
         self.initial_tactile = None
         self.current_tactile = None
         self.current_pca = None
+        self.current_joint_values = None
+        self.contacts_made = False
 
         # Setup grasp generator
         self.pca_con = sgg.SynGraspGen()
 
         # Settup relevant subscribers
-        self.tactile_sub = rospy.Subscriber('/hand/rh/tactile', BiotacAll, self.tactile_callback)
         self.closing_joints = ['rh_FFJ2', 'rh_FFJ3', 'rh_MFJ2', 'rh_MFJ3', 'rh_RFJ2', 'rh_RFJ3', 'rh_LFJ2', 'rh_LFJ3', 'rh_THJ2']
+        self.tactile_sub = rospy.Subscriber('/hand/rh/tactile', BiotacAll, self.tactile_callback)
         self.effort_sub = rospy.Subscriber('/hand/joint_states', JointState, self.effort_callback)
-        self.joints = ['rh_WRJ2', 'rh_WRJ1', 'rh_FFJ4', 'rh_FFJ3', 'rh_FFJ2', 'rh_FFJ1', 'rh_LFJ5', 'rh_LFJ4', 'rh_LFJ3', 'rh_LFJ2', 'rh_LFJ1', 'rh_MFJ4', 'rh_MFJ3', 'rh_MFJ2', 'rh_MFJ1', 'rh_RFJ4', 'rh_RFJ3', 'rh_RFJ2', 'rh_RFJ1', 'rh_THJ5', 'rh_THJ4', 'rh_THJ3', 'rh_THJ2', 'rh_THJ1']
-        self.joint_state_sub = rospy.Subscriber('/joint_states', JointState, callback = self.joint_callback)
+        self.joint_values_sub = rospy.Subscriber('/hand/joint_states', JointState, callback = self.joint_values_callback)
 
         # Start service
         rospy.loginfo("hand_closer_srv ready.")
@@ -294,25 +420,52 @@ class ModelCloser():
     def effort_callback(self, joint_state):
         self.current_effort = [joint_state.effort[joint_state.name.index(name)] for name in self.closing_joints]
 
-    def joint_callback(self, joint_state):
-        if not self.joints[0] in joint_state.name:
-            return
-        indices = [joint_state.name.index(joint_name) for joint_name in self.joints]
-        current_joint_values = [joint_state.position[x] for x in indices]
-        current_joint_values = np.array(current_joint_values, dtype = np.float32)
-        self.current_pca = self.pca_con.get_pca_config(current_joint_values)[0][:3]
+    def joint_values_callback(self, joint_state):
+        self.current_joint_values = [joint_state.position[joint_state.name.index(name)] for name in self.closing_joints]
 
     def get_next_action(self):
-        if self.model_type == "tactile":
+        # Update observation for next step
+        observation = []
+
+        # Add joint values
+        if self.joint_values_input:
+            for value in self.current_joint_values:
+                observation.append(value)
+
+        # Add pca values
+        if self.pca_input:
+            current_pca = self.pca_con.get_pca_config()[0][:3]
+            for pca in current_pca:
+                observation.append(pca)
+
+        # Add tactile values
+        if self.tactile_input:
             current_tactile = deepcopy(self.current_tactile)
-            current_observation = [current_tactile[x] - self.initial_tactile[x] for x in range(len(current_tactile))]
-        elif self.model_type == "effort":
+            tactile_diff = [current_tactile[x] - self.initial_tactile[x] for x in range(len(current_tactile))]
+            # Normalize diff values between -1 and 1
+            for diff in tactile_diff:
+                if diff > 40:
+                    observation.append(1)
+                elif diff < -40:
+                    observation.append(-1)
+                else:
+                    observation.append(diff/40)
+
+        # Add effort values
+        if self.effort_input:
             current_effort = deepcopy(self.current_effort)
-            current_observation = [current_effort[x] - self.initial_effort[x] for x in range(len(current_effort))]
-        current_pca = self.pca_con.get_pca_config()[0][:3]
-        for pca in current_pca:
-            current_observation.append(pca)
-        if self.model_type == "effort":
+            effort_diff = [current_effort[x] - self.initial_effort[x] for x in range(len(current_effort))]
+            # Normalize diff values between -1 and 1
+            for diff in effort_diff:
+                if diff > 300:
+                    observation.append(1)
+                elif diff < -300:
+                    observation.append(-1)
+                else:
+                    observation.append(diff/300)
+
+        # Add one-hot encoding
+        if self.one_hot_input:
             for value in self.current_object:
                 current_observation.append(value)
         observation = np.array(current_observation, dtype = np.float32)
@@ -321,35 +474,44 @@ class ModelCloser():
 
     def exec_action(self, action):
         # Stop moving if enough contacts have been made
-        if self.model_type == "tactile":
+        if self.contact_modality == "tactile":
             current_tactile = deepcopy(self.current_tactile)
-            current_tactile_diff = [current_tactile[x] - self.initial_tactile[x] for x in range(len(current_tactile))]
+            current_tactile_diff = [abs((current_tactile[x]) - (self.initial_tactile[x])) for x in range(len(current_tactile))]
             contacts = [True if diff >=20 else False for diff in current_tactile_diff]
-            contact_threshold = 5
-        elif self.model_type == "effort":
-            current_effort = deepcopy(self.current_effort)
-            current_effort_diff = [current_effort[x] - self.initial_effort[x] for x in range(len(current_effort))]
-            #contacts = [True if diff >=150 else False for diff in current_effort_diff]
             contacts = []
-            thresholds = [110, 150, 150, 150, 150, 150, 150, 150, 150]
+            thresholds = [20, 20, 20, 20, 20]
+            for i in range(len(current_tactile_diff)):
+                contacts.append(current_tactile_diff[i] >= thresholds[i])
+            contact_threshold = 5
+        elif self.contact_modality == "effort":
+            current_effort = deepcopy(self.current_effort)
+            current_effort_diff = [abs((current_effort[x]) - (self.initial_effort[x])) for x in range(len(current_effort))]
+            contacts = []
+            thresholds = [150, 150, 150, 150, 150, 150, 150, 150, 150]
             for i in range(len(current_effort_diff)):
                 contacts.append(current_effort_diff[i] >= thresholds[i])
             contact_threshold = 9
+
         # Reduce normalized actions
         action[0] = (action[0] - 1)/2
         action[1] = (action[1] - 1)/2
+
         # Get new config
         result = self.pca_con.gen_joint_config(action[:3], normalize = True)
+
         # Remove wrist joints
         del result['rh_WRJ1']
         del result['rh_WRJ2']
 
         # Remove fingers with contact
-        if self.model_type == "tactile":
+        if self.contact_modality == "tactile":
             checks = contacts
-        elif self.model_type == "effort":
+        elif self.contact_modality == "effort":
             checks = [contacts[0] and contacts[1], contacts[2] and contacts[3], contacts[4] and contacts[5], contacts[6] and contacts[7], contacts[8]]
-
+        # Break early if all contacts have already been made
+        if all(checks):
+            self.contacts_made = True
+            return
         del_keys = []
         if checks[0]:
             for key in result.keys():
@@ -374,6 +536,7 @@ class ModelCloser():
         for key in del_keys:
             del result[key]
 
+        # Move fingers to configuration
         self.fingers.set_joint_value_target(result)
         self.fingers.go()
 
@@ -384,16 +547,16 @@ class ModelCloser():
         elif req.object_type == "book":
             self.current_object = [0, 1, 0]
 
-        # Set initial value based on model_type
-        if self.model_type == "tactile":
-            self.initial_tactile = deepcopy(self.current_tactile)
-        elif self.model_type == "effort":
-            self.initial_effort = deepcopy(self.current_effort)
+        # Set initial values
+        self.initial_tactile = deepcopy(self.current_tactile)
+        self.initial_effort = deepcopy(self.current_effort)
 
         # Generate and execute actions
-        for i in range(30):
+        while not self.contacts_made:
             action = self.get_next_action()
             self.exec_action(action)
+
+        self.contacts_made = False
         return True
 
 def shutdown():
@@ -411,6 +574,10 @@ def init_mover():
         ModelCloser()
     elif mode == "demo":
         DemoCloser()
+    elif mode == "pca":
+        PCACloser()
+    else:
+        rospy.logerr("Unknown closer type: {}".format(mode))
 
 if __name__ == '__main__':
     init_mover()

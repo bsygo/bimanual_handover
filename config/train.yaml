@@ -4,9 +4,16 @@ model_path: '' #/models/checkpoints/sac_checkpoint_29_11_2023_16_09_9400_steps.z
 checkpoint: False
 
 # Env paramters
-env_type: 'effort'
+contact_modality: 'effort' # effort or tactile
 env_check: False
 record: True
+
+observation_space:
+    joint_values: False
+    pca: True
+    effort: True
+    tactile: False
+    one_hot: True
 
 # Only used for new models
 architecture:

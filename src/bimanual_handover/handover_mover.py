@@ -54,7 +54,7 @@ class HandoverMover():
 
         # Setup pc subscriber
         self.pc = None
-        self.pc_sub = rospy.Subscriber("pc/pc_filtered", PointCloud2, self.update_pc)
+        self.pc_sub = rospy.Subscriber("pc/pc_final", PointCloud2, self.update_pc)
 
         # Setup required services
         #rospy.wait_for_service('pc/gpd_service/detect_grasps')
@@ -129,9 +129,7 @@ class HandoverMover():
             return self.move_fixed_pose_above()
         elif req.handover_pose_mode == "fixed":
             return self.move_fixed_pose(hand_pose)
-        elif req.handover_pose_mode == "gpd":
-            return self.move_gpd_pose()
-        elif req.handover_pose_mode == "sample":
+        elif req.handover_pose_mode == "sample" or req.handover_pose_mode == "random_sample":
             return self.move_sampled_pose_above(hand_pose)
         else:
             rospy.loginfo("Unknown mode {}".format(req.handover_pose_mode))
@@ -139,6 +137,30 @@ class HandoverMover():
 
     def update_pc(self, pc):
         self.pc = pc
+
+    def get_random_sample_transformations(self, number_transforms):
+        translation_step = 0.06
+        min_linear_limits = [0, 0, -3]
+        min_linear_limits = [translation_step * limit for limit in min_linear_limits]
+        max_linear_limits = [1, 4, 0]
+        max_linear_limits = [translation_step * limit for limit in max_linear_limits]
+
+        rotation_step = math.pi * 30/180
+        min_angular_limits = [-3, -3, -3]
+        min_angular_limits = [rotation_step * limit for limit in min_angular_limits]
+        max_angular_limits = [3, 3, 3]
+        max_angular_limits = [rotation_step * limit for limit in max_angular_limits]
+
+        transformations = []
+        for i in range(number_transforms):
+            new_transform = TransformStamped()
+            new_transform.header.frame_id = "handover_frame"
+            new_transform.child_frame_id = "handover_frame"
+            new_transform.transform.translation = Vector3(*[random.uniform(min_linear_limits[j], max_linear_limits[j]) for j in range(len(min_linear_limits))])
+            new_transform.transform.rotation = Quaternion(*quaternion_from_euler(*[random.uniform(min_angular_limits[j], max_angular_limits[j]) for j in range(len(min_angular_limits))]))
+            transformations.append(new_transform)
+
+        return transformations
 
     def get_sample_transformations(self):
         # Set which transformations are to sample
@@ -379,7 +401,10 @@ class HandoverMover():
         best_transform = None
         best_hand = None
         best_gripper = None
-        transformations = self.get_sample_transformations()
+        if self.handover_pose_mode == "sample":
+            transformations = self.get_sample_transformations()
+        elif self.handover_pose_mode == "random_sample":
+            transformations = self.get_random_sample_transformations(100)
         if self.debug:
             debug_counter = 0
             best_debug_index = None
@@ -725,75 +750,6 @@ class HandoverMover():
 
         return True
 
-    def move_gpd_pose(self):
-        while self.pc is None:
-            rospy.sleep(1)
-        self.setup_fingers()
-        gripper_pose = self.get_gripper_pose()
-        self.left_arm.set_pose_target(gripper_pose)
-        self.left_arm.go()
-
-        current_pc = self.pc
-        cloud_indexed = CloudIndexed()
-        cloud_sources = CloudSources()
-        cloud_sources.cloud = current_pc
-        cloud_sources.view_points = [self.robot.get_link('azure_kinect_rgb_camera_link_urdf').pose().pose.position]
-        cloud_sources.camera_source = [Int64(0) for i in range(current_pc.width)]
-        cloud_indexed.cloud_sources = cloud_sources
-        cloud_indexed.indices = [Int64(i) for i in range(current_pc.width)]
-        response = self.gpd_service(cloud_indexed)
-        manipulator_transform = self.tf_buffer.lookup_transform('rh_manipulator', 'base_footprint', rospy.Time(0))
-        checked_poses = []
-        gripper_pose = self.gripper.get_current_pose()
-        '''
-        # Use the middle point between thumb and middle finger as the grasp point for the hand
-        mf_pose = self.fingers.get_current_pose('rh_mf_biotac_link')
-        th_pose = self.fingers.get_current_pose('rh_th_biotac_link')
-        hand_grasp_point = PoseStamped()
-        hand_grasp_point.pose.position.x = (mf_pose.pose.position.x + th_pose.pose.position.x)/2
-        hand_grasp_point.pose.position.y = (mf_pose.pose.position.y + th_pose.pose.position.y)/2
-        hand_grasp_point.pose.position.z = (mf_pose.pose.position.z + th_pose.pose.position.z)/2
-        grasp_point_transform = self.tf_buffer.lookup_transform('base_footprint', 'rh_manipulator')
-        hand_grasp_point = do_transform_pose(hand_grasp_point, grasp_point_transform)
-        '''
-        for i in range(len(response.grasp_configs.grasps)):
-            selected_grasp = response.grasp_configs.grasps[i]
-            grasp_point = selected_grasp.position
-            R = [[selected_grasp.approach.x, selected_grasp.binormal.x, selected_grasp.axis.x, 0], [selected_grasp.approach.y, selected_grasp.binormal.y, selected_grasp.axis.y, 0], [selected_grasp.approach.z, selected_grasp.binormal.z, selected_grasp.axis.z, 0], [0, 0, 0, 1]]
-            grasp_q = quaternion_from_matrix(R)
-            sh_q = quaternion_from_euler(math.pi/2, -math.pi/2, 0)
-            final_q = Quaternion(*quaternion_multiply(grasp_q, sh_q))
-            pose = PoseStamped()
-            pose.header.frame_id = "base_footprint"
-            pose.pose.position = grasp_point
-            pose.pose.orientation = final_q
-            transformed_pose = do_transform_pose(pose, manipulator_transform)
-            transformed_pose.pose.position.y += 0.02
-            transformed_pose.pose.position.z += - 0.02
-            '''
-            # Adjust hand movement from rh_manipulator to the grasp point specified above
-            transformed_pose.pose.position.x += hand_grasp_point.pose.position.x
-            transformed_pose.pose.position.y += hand_grasp_point.pose.position.y
-            transformed_pose.pose.position.z += hand_grasp_point.pose.position.z
-            '''
-            self.debug_hand_pose_pub.publish(transformed_pose)
-            if self.collision_service(transformed_pose.pose, gripper_pose):
-                checked_poses.append(transformed_pose)
-        if not checked_poses:
-            rospy.loginfo("No valid pose was found.")
-            return False
-        for pose in checked_poses:
-            try:
-                self.hand.set_pose_target(pose)
-                result = self.hand.go()
-                if result:
-                    rospy.loginfo("hand moved")
-                    break
-            except MoveItCommanderException as e:
-                print(e)
-
-        return True
-
     def move_fixed_pose_above(self):
         gripper_pose = self.get_gripper_pose()
         self.left_arm.set_pose_target(gripper_pose)
@@ -987,8 +943,8 @@ class HandoverMover():
                 return hand_pose
             elif self.side == "side":
                 self.setup_fingers_together()
-                hand_pose.pose.position.x = min_point[0] + math.dist([max_point[0]], [min_point[0]])/2 + 0.04
-                hand_pose.pose.position.y = min_point[1] - 0.03
+                hand_pose.pose.position.x = min_point[0] + math.dist([max_point[0]], [min_point[0]])/2 + 0.05
+                hand_pose.pose.position.y = min_point[1] - 0.02
                 hand_pose.pose.position.z += 0.1
                 hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(0, -1.5708, -1.5708))
                 return hand_pose
@@ -1023,16 +979,16 @@ class HandoverMover():
         if self.object_type == "can":
             if self.side == "top":
                 self.setup_fingers()
-                hand_pose.pose.position.x += 0
+                hand_pose.pose.position.x += 0.0
                 hand_pose.pose.position.y += -0.04
-                hand_pose.pose.position.z += 0.167 + 0.05
+                hand_pose.pose.position.z += 0.167
                 hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(-1.5708, 3.14159, 0))
                 return hand_pose
             elif self.side == "side":
                 self.setup_fingers_together()
                 hand_pose.pose.position.x += 0.04
                 hand_pose.pose.position.y += -0.055
-                hand_pose.pose.position.z += 0.1 + 0.05
+                hand_pose.pose.position.z += 0.1
                 hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(0, -1.5708, -1.5708))
                 return hand_pose
         elif self.object_type == "book":
@@ -1046,9 +1002,9 @@ class HandoverMover():
             # Not correct numbers
             elif self.side == "side":
                 self.setup_fingers_together()
-                hand_pose.pose.position.x += 0.04
-                hand_pose.pose.position.y += -0.055
-                hand_pose.pose.position.z += 0.1
+                hand_pose.pose.position.x += 0.03
+                hand_pose.pose.position.y += -0.13
+                hand_pose.pose.position.z += 0.09
                 hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(0, -1.5708, -1.5708))
                 return hand_pose
 

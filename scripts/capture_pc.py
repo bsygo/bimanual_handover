@@ -10,31 +10,35 @@ from tf.transformations import quaternion_from_euler
 from tf2_ros import TransformListener, Buffer
 from tf2_geometry_msgs import do_transform_pose
 
-global pub, publish, left_arm, tf_buffer, debug_pub
+global pub, publish, left_arm, tf_buffer, debug_pub, pub_time
 
 def save_pc(new_pc):
-    global pub, publish
-    if publish:
+    global pub, publish, pub_time
+    # Only publish when requested and pc is recent
+    if publish and (new_pc.header.stamp > pub_time):
         pub.publish(new_pc)
         publish = False
 
 def publish_pc(publish_pc):
-    global publish, left_arm, tf_buffer, debug_pub
+    global publish, left_arm, tf_buffer, debug_pub, pub_time
     rospy.loginfo("Publish_pc request received.")
 
-    camera_base_transform = tf_buffer.lookup_transform("base_footprint", "azure_kinect_rgb_camera_link_urdf", rospy.Time(0))
+    camera_base_transform = tf_buffer.lookup_transform("base_footprint", "azure_kinect_rgb_camera_link", rospy.Time(0))
     pc_pose = PoseStamped()
     pc_pose.header.frame_id = "base_footprint"
     pc_pose.pose.position.x = 0
     pc_pose.pose.position.y = 0
-    pc_pose.pose.position.z = 0.7
-    pc_pose.pose.orientation = Quaternion(*quaternion_from_euler(1.5708, 0, 0))
+    pc_pose.pose.position.z = 0.6
+    pc_pose.pose.orientation = Quaternion(*quaternion_from_euler(2.0, 0, 0))
     pc_pose = do_transform_pose(pc_pose, camera_base_transform)
 
     debug_pub.publish(pc_pose)
 
     left_arm.set_pose_target(pc_pose)
     left_arm.go()
+
+    # To wait out the camera delay
+    pub_time = rospy.Time.now()
 
     publish = publish_pc
 

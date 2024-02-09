@@ -148,10 +148,10 @@ class HandoverMover():
             translation_step = 0.06#0.03
         rotation_step = math.pi * 30/180
         if self.analyse:
-            linear_combinations = [[x, y, z] for x in range(0, 2) for y in range(0, 2) for z in range(0, 2)]
-            #linear_combinations = [[x, y, z] for x in range(-5, 3) for y in range(-4, 9) for z in range(-6, 5)]
-            #angular_combinations = [[x, y, z] for x in range(-3, 4) for y in range(-3, 4) for z in range(-3, 4)]
-            angular_combinations = [[x, y, z] for x in range(0, 2) for y in range(0, 2) for z in range(0, 2)]
+            #linear_combinations = [[x, y, z] for x in range(0, 2) for y in range(0, 2) for z in range(0, 2)]
+            linear_combinations = [[x, y, z] for x in range(-5, 3) for y in range(-4, 9) for z in range(-6, 5)]
+            angular_combinations = [[x, y, z] for x in range(-3, 4) for y in range(-3, 4) for z in range(-3, 4)]
+            #angular_combinations = [[x, y, z] for x in range(0, 2) for y in range(0, 2) for z in range(0, 2)]
         else:
             linear_combinations = [[x, y, z] for x in range(0, 2) for y in range(0, 5) for z in range(-3, 1)]
             angular_combinations = [[x, y, z] for x in range(-1, 2) for y in range(-1, 2) for z in range(-1, 2)]
@@ -285,7 +285,8 @@ class HandoverMover():
         # If result is not feasible, no further checking necessary
         if result.error_code.val != 1:
             if self.debug:
-                rospy.loginfo("{} failed.".format(manipulator))
+                if self.verbose:
+                    rospy.loginfo("{} failed.".format(manipulator))
                 display_state = DisplayRobotState()
                 display_state.state.joint_state = result.solution.joint_state
                 if manipulator == "hand":
@@ -1023,15 +1024,15 @@ class HandoverMover():
             if self.side == "top":
                 self.setup_fingers()
                 hand_pose.pose.position.x += 0
-                hand_pose.pose.position.y += 0
-                hand_pose.pose.position.z += 0.167
+                hand_pose.pose.position.y += -0.04
+                hand_pose.pose.position.z += 0.167 + 0.05
                 hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(-1.5708, 3.14159, 0))
                 return hand_pose
             elif self.side == "side":
                 self.setup_fingers_together()
                 hand_pose.pose.position.x += 0.04
                 hand_pose.pose.position.y += -0.055
-                hand_pose.pose.position.z += 0.1
+                hand_pose.pose.position.z += 0.1 + 0.05
                 hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(0, -1.5708, -1.5708))
                 return hand_pose
         elif self.object_type == "book":

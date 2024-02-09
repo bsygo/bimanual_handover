@@ -14,11 +14,14 @@ import math
 import bimanual_handover.syn_grasp_gen as sgg
 from bimanual_handover_msgs.srv import HandCloserSrv, GraspTesterSrv, HandoverControllerSrv
 import sensor_msgs.point_cloud2 as pc2
-from moveit_msgs.msg import MoveItErrorCodes
-from moveit_commander import MoveItCommanderException
+from moveit_msgs.msg import MoveItErrorCodes, RobotTrajectory, DisplayTrajectory
+from moveit_commander import MoveItCommanderException, RobotCommander
 from pr2_msgs.msg import PressureState
 from sr_robot_msgs.msg import BiotacAll, MechanismStatistics
 from sensor_msgs.msg import JointState
+from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
+import actionlib
+from control_msgs.msg import FollowJointTrajectoryAction, FollowJointTrajectoryGoal
 import os
 import glob
 import rosbag
@@ -32,21 +35,21 @@ class RealEnv(gym.Env):
         self.contact_modality = rospy.get_param("contact_modality")
 
         # Set observation inputs
-        self.joint_states_input = rospy.get_param("observation_space/joint_states")
+        self.joint_values_input = rospy.get_param("observation_space/joint_values")
         self.pca_input = rospy.get_param("observation_space/pca")
         self.effort_input = rospy.get_param("observation_space/effort")
         self.tactile_input = rospy.get_param("observation_space/tactile")
         self.one_hot_input = rospy.get_param("observation_space/one_hot")
         obs_size = 0
-        if joint_values_input:
+        if self.joint_values_input:
             obs_size += 9
-        if pca_input:
+        if self.pca_input:
             obs_size += 3
-        if effort_input:
+        if self.effort_input:
             obs_size += 9
-        if tactile_input:
+        if self.tactile_input:
             obs_size += 5
-        if one_hot_input:
+        if self.one_hot_input:
             obs_size += 3
 
         # Setup action and observation space
@@ -63,10 +66,11 @@ class RealEnv(gym.Env):
         self.current_effort = None
         self.current_object = [0, 0, 0]
         self.current_joint_values = None
+        self.current_side = None
 
         # Setup information about relevant finger structure
         self.fingers = fingers
-        self.closing_joints = ['rh_FFJ2', 'rh_FFJ3', 'rh_MFJ2', 'rh_MFJ3', 'rh_RFJ2', 'rh_RFJ3', 'rh_LFJ2', 'rh_LFJ3', 'rh_THJ2']
+        self.closing_joints = ['rh_FFJ2', 'rh_FFJ3', 'rh_MFJ2', 'rh_MFJ3', 'rh_RFJ2', 'rh_RFJ3', 'rh_LFJ2', 'rh_LFJ3', 'rh_THJ5']
         self.joint_order = self.fingers.get_active_joints()
 
         # Setup observation callbacks
@@ -92,6 +96,11 @@ class RealEnv(gym.Env):
         self.current_attempt_step = 0
         self.reset_steps = 1000
         self.current_reset_step = 1000 # To set an object in first reset call
+
+        self.traj_client = actionlib.SimpleActionClient('/hand/rh_trajectory_controller/follow_joint_trajectory', FollowJointTrajectoryAction)
+        self.traj_client.wait_for_server()
+        self.traj_pub = rospy.Publisher('debug/env/traj', DisplayTrajectory, queue_size = 1, latch = True)
+        self.robot = RobotCommander()
 
         # Further initializations if data should be recorded
         self.record = rospy.get_param("record")
@@ -134,7 +143,7 @@ class RealEnv(gym.Env):
 
     def setup_fingers_together(self):
         self.fingers.set_named_target('open')
-        joint_values = dict(rh_THJ4=1.13446, rh_LFJ4=0, rh_FFJ4=0, rh_MFJ4=0, rh_RFJ4=0)
+        joint_values = dict(rh_THJ4 = 1.13446, rh_LFJ4 = 0.0, rh_FFJ4 = 0.0, rh_MFJ4 = 0.0, rh_RFJ4 = 0.0)
         self.fingers.set_joint_value_target(joint_values)
         self.fingers.go()
 
@@ -145,9 +154,10 @@ class RealEnv(gym.Env):
             object_type = "book"
         elif self.current_object[2] == 1:
             object_type = "unknown"
-        self.handover_controller_srv("train", "pca", object_type)
+        self.handover_controller_srv("train", object_type, self.current_side)
 
     def step(self, action):
+        rospy.loginfo("Step start time: {}".format(rospy.Time.now()))
         while self.interrupted:
             rospy.sleep(1)
 
@@ -174,7 +184,7 @@ class RealEnv(gym.Env):
             terminated = True
 
             # Give reward depending on success of grasp
-            success = self.gt_srv('y', True).success
+            success = self.gt_srv('y', True, self.current_side).success
             if success:
                 reward = 1
             else:
@@ -196,7 +206,7 @@ class RealEnv(gym.Env):
         else:
             terminated = False
 
-            # Reduce normalized actions
+            # Reduce normalized actions to only be bewteen 0 and -1 (limit into closing direction)
             action[0] = (action[0] - 1)/2
             action[1] = (action[1] - 1)/2
 
@@ -238,8 +248,21 @@ class RealEnv(gym.Env):
 
             try:
                 # Move into desired joint configuration
-                self.fingers.set_joint_value_target(result)
-                self.fingers.go()
+                trajectory = JointTrajectory()
+                trajectory.header.stamp = rospy.Time.now()
+                trajectory.joint_names = list(result.keys())
+                trajectory_point = JointTrajectoryPoint()
+                trajectory_point.positions = list(result.values())
+                trajectory_point.time_from_start = rospy.Duration.from_sec(0.2)
+                trajectory.points = [trajectory_point]
+                follow_traj = FollowJointTrajectoryGoal(trajectory = trajectory)
+                robot_trajectory = RobotTrajectory(joint_trajectory = trajectory)
+                print(robot_trajectory)
+                disp_traj = DisplayTrajectory(trajectory = [robot_trajectory], trajectory_start = self.robot.get_current_state())
+                self.traj_pub.publish(disp_traj)
+                #self.fingers.execute(robot_trajectory)
+                self.traj_client.send_goal(follow_traj)
+                self.traj_client.wait_for_result()
 
                 # Determine reward based on how much the fingers closed compared to the previous configuration
                 reward = 0
@@ -257,7 +280,7 @@ class RealEnv(gym.Env):
                     else:
                         joint_diff += - math.dist([current_joints[index]], [self.last_joints[index]])
                 reward = joint_diff
-                print("Reward: {}".format(reward))
+                #print("Reward: {}".format(reward))
             # Terminate with negative reward if desired movement failed
             except MoveItCommanderException as e:
                 rospy.logerr("Exception encountered: {}".format(e))
@@ -283,7 +306,8 @@ class RealEnv(gym.Env):
         if self.pca_input:
             current_pca = self.pca_con.get_pca_config()[0][:3]
             for pca in current_pca:
-                observation.append(pca)
+                # Append normalized value, 3 through observation
+                observation.append(pca/3)
 
         # Add tactile values
         if self.tactile_input:
@@ -314,8 +338,8 @@ class RealEnv(gym.Env):
         # Add one-hot encoding
         if self.one_hot_input:
             for value in self.current_object:
-                current_observation.append(value)
-        observation = np.array(current_observation, dtype = np.float32)
+                observation.append(value)
+        observation = np.array(observation, dtype = np.float32)
 
         # Update step values
         self.current_attempt_step += 1
@@ -331,31 +355,27 @@ class RealEnv(gym.Env):
 
             # Write into rosbag
             self.write_float_array_to_bag('action', action)
-            self.write_float_array_to_bag('obs', observation)
             reward_msg = Float32()
             reward_msg.data = reward
             self.bag.write('reward', reward_msg)
             terminated_reason_msg = String()
             terminated_reason_msg.data = terminated_reason
             self.bag.write('terminated', terminated_reason_msg)
-            if not self.joint_values_input:
-                current_joint_values = deepcopy(self.current_joint_values)
-                self.write_float_array_to_bag('joint_values', current_joint_values)
-            if not self.pca_input:
-                current_pca = self.pca_con.get_pca_config()[0][:3]
-                self.write_float_array_to_bag('pca', current_pca)
-            if not self.effort_input:
-                current_effort = deepcopy(self.current_effort)
-                effort_diff = [current_effort[x] - self.initial_effort[x] for x in range(len(current_effort))]
-                self.write_float_array_to_bag('effort', effort_diff)
-            if not self.tactile_input:
-                current_tactile = deepcopy(self.current_tactile)
-                tactile_diff = [current_tactile[x] - self.initial_tactile[x] for x in range(len(current_tactile))]
-                self.write_float_array_to_bag('tactile', tactile_diff)
+            current_joint_values = deepcopy(self.current_joint_values)
+            self.write_float_array_to_bag('joint_values', current_joint_values)
+            current_pca = self.pca_con.get_pca_config()[0][:3]
+            self.write_float_array_to_bag('pca', current_pca)
+            current_effort = deepcopy(self.current_effort)
+            effort_diff = [current_effort[x] - self.initial_effort[x] for x in range(len(current_effort))]
+            self.write_float_array_to_bag('effort', effort_diff)
+            current_tactile = deepcopy(self.current_tactile)
+            tactile_diff = [current_tactile[x] - self.initial_tactile[x] for x in range(len(current_tactile))]
+            self.write_float_array_to_bag('tactile', tactile_diff)
             self.write_float_array_to_bag('object', self.current_object)
 
         info = {}
         truncated = False
+        rospy.loginfo("Step end time: {}".format(rospy.Time.now()))
         return observation, reward, terminated, truncated, info
 
     def reset(self, seed=None):
@@ -364,10 +384,18 @@ class RealEnv(gym.Env):
             rospy.sleep(1)
 
         # Reset hand into default position
-        if self.current_object == [1, 0, 0]:
+        if self.current_side == "top":
             self.setup_fingers()
-        elif self.current_object == [0, 1, 0]:
+        elif self.current_side == "side":
             self.setup_fingers_together()
+        
+        # Deadband compensation
+        target_joint_dict = {}
+        current_joint_values = self.fingers.get_current_joint_values()
+        for joint in self.closing_joints:
+            target_joint_dict[joint] = current_joint_values[self.joint_order.index(joint)] + 0.05
+        self.fingers.set_joint_value_target(target_joint_dict)
+        self.fingers.go()
 
         # Set new initial values
         self.initial_tactile = deepcopy(self.current_tactile)
@@ -386,7 +414,7 @@ class RealEnv(gym.Env):
         if self.pca_input:
             current_pca = self.pca_con.get_pca_config()[0][:3]
             for pca in current_pca:
-                observation.append(pca)
+                observation.append(pca/3)
 
         # Add tactile values
         if self.tactile_input:
@@ -402,7 +430,7 @@ class RealEnv(gym.Env):
                     observation.append(diff/40)
 
         # Add effort values
-        if self.efffort_values:
+        if self.effort_input:
             current_effort = deepcopy(self.current_effort)
             effort_diff = [current_effort[x] - self.initial_effort[x] for x in range(len(current_effort))]
             # Normalize diff values between -1 and 1
@@ -440,6 +468,24 @@ class RealEnv(gym.Env):
                 else:
                     print("Object id {} is not known. Please enter one of the known ids [1], [2] or [3].".format(object_id))
             self.current_object = one_hot
+
+            accepted_input = False
+            while not accepted_input:
+                # Sides: side, top
+                side = input("Please enter the side of the object to grasp:")
+                if side in ["side", "top"]:
+                    check = input("Object side set to {}. Press enter to continue. If the wrong side was selected, please enter [a].".format(side))
+                    if not check == "a":
+                        # Set one-hot encoding
+                        self.current_side = side
+                        accepted_input = True
+                    else:
+                        print("Object side selection aborted.")
+                elif rospy.is_shutdown():
+                    self.close()
+                else:
+                    print("Object side {} is not known. Please enter one of the known sides [side] or [top].".format(side))
+
             # Add one-hot encoding to observation
             if self.one_hot_input:
                 for value in one_hot:
@@ -519,7 +565,7 @@ class TrajEnv(gym.Env):
                     terminated_reason = "Max steps"
                 else:
                     terminated_reason = "Contacts"
-                print("Reward: {}, Terminated Reason: {}".format(reward, terminated_reason))
+                rospy.loginfo("Reward: {}, Terminated Reason: {}".format(reward, terminated_reason))
             else:
                 # Get new config
                 result = self.pca_con.gen_joint_config(action[3:], normalize = True)

@@ -41,7 +41,7 @@ def main():
     actor_architecture = rospy.get_param("architecture/actor")
     critic_architecture = rospy.get_param("architecture/critic")
     policy_kwargs = dict(activation_fn=th.nn.ReLU,
-                         net_arch=dict(pi=actor_architecture, vf=critic_architecture))
+                         net_arch=dict(pi=actor_architecture, qf=critic_architecture))
 
     # Set logging parameters
     if model_path == '':
@@ -74,6 +74,16 @@ def main():
         elif model_type == "sac":
             model = SAC("MlpPolicy", env, policy_kwargs = policy_kwargs, batch_size = 50, buffer_size = 10000, verbose = 1, tensorboard_log = "{}/logs/tensorboard".format(path))
             rospy.loginfo('SAC model created.')
+
+        # Write model info into file
+        joint_values_input = rospy.get_param("observation_space/joint_values")
+        pca_input = rospy.get_param("observation_space/pca")
+        effort_input = rospy.get_param("observation_space/effort")
+        tactile_input = rospy.get_param("observation_space/tactile")
+        one_hot_input = rospy.get_param("observation_space/one_hot")
+        filename = open("{}/models/model_configs.txt".format(path), "a")
+        filename.write("Name: {}_model_{}; joint_values: {}; pca: {}; effort: {}; tactile: {}; one_hot: {}; actor_architecture: {}; critic_architecture: {} \n".format(model_type, str_date, joint_values_input, pca_input, effort_input, tactile_input, one_hot_input, actor_architecture, critic_architecture))
+        filename.close()
     else:
         # Update parameters if loaded from checkpoint or finished model
         if checkpoint:

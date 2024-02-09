@@ -170,10 +170,10 @@ class HandoverMover():
             translation_step = 0.06#0.03
         rotation_step = math.pi * 30/180
         if self.analyse:
-            linear_combinations = [[x, y, z] for x in range(0, 2) for y in range(0, 2) for z in range(0, 2)]
-            #linear_combinations = [[x, y, z] for x in range(-5, 3) for y in range(-4, 9) for z in range(-6, 5)]
-            #angular_combinations = [[x, y, z] for x in range(-3, 4) for y in range(-3, 4) for z in range(-3, 4)]
-            angular_combinations = [[x, y, z] for x in range(0, 2) for y in range(0, 2) for z in range(0, 2)]
+            #linear_combinations = [[x, y, z] for x in range(0, 2) for y in range(0, 2) for z in range(0, 2)]
+            linear_combinations = [[x, y, z] for x in range(-5, 3) for y in range(-4, 9) for z in range(-6, 5)]
+            angular_combinations = [[x, y, z] for x in range(-3, 4) for y in range(-3, 4) for z in range(-3, 4)]
+            #angular_combinations = [[x, y, z] for x in range(0, 2) for y in range(0, 2) for z in range(0, 2)]
         else:
             linear_combinations = [[x, y, z] for x in range(0, 2) for y in range(0, 5) for z in range(-3, 1)]
             angular_combinations = [[x, y, z] for x in range(-1, 2) for y in range(-1, 2) for z in range(-1, 2)]
@@ -307,7 +307,8 @@ class HandoverMover():
         # If result is not feasible, no further checking necessary
         if result.error_code.val != 1:
             if self.debug:
-                rospy.loginfo("{} failed.".format(manipulator))
+                if self.verbose:
+                    rospy.loginfo("{} failed.".format(manipulator))
                 display_state = DisplayRobotState()
                 display_state.state.joint_state = result.solution.joint_state
                 if manipulator == "hand":

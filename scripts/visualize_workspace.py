@@ -5,7 +5,7 @@ import rospkg
 import rosbag
 import os
 from visualization_msgs.msg import Marker
-from std_msgs.msg import String
+from std_msgs.msg import String, ColorRGBA
 from bimanual_handover_msgs.msg import Layers, Volume
 from geometry_msgs.msg import Vector3
 
@@ -19,6 +19,8 @@ class WorkspaceVisualizer():
         self.combined = None
         self.min_score = None
         self.score = None
+
+        self.recolor = True
 
         self.bag_path = rospkg.RosPack().get_path('bimanual_handover') + "/data/bags/"
 
@@ -82,24 +84,74 @@ class WorkspaceVisualizer():
 
         # Set desired data type
         if data_type == "combined":
-            data = self.combined
-            indices = [i for i in range(len(self.all_results)) if self.all_results[i] > threshold]
+            points = self.combined
+            if self.recolor:
+                colors = self.recolor_combined()
+            else:
+                colors = points.colors
+            # 344 - value because during data collection, 1 meant failure and 0
+            # success by 344 tested values and data is just sum of values
+            if mode == "greater":
+                indices = [i for i in range(len(self.all_results.data)) if 344 - self.all_results.data[i] > threshold]
+            elif mode == "smaller":
+                indices = [i for i in range(len(self.all_results.data)) if 344 - self.all_results.data[i] < threshold]
         elif data_type == "min_score":
-            data = self.min_score
-            indices = [i for i in range(len(self.all_min_scores)) if self.all_min_scores[i] > threshold]
+            points = self.min_score
+            colors = points.colors
+            if mode == "greater":
+                indices = [i for i in range(len(self.all_min_scores.data)) if self.all_min_scores.data[i] > threshold]
+            elif mode == "smaller":
+                indices = [i for i in range(len(self.all_min_scores.data)) if self.all_min_scores.data[i] < threshold]
         elif data_type == "score":
-            data = self.score
-            indices = [i for i in range(len(self.all_avg_scores)) if self.all_avg_scores[i] > threshold]
+            points = self.score
+            if self.recolor:
+                colors, score_data = self.recolor_avg_score()
+            else:
+                colors = points.colors
+                score_data = self.all_svg_scores.data
+            if mode == "greater":
+                indices = [i for i in range(len(score_data)) if score_data[i] > threshold]
+            elif mode == "smaller":
+                indices = [i for i in range(len(score_data)) if score_data[i] < threshold]
 
         # Fill marker msg with requested volume
         marker = create_marker("volume")
         for index in indices:
-            marker.points.append(data.points[i])
-            marker.colors.append(data.points[i])
+            marker.points.append(points.points[index])
+            marker.colors.append(colors[index])
 
         # Publish marker
         self.volume_pub.publish(marker)
         rospy.loginfo("Requested volume published.")
+
+    def recolor_combined(self):
+        max_results = 0
+        colors = []
+        values = []
+        for index in range(len(self.all_results.data)):
+            value = 344 - self.all_results.data[index]
+            if value > max_results:
+                max_results = value
+            values.append(value)
+        for value in values:
+            normalized_value = value/max_results
+            colors.append(ColorRGBA(1 - normalized_value, normalized_value, 0, 1))
+        return colors
+
+    def recolor_avg_score(self):
+        colors = []
+        data = []
+        for index in range(len(self.all_avg_scores.data)):
+            unnormalized_data = self.all_avg_scores.data[index] * 344
+            unnormalized_data = unnormalized_data - self.all_results.data[index]
+            if unnormalized_data == 0:
+                colors.append(ColorRGBA(1, 0, 0, 1))
+                data.append(1.0)
+            else:
+                normalized_data = unnormalized_data/(344 - self.all_results.data[index])
+                colors.append(ColorRGBA(normalized_data, 1 - normalized_data, 0, 1))
+                data.append(normalized_data)
+        return colors, data
 
     def load_bag(self, bag_name):
         bag = rosbag.Bag(self.bag_path + bag_name.data)

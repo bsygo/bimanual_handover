@@ -29,6 +29,8 @@ class WorkspaceVisualizer():
         self.layer_pub = rospy.Publisher("workspace_visualizer/pub_layers", Marker, queue_size = 1, latch = True)
         self.volume_sub = rospy.Subscriber("workspace_visualizer/set_volume", Volume, self.publish_volume)
         self.volume_pub = rospy.Publisher("workspace_visualizer/pub_volume", Marker, queue_size = 1, latch = True)
+        self.intersection_sub = rospy.Subscriber("workspace_visualizer/set_intersection", String, self.publish_intersection)
+        self.intersection_pub = rospy.Publisher("workspace_visualizer/pub_intersection", Marker, queue_size = 1, latch = True)
 
         rospy.loginfo("Workspace visualizer ready.")
         rospy.spin()
@@ -113,6 +115,31 @@ class WorkspaceVisualizer():
                 indices = [i for i in range(len(score_data)) if score_data[i] > threshold]
             elif mode == "smaller":
                 indices = [i for i in range(len(score_data)) if score_data[i] < threshold]
+
+        # Fill marker msg with requested volume
+        marker = create_marker("volume")
+        for index in indices:
+            marker.points.append(points.points[index])
+            marker.colors.append(colors[index])
+
+        # Publish marker
+        self.volume_pub.publish(marker)
+        rospy.loginfo("Requested volume published.")
+
+    def publish_intersection(self, req):
+        points = self.min_score
+        colors = points.colors
+        combined_indices = [i for i in range(len(self.all_results.data)) if 344 - self.all_results.data[i] > 80.0]
+        min_score_indices = [i for i in range(len(self.all_min_scores.data)) if self.all_min_scores.data[i] < 0.15]
+        _, score_data = self.recolor_avg_score()
+        avg_score_indices = [i for i in range(len(score_data)) if score_data[i] < 0.33]
+
+        indices = []
+        for index in combined_indices:
+            if (index in min_score_indices) and (index in avg_score_indices):
+                indices.append(index)
+
+        rospy.loginfo(indices)
 
         # Fill marker msg with requested volume
         marker = create_marker("volume")

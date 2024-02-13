@@ -19,6 +19,12 @@ class WorkspaceVisualizer():
         self.combined = None
         self.min_score = None
         self.score = None
+        self.hand_markers = None
+        self.hand_points = None
+        self.hand_colors = None
+        self.gripper_markers = None
+        self.gripper_points = None
+        self.gripper_colors = None
 
         self.recolor = True
 
@@ -232,6 +238,25 @@ class WorkspaceVisualizer():
                 data.append(normalized_data)
         return colors, data
 
+    def correct_all_results_values(self):
+        # Due to a bag during data collection, when the first transform checked
+        # for each handover point was invalid, 2 instead of 1 was added to
+        # all_results. This function corrects this mistake
+        all_results = list(self.all_results.data)
+        for i in range(len(all_results)):
+            if self.hand_colors[i][0].r == 1.0:
+                all_results[i] = all_results[i] - 1
+        self.all_results.data = all_results
+        print(max(self.all_results.data))
+
+    def group_points_and_colors_from_markers(self, markers):
+        point_dict = {}
+        color_dict = {}
+        for i in range(int(len(markers.points)/343)):
+            point_dict[i] = markers.points[i * 343 : (i + 1) * 343]
+            color_dict[i] = markers.colors[i * 343 : (i + 1) * 343]
+        return point_dict, color_dict
+
     def load_bag(self, bag_name):
         bag = rosbag.Bag(self.bag_path + bag_name.data)
         for topic, msg, t in bag.read_messages():
@@ -247,7 +272,14 @@ class WorkspaceVisualizer():
                 self.min_score = msg
             elif topic == "score":
                 self.score = msg
+            elif topic == "hand":
+                self.hand_markers = msg
+                self.hand_points, self.hand_colors = self.group_points_and_colors_from_markers(self.hand_markers)
+            elif topic == "gripper":
+                self.gripper_markers = msg
+                self.gripper_points, self.gripper_colors = self.group_points_and_colors_from_markers(self.gripper_markers)
         bag.close()
+        self.correct_all_results_values()
         rospy.loginfo("Loaded bag: {}".format(bag_name.data))
 
 def create_marker(name):

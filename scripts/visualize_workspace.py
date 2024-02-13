@@ -130,7 +130,7 @@ class WorkspaceVisualizer():
         points = self.min_score
         colors = points.colors
         combined_indices = [i for i in range(len(self.all_results.data)) if 344 - self.all_results.data[i] > 80.0]
-        min_score_indices = [i for i in range(len(self.all_min_scores.data)) if self.all_min_scores.data[i] < 0.15]
+        min_score_indices = [i for i in range(len(self.all_min_scores.data)) if self.all_min_scores.data[i] < 0.21]
         _, score_data = self.recolor_avg_score()
         avg_score_indices = [i for i in range(len(score_data)) if score_data[i] < 0.33]
 

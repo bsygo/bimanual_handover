@@ -139,17 +139,69 @@ class WorkspaceVisualizer():
             if (index in min_score_indices) and (index in avg_score_indices):
                 indices.append(index)
 
-        rospy.loginfo(indices)
-
         # Fill marker msg with requested volume
         marker = create_marker("volume")
         for index in indices:
             marker.points.append(points.points[index])
             marker.colors.append(colors[index])
 
+        self.print_steps(indices)
+        rospy.loginfo(indices)
+
         # Publish marker
         self.volume_pub.publish(marker)
         rospy.loginfo("Requested volume published.")
+
+    def print_steps(self, indices):
+        index_step_dict = {}
+        current_index = 0
+        for x in range(-5, 3):
+            for y in range(-4, 9):
+                for z in range(-6, 5):
+                    index_step_dict[current_index] = [x, y, z]
+                    current_index += 1
+
+        min_values = [10, 10, 10]
+        min_values_count = [0, 0, 0]
+        max_values = [-10, -10, -10]
+        max_values_count = [0, 0, 0]
+        for index in indices:
+            rospy.loginfo(index_step_dict[index])
+            if index_step_dict[index][0] < min_values[0]:
+                min_values[0] = index_step_dict[index][0]
+                min_values_count[0] = 0
+            if index_step_dict[index][0] == min_values[0]:
+                min_values_count[0] += 1
+            if index_step_dict[index][0] > max_values[0]:
+                max_values[0] = index_step_dict[index][0]
+                max_values_count[0] = 0
+            if index_step_dict[index][0] == max_values[0]:
+                max_values_count[0] += 1
+            if index_step_dict[index][1] < min_values[1]:
+                min_values[1] = index_step_dict[index][1]
+                min_values_count[1] = 0
+            if index_step_dict[index][1] == min_values[1]:
+                min_values_count[1] += 1
+            if index_step_dict[index][1] > max_values[1]:
+                max_values[1] = index_step_dict[index][1]
+                max_values_count[1] = 0
+            if index_step_dict[index][1] == max_values[1]:
+                max_values_count[1] += 1
+            if index_step_dict[index][2] < min_values[2]:
+                min_values[2] = index_step_dict[index][2]
+                min_values_count[2] = 0
+            if index_step_dict[index][2] == min_values[2]:
+                min_values_count[2] += 1
+            if index_step_dict[index][2] > max_values[2]:
+                max_values[2] = index_step_dict[index][2]
+                max_values_count[2] = 0
+            if index_step_dict[index][2] == max_values[2]:
+                max_values_count[2] += 1
+
+        rospy.loginfo("Min steps: {}".format(min_values))
+        rospy.loginfo("Min steps counts: {}".format(min_values_count))
+        rospy.loginfo("Max steps: {}".format(max_values))
+        rospy.loginfo("Max steps counts: {}".format(max_values_count))
 
     def recolor_combined(self):
         max_results = 0

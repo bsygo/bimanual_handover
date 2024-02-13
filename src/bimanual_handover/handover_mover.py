@@ -398,6 +398,7 @@ class HandoverMover():
             score_limit = 0.0
         else:
             if self.object_type == "can":
+                # From workspace analysis
                 if self.side == "side":
                     score_limit = 0.21
                 else:
@@ -552,8 +553,6 @@ class HandoverMover():
                     iteration_scores = []
                     iteration_scores.append(score)
                     if score == 1:
-                        iteration_results.append(2)
-                    elif self.debug and (hand_pos_diff >= deviation_limit or gripper_pos_diff >= deviation_limit):
                         iteration_results.append(1)
                     else:
                         iteration_results.append(0)

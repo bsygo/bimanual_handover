@@ -37,6 +37,7 @@ class WorkspaceVisualizer():
         self.volume_pub = rospy.Publisher("workspace_visualizer/pub_volume", Marker, queue_size = 1, latch = True)
         self.intersection_sub = rospy.Subscriber("workspace_visualizer/set_intersection", String, self.publish_intersection)
         self.intersection_pub = rospy.Publisher("workspace_visualizer/pub_intersection", Marker, queue_size = 1, latch = True)
+        self.analyse_rotations_sub = rospy.Subscriber("workspace_visualizer/analyse_rotations", String, self.analyse_rotations)
 
         rospy.loginfo("Workspace visualizer ready.")
         rospy.spin()
@@ -247,7 +248,36 @@ class WorkspaceVisualizer():
             if self.hand_colors[i][0].r == 1.0:
                 all_results[i] = all_results[i] - 1
         self.all_results.data = all_results
-        print(max(self.all_results.data))
+
+    def analyse_rotations(self, req):
+        rotation_step_dict = {}
+        current_index = 0
+        for x in range(-3, 4):
+            for y in range(-3, 4):
+                for z in range(-3, 4):
+                    rotation_step_dict[current_index] = [x, y, z]
+                    current_index += 1
+
+        successful_rotations = [0 for i in range(len(self.hand_colors[0]))]
+        for value in self.hand_colors.values():
+            for index in range(len(value)):
+                if value[index].g == 1.0:
+                    successful_rotations[index] += 1
+        useless_rotations_indices = []
+        for i in range(len(successful_rotations)):
+            if successful_rotations[i] == 0:
+                useless_rotations_indices.append(i)
+        rospy.loginfo("Indices of useless rotations: {}".format(useless_rotations_indices))
+        rospy.loginfo("Number of rotations without results: {}".format(len(useless_rotations_indices)))
+        useless_rotations_list = []
+        usefull_rotations_list = []
+        for key in rotation_step_dict.keys():
+            if key in useless_rotations_indices:
+                useless_rotations_list.append(rotation_step_dict[key])
+            else:
+                usefull_rotations_list.append(rotation_step_dict[key])
+        rospy.loginfo("Useless rotations list: {}".format(useless_rotations_list))
+        rospy.loginfo("Usefull rotations list: {}".format(usefull_rotations_list))
 
     def group_points_and_colors_from_markers(self, markers):
         point_dict = {}

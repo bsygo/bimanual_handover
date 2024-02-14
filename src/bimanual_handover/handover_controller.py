@@ -2,11 +2,14 @@
 
 import rospy
 from bimanual_handover_msgs.srv import InitialSetupSrv, ProcessPC, MoveHandover, GraspTesterSrv, FinishHandoverSrv, HandoverControllerSrv, HandCloserSrv
+import rospkg
+from datetime import datetime
 
 class HandoverCommander():
 
     def __init__(self):
         rospy.init_node('handover_commander')
+        rospy.on_shutdown(self.shutdown())
         rospy.loginfo('Handover commander started.')
 
         rospy.wait_for_service('initial_setup_srv')
@@ -35,7 +38,16 @@ class HandoverCommander():
         self.handover_controller_srv = rospy.Service('handover_controller_srv', HandoverControllerSrv, self.handover_controller_srv)
         rospy.loginfo('handover_controller_srv initialized.')
 
+        self.record_attempt = rospy.get_param("record_attempt")
+        if self.record_attempt:
+            time = datetime.now().strftime("%d_%m_%Y_%H_%M")
+            self.record_file = open(rospkg.RosPack().get_path('bimanual_handover') + "/data/records/handover_attemtps_{}.txt".format(time), 'a')
+
         rospy.spin()
+
+    def shutdown(self):
+        if self.record_attempt:
+            self.record_file.close()
 
     def handover_controller_srv(self, req):
         if req.handover_type == "full":
@@ -85,12 +97,19 @@ class HandoverCommander():
             rospy.loginfo('Grasp response: {}'.format(grasp_response.success))
             if not grasp_response.success:
                 rospy.logerr('Executing grasp failed.')
+                if self.record_attempt:
+                    self.record_file.write("Object: {}; Side: {}; Test: {}; Result: {} \n".format(object_type, side, grasp_respones.success, 1))
                 return False
 
         rospy.loginfo('Sending service request to finish_handover_srv.')
         self.finish_handover_srv('placeholder')
 
         rospy.loginfo('Handover finished.')
+
+        if self.record_attempt:
+            human_success = input("Handover finished. Please enter if the attempt was successful [0] or failed [1]. \n")
+            self.record_file.write("Object: {}; Side: {}; Test: {}; Result: {} \n".format(object_type, side, grasp_respones.success, human_success))
+
         return True
 
 if __name__ == "__main__":

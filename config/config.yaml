@@ -1,6 +1,7 @@
 # Handover controller
-handover_type: full # full or train
+handover_type: train # full or train
 initial_setup: fixed
+record_attempt: False
 
 # Handover mover
 handover_mover: 
@@ -16,7 +17,7 @@ grasp_tester:
     direction: y
 
 hand_closer: 
-    closer_type: pca # threshold, pca, model or demo
+    closer_type: demo # threshold, pca, model or demo
 
     # Threshold closer
     debug: False

@@ -140,10 +140,17 @@ class HandoverMover():
 
     def get_random_sample_transformations(self, number_transforms):
         translation_step = 0.06
-        min_linear_limits = [0, 0, -3]
-        min_linear_limits = [translation_step * limit for limit in min_linear_limits]
-        max_linear_limits = [1, 4, 0]
-        max_linear_limits = [translation_step * limit for limit in max_linear_limits]
+        # Values from workspace analysis
+        if self.object_type == "can" and self.side == "side":
+            min_linear_limits = [0, 2, -4]
+            min_linear_limits = [translation_step * limit for limit in min_linear_limits]
+            max_linear_limits = [2, 5, 0]
+            max_linear_limits = [translation_step * limit for limit in max_linear_limits]
+        else:
+            min_linear_limits = [0, 0, -3]
+            min_linear_limits = [translation_step * limit for limit in min_linear_limits]
+            max_linear_limits = [1, 4, 0]
+            max_linear_limits = [translation_step * limit for limit in max_linear_limits]
 
         rotation_step = math.pi * 30/180
         min_angular_limits = [-3, -3, -3]

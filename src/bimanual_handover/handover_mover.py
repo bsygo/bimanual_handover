@@ -304,6 +304,8 @@ class HandoverMover():
         epsilon = []
         joints = joint_state.name
         for i in range(len(joints)):
+            if joints[i] in ["r_forearm_roll_joint", "l_forearm_roll_joint", "l_wrist_roll_joint"]:
+                continue
             bounds = self.robot.get_joint(joints[i]).bounds()
             delta.append(min(abs(bounds[1] - joint_state.position[i]), abs(joint_state.position[i] - bounds[0])))
             epsilon.append(abs((bounds[1] - bounds[0])/2))
@@ -379,6 +381,13 @@ class HandoverMover():
         hand_state, hand_fitness = self.check_pose(hand_pose, "hand", initial_state)
         if hand_state is None:
             return 1, None, None
+
+        # Apply hand_state to initial_state so the gripper sampling checks for collisions with the hand
+        new_positions = list(initial_state.joint_state.position)
+        for i in range(len(hand_state.name)):
+            index = initial_state.joint_state.name.index(hand_state.name[i])
+            new_positions[index] = hand_state.position[i]
+        initial_state.joint_state.position = new_positions
 
         # Get gripper solution
         gripper_state, gripper_fitness = self.check_pose(gripper_pose, "gripper", initial_state)
@@ -996,7 +1005,7 @@ class HandoverMover():
                 return hand_pose
             elif self.side == "side":
                 self.setup_fingers_together()
-                hand_pose.pose.position.x = min_point[0] + math.dist([max_point[0]], [min_point[0]])/2 + 0.05
+                hand_pose.pose.position.x = min_point[0] + math.dist([max_point[0]], [min_point[0]])/2 + 0.06
                 hand_pose.pose.position.y = min_point[1] - 0.02
                 hand_pose.pose.position.z += 0.1
                 hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(0, -1.5708, -1.5708))

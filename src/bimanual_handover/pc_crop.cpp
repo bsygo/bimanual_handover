@@ -62,8 +62,8 @@ void cropPC(const sensor_msgs::PointCloud2ConstPtr& input_cloud){
     Eigen::Vector3f translation = gripper_azure_transform_matrix.translation();
     box.setTranslation(translation);
     box.setRotation(euler_rotation);
-    box.setMin(Eigen::Vector4f(-0.1, -0.1, -0.3, 1));
-    box.setMax(Eigen::Vector4f(0.1, 0.1, 0.0, 1));
+    box.setMin(Eigen::Vector4f(-0.1, -0.1, 0.0, 1));
+    box.setMax(Eigen::Vector4f(0.1, 0.1, 0.3, 1));
     box.setInputCloud(pcl_pc2);
     box.filter(filtered_pcl_pc2);
 

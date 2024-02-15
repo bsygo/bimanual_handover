@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import rospy
-from moveit_commander import roscpp_initialize, roscpp_shutdown, MoveGroupCommander, RobotCommander
+from moveit_commander import roscpp_initialize, roscpp_shutdown, MoveGroupCommander, RobotCommander, PlanningSceneInterface
 from std_msgs.msg import Bool
 from bimanual_handover_msgs.srv import GraspTesterSrv
 from geometry_msgs.msg import WrenchStamped, PoseStamped
@@ -30,6 +30,7 @@ class GraspTester():
         self.fingers.set_max_velocity_scaling_factor(1.0)
         self.fingers.set_max_acceleration_scaling_factor(1.0)
         self.robot = RobotCommander()
+        self.psi = PlanningSceneInterface(ns = "/")
 
         # Setup services
         rospy.wait_for_service('/bio_ik/get_bio_ik')
@@ -119,8 +120,16 @@ class GraspTester():
         return filtered_joint_state
 
     def move_bio_ik(self, target_pose):
+        # Disable collisions of the hand with itself to allow movement when
+        # fingers touch each other
+        links = self.robot.get_link_names("right_arm")
+        self.psi.disable_collision_detections(links, links)
+
+        # Disable collision detection for the request to allow solutions if the
+        # fingers touch each other
         request = self.prepare_bio_ik_request('right_arm')
         request = self.add_goals(request, target_pose.pose)
+        request.avoid_collisions = False
         response = self.bio_ik_srv(request).ik_response
         if not response.error_code.val == 1:
             if self.debug:
@@ -195,9 +204,14 @@ class GraspTester():
 
         if req.train:
             self.fingers.set_named_target('open')
-            joint_values = dict(rh_THJ4 = 1.13446, rh_LFJ4 = -0.31699402670752413, rh_FFJ4 = -0.23131151280059523, rh_MFJ4 = 0.008929532157657268, rh_RFJ4 = -0.11378487918959583)
-            self.fingers.set_joint_value_target(joint_values)
-            self.fingers.go()
+            if req.side == "top":
+                joint_values = dict(rh_THJ4 = 1.13446, rh_LFJ4 = -0.31699402670752413, rh_FFJ4 = -0.23131151280059523, rh_MFJ4 = 0.008929532157657268, rh_RFJ4 = -0.11378487918959583)
+                self.fingers.set_joint_value_target(joint_values)
+                self.fingers.go()
+            elif req.side == "side":
+                joint_values = dict(rh_THJ4 = 1.13446, rh_LFJ4 = 0.0, rh_FFJ4 = 0.0, rh_MFJ4 = 0.0, rh_RFJ4 = 0.0)
+                self.fingers.set_joint_value_target(joint_values)
+                self.fingers.go()
 
         # Reset previous upwards movement
         try:

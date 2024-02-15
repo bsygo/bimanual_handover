@@ -2,11 +2,14 @@
 
 import rospy
 from bimanual_handover_msgs.srv import InitialSetupSrv, ProcessPC, MoveHandover, GraspTesterSrv, FinishHandoverSrv, HandoverControllerSrv, HandCloserSrv
+import rospkg
+from datetime import datetime
 
 class HandoverCommander():
 
     def __init__(self):
         rospy.init_node('handover_commander')
+        rospy.on_shutdown(self.shutdown())
         rospy.loginfo('Handover commander started.')
 
         rospy.wait_for_service('initial_setup_srv')
@@ -35,7 +38,16 @@ class HandoverCommander():
         self.handover_controller_srv = rospy.Service('handover_controller_srv', HandoverControllerSrv, self.handover_controller_srv)
         rospy.loginfo('handover_controller_srv initialized.')
 
+        self.record_attempt = rospy.get_param("record_attempt")
+        if self.record_attempt:
+            time = datetime.now().strftime("%d_%m_%Y_%H_%M")
+            self.record_file = open(rospkg.RosPack().get_path('bimanual_handover') + "/data/records/handover_attemtps_{}.txt".format(time), 'a')
+
         rospy.spin()
+
+    def shutdown(self):
+        if self.record_attempt:
+            self.record_file.close()
 
     def handover_controller_srv(self, req):
         if req.handover_type == "full":
@@ -45,9 +57,9 @@ class HandoverCommander():
         else:
             rospy.loginfo("Unknown handover command {}.".format(req.handover_type))
             return False
-        return self.full_pipeline(req.handover_type, req.object_type)
+        return self.full_pipeline(req.handover_type, req.object_type, req.side)
 
-    def full_pipeline(self, handover_type, object_type):
+    def full_pipeline(self, handover_type, object_type, side):
         rospy.loginfo('Sending service request to initial_setup_srv.')
         setup_mode = rospy.get_param("initial_setup")
         if not self.initial_setup_srv(setup_mode, None).success:
@@ -60,7 +72,7 @@ class HandoverCommander():
             self.process_pc_srv(True)
 
         rospy.loginfo('Sending service request to handover_mover_srv.')
-        side = rospy.get_param("handover_mover/side")
+        # side = rospy.get_param("handover_mover/side")
         handover_pose_mode = rospy.get_param("handover_mover/handover_pose_mode")
         if not self.handover_mover_srv(side, grasp_pose_mode, handover_pose_mode, object_type).success:
             rospy.logerr('Moving to handover pose failed.')
@@ -81,16 +93,23 @@ class HandoverCommander():
         if not closer_type == "demo":
             rospy.loginfo('Sending service request to grasp_tester_srv.')
             direction = rospy.get_param("grasp_tester/direction")
-            grasp_response = self.grasp_tester_srv(direction, False)
+            grasp_response = self.grasp_tester_srv(direction, False, side)
             rospy.loginfo('Grasp response: {}'.format(grasp_response.success))
             if not grasp_response.success:
                 rospy.logerr('Executing grasp failed.')
+                if self.record_attempt:
+                    self.record_file.write("Object: {}; Side: {}; Test: {}; Result: {} \n".format(object_type, side, grasp_respones.success, 1))
                 return False
 
         rospy.loginfo('Sending service request to finish_handover_srv.')
         self.finish_handover_srv('placeholder')
 
         rospy.loginfo('Handover finished.')
+
+        if self.record_attempt:
+            human_success = input("Handover finished. Please enter if the attempt was successful [0] or failed [1]. \n")
+            self.record_file.write("Object: {}; Side: {}; Test: {}; Result: {} \n".format(object_type, side, grasp_respones.success, human_success))
+
         return True
 
 if __name__ == "__main__":

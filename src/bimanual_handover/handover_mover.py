@@ -140,10 +140,17 @@ class HandoverMover():
 
     def get_random_sample_transformations(self, number_transforms):
         translation_step = 0.06
-        min_linear_limits = [0, 0, -3]
-        min_linear_limits = [translation_step * limit for limit in min_linear_limits]
-        max_linear_limits = [1, 4, 0]
-        max_linear_limits = [translation_step * limit for limit in max_linear_limits]
+        # Values from workspace analysis
+        if self.object_type == "can" and self.side == "side":
+            min_linear_limits = [0, 2, -4]
+            min_linear_limits = [translation_step * limit for limit in min_linear_limits]
+            max_linear_limits = [2, 5, 0]
+            max_linear_limits = [translation_step * limit for limit in max_linear_limits]
+        else:
+            min_linear_limits = [0, 0, -3]
+            min_linear_limits = [translation_step * limit for limit in min_linear_limits]
+            max_linear_limits = [1, 4, 0]
+            max_linear_limits = [translation_step * limit for limit in max_linear_limits]
 
         rotation_step = math.pi * 30/180
         min_angular_limits = [-3, -3, -3]
@@ -175,8 +182,52 @@ class HandoverMover():
             angular_combinations = [[x, y, z] for x in range(-3, 4) for y in range(-3, 4) for z in range(-3, 4)]
             #angular_combinations = [[x, y, z] for x in range(0, 2) for y in range(0, 2) for z in range(0, 2)]
         else:
-            linear_combinations = [[x, y, z] for x in range(0, 2) for y in range(0, 5) for z in range(-3, 1)]
-            angular_combinations = [[x, y, z] for x in range(-1, 2) for y in range(-1, 2) for z in range(-1, 2)]
+            if self.object_type == "can" and self.side == "side":
+                # Linear values from workspace analysis
+                linear_combinations = [[x, y, z] for x in range(0, 3) for y in range(2, 6) for z in range(-4, 1)]
+                angular_combinations = [[-3, -3, -2], [-3, -3, -1], [-3, -3, 0], [-3, -3, 1], [-3, -3, 2], [-3, -3, 3],
+                                        [-3, -2, -1], [-3, -2, 0], [-3, -2, 1], [-3, -2, 2], [-3, -2, 3], [-3, -1, -3],
+                                        [-3, -1, -1], [-3, -1, 0], [-3, -1, 1], [-3, -1, 2], [-3, -1, 3], [-3, 0, -3],
+                                        [-3, 0, -2], [-3, 0, -1], [-3, 0, 0], [-3, 0, 1], [-3, 0, 2], [-3, 0, 3],
+                                        [-3, 1, -3], [-3, 2, -3], [-3, 2, -2], [-3, 3, -3], [-3, 3, -2], [-3, 3, -1],
+                                        [-2, -3, -3], [-2, -3, -2], [-2, -3, -1], [-2, -3, 0], [-2, -3, 1], [-2, -3, 2],
+                                        [-2, -3, 3], [-2, -2, -2], [-2, -2, -1], [-2, -2, 0], [-2, -2, 1], [-2, -2, 2],
+                                        [-2, -2, 3], [-2, -1, -3], [-2, -1, -2], [-2, -1, -1], [-2, -1, 0], [-2, -1, 1],
+                                        [-2, -1, 2], [-2, 0, -3], [-2, 0, -2], [-2, 0, -1], [-2, 0, 0], [-2, 1, -3],
+                                        [-2, 1, -2], [-2, 1, -1], [-2, 2, -3], [-2, 2, -2], [-2, 2, -1], [-2, 3, -3],
+                                        [-2, 3, -2], [-2, 3, -1], [-2, 3, 0], [-1, -3, -3], [-1, -3, -2], [-1, -3, -1],
+                                        [-1, -3, 0], [-1, -3, 1], [-1, -3, 2], [-1, -3, 3], [-1, -2, -3], [-1, -2, -2],
+                                        [-1, -2, -1], [-1, -2, 0], [-1, -2, 1], [-1, -2, 2], [-1, -1, -3], [-1, -1, -2],
+                                        [-1, -1, -1], [-1, -1, 0], [-1, -1, 1], [-1, -1, 2], [-1, 0, -3], [-1, 0, -2],
+                                        [-1, 0, -1], [-1, 0, 0], [-1, 0, 1], [-1, 1, -3], [-1, 1, -2], [-1, 1, -1],
+                                        [-1, 1, 0], [-1, 1, 1], [-1, 2, -3], [-1, 2, -2], [-1, 2, -1], [-1, 2, 0],
+                                        [-1, 2, 1], [-1, 3, -3], [-1, 3, -2], [-1, 3, -1], [-1, 3, 0], [-1, 3, 1], [0, -3, -3],
+                                        [0, -3, -2], [0, -3, -1], [0, -3, 0], [0, -3, 1], [0, -3, 2], [0, -2, -3], [0, -2, -2],
+                                        [0, -2, -1], [0, -2, 0], [0, -2, 1], [0, -2, 2], [0, -1, -3], [0, -1, -2], [0, -1, -1],
+                                        [0, -1, 0], [0, -1, 1], [0, -1, 2], [0, 0, -3], [0, 0, -2], [0, 0, -1], [0, 0, 0],
+                                        [0, 0, 1], [0, 0, 2], [0, 1, -3], [0, 1, -2], [0, 1, -1], [0, 1, 0], [0, 1, 1],
+                                        [0, 1, 2], [0, 2, -3], [0, 2, -2], [0, 2, -1], [0, 2, 0], [0, 2, 1], [0, 2, 2],
+                                        [0, 3, -3], [0, 3, -2], [0, 3, -1], [0, 3, 0], [0, 3, 1], [0, 3, 2], [1, -3, -3],
+                                        [1, -3, -2], [1, -3, -1], [1, -3, 0], [1, -3, 1], [1, -2, -3], [1, -2, -2], [1, -2, -1],
+                                        [1, -2, 0], [1, -2, 1], [1, -1, -3], [1, -1, -2], [1, -1, -1], [1, -1, 0], [1, -1, 1],
+                                        [1, 0, -3], [1, 0, -2], [1, 0, -1], [1, 0, 0], [1, 0, 1], [1, 0, 2], [1, 1, -3],
+                                        [1, 1, -2], [1, 1, -1], [1, 1, 0], [1, 1, 1], [1, 1, 2], [1, 1, 3], [1, 2, -3],
+                                        [1, 2, -2], [1, 2, -1], [1, 2, 0], [1, 2, 1], [1, 2, 2], [1, 2, 3], [1, 3, -3],
+                                        [1, 3, -2], [1, 3, -1], [1, 3, 0], [1, 3, 1], [1, 3, 2], [1, 3, 3], [2, -3, -3],
+                                        [2, -3, -2], [2, -3, -1], [2, -3, 0], [2, -2, -3], [2, -2, -2], [2, -2, -1], [2, -2, 0],
+                                        [2, -2, 3], [2, -1, -3], [2, -1, -2], [2, -1, -1], [2, -1, 0], [2, -1, 1], [2, -1, 3],
+                                        [2, 0, -3], [2, 0, -2], [2, 0, -1], [2, 0, 0], [2, 0, 1], [2, 0, 2], [2, 0, 3], [2, 1, -3],
+                                        [2, 1, -2], [2, 1, -1], [2, 1, 0], [2, 1, 1], [2, 1, 2], [2, 1, 3], [2, 2, -3], [2, 2, -2],
+                                        [2, 2, -1], [2, 2, 0], [2, 2, 1], [2, 2, 2], [2, 2, 3], [2, 3, -2], [2, 3, -1], [2, 3, 0],
+                                        [2, 3, 1], [2, 3, 2], [2, 3, 3], [3, -3, -3], [3, -3, -2], [3, -3, -1], [3, -2, -3],
+                                        [3, -2, -2], [3, -2, 3], [3, -1, -3], [3, -1, -2], [3, -1, -1], [3, -1, 0], [3, -1, 1],
+                                        [3, -1, 2], [3, -1, 3], [3, 0, -3], [3, 0, -2], [3, 0, -1], [3, 0, 0], [3, 0, 1],
+                                        [3, 0, 2], [3, 0, 3], [3, 1, -3], [3, 1, -2], [3, 1, -1], [3, 1, 0], [3, 1, 1],
+                                        [3, 1, 2], [3, 1, 3], [3, 2, -3], [3, 2, -2], [3, 2, -1], [3, 2, 0], [3, 2, 1],
+                                        [3, 2, 2], [3, 2, 3], [3, 3, -1], [3, 3, 0], [3, 3, 1], [3, 3, 2], [3, 3, 3]]
+            else:
+                linear_combinations = [[x, y, z] for x in range(0, 2) for y in range(0, 5) for z in range(-3, 1)]
+                angular_combinations = [[x, y, z] for x in range(-1, 2) for y in range(-1, 2) for z in range(-1, 2)]
         transformations = []
 
         # Aggregate transforms to show for debugging
@@ -393,7 +444,11 @@ class HandoverMover():
             score_limit = 0.0
         else:
             if self.object_type == "can":
-                score_limit = 0.15#0.22 # old: can->0.51 book->0.56/0.57 new: can->0.2/0.21 book->0.38
+                # From workspace analysis
+                if self.side == "side":
+                    score_limit = 0.21
+                else:
+                    score_limit = 0.15#0.22 # old: can->0.51 book->0.56/0.57 new: can->0.2/0.21 book->0.38
             elif self.object_type == "book":
                 score_limit = 0.2
         deviation_limit = 0.01
@@ -404,7 +459,7 @@ class HandoverMover():
         if self.handover_pose_mode == "sample":
             transformations = self.get_sample_transformations()
         elif self.handover_pose_mode == "random_sample":
-            transformations = self.get_random_sample_transformations(100)
+            transformations = self.get_random_sample_transformations(1000)
         if self.debug:
             debug_counter = 0
             best_debug_index = None
@@ -544,8 +599,6 @@ class HandoverMover():
                     iteration_scores = []
                     iteration_scores.append(score)
                     if score == 1:
-                        iteration_results.append(2)
-                    elif self.debug and (hand_pos_diff >= deviation_limit or gripper_pos_diff >= deviation_limit):
                         iteration_results.append(1)
                     else:
                         iteration_results.append(0)
@@ -951,8 +1004,8 @@ class HandoverMover():
         elif self.object_type == "book":
             if self.side == "top":
                 self.setup_fingers()
-                hand_pose.pose.position.x = min_point[0] + math.dist([max_point[0]], [min_point[0]])/2 - 0.05
-                hand_pose.pose.position.y = min_point[1] + math.dist([max_point[1]], [min_point[1]])/2 - 0.02
+                hand_pose.pose.position.x = min_point[0] + math.dist([max_point[0]], [min_point[0]])/2 - 0.06
+                hand_pose.pose.position.y = min_point[1] + math.dist([max_point[1]], [min_point[1]])/2 + 0.02
                 hand_pose.pose.position.z = max_point[2] + 0.05
                 hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(-1.5708, 3.14159, -1.5708))
                 return hand_pose

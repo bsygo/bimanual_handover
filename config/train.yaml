@@ -5,8 +5,8 @@ checkpoint: False
 
 # Env paramters
 contact_modality: 'effort' # effort or tactile
-env_check: False
-record: True
+env_check: True
+record: False
 
 observation_space:
     joint_values: False
@@ -19,7 +19,7 @@ observation_space:
 architecture:
     # List of layer sizes for actor network
     actor: 
-        - 2
+        - 64
     # List of layer sizes for critic network
     critic:
-        - 2 
+        - 64

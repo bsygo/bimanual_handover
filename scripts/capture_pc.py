@@ -25,11 +25,11 @@ def publish_pc(publish_pc):
 
     camera_base_transform = tf_buffer.lookup_transform("base_footprint", "azure_kinect_rgb_camera_link", rospy.Time(0))
     pc_pose = PoseStamped()
-    pc_pose.header.frame_id = "base_footprint"
+    pc_pose.header.frame_id = "azure_kinect_rgb_camera_link"
     pc_pose.pose.position.x = 0
     pc_pose.pose.position.y = 0
     pc_pose.pose.position.z = 0.6
-    pc_pose.pose.orientation = Quaternion(*quaternion_from_euler(2.0, 0, 0))
+    pc_pose.pose.orientation = Quaternion(*quaternion_from_euler(2.453, 0, 0))
     pc_pose = do_transform_pose(pc_pose, camera_base_transform)
 
     debug_pub.publish(pc_pose)

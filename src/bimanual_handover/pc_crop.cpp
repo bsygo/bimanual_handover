@@ -13,6 +13,7 @@
 #include <moveit/move_group_interface/move_group_interface.h>
 #include <tf2_ros/transform_listener.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <tf2_eigen/tf2_eigen.h>
 
 ros::Publisher cropped_pub;
 ros::Publisher final_pub;
@@ -46,23 +47,29 @@ tf2::Transform getSamplePoseTransform(){
 void cropPC(const sensor_msgs::PointCloud2ConstPtr& input_cloud){
     ros::AsyncSpinner spinner(1);
     spinner.start();
-    pcl::PCLPointCloud2 pcl_pc2;
-    pcl_conversions::toPCL(*input_cloud, pcl_pc2);
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
-    pcl::fromPCLPointCloud2(pcl_pc2, *cloud);
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_filtered (new pcl::PointCloud<pcl::PointXYZRGB>);
-    pcl::CropBox<pcl::PointXYZRGB> box;
-    geometry_msgs::PoseStamped gripper_pose = left_arm->getCurrentPose(); 
-    geometry_msgs::PoseStamped transformed_pose;
-    geometry_msgs::TransformStamped base_azure_transform = tfBuffer->lookupTransform("azure_kinect_rgb_camera_link", "base_footprint", ros::Time(0));
-    tf2::doTransform(gripper_pose, transformed_pose, base_azure_transform);
-    box.setMin(Eigen::Vector4f(transformed_pose.pose.position.x - 0.1, transformed_pose.pose.position.y - 0.3, transformed_pose.pose.position.z - 0.1, 1.0));
-    box.setMax(Eigen::Vector4f(transformed_pose.pose.position.x + 0.1, transformed_pose.pose.position.y , transformed_pose.pose.position.z + 0.1, 1.0));
-    box.setInputCloud(cloud);
-    box.filter(*cloud_filtered);
-    pcl::toPCLPointCloud2(*cloud_filtered, pcl_pc2);
+
+    // Convert sensor_msgs::PointCloud2 into pcl::PointCloud2 for further use with pcl
+    const pcl::PCLPointCloud2Ptr pcl_pc2(new pcl::PCLPointCloud2);
+    pcl::PCLPointCloud2 filtered_pcl_pc2;
+    pcl_conversions::toPCL(*input_cloud, *pcl_pc2);
+
+    // Set parameters for CropBox filter and apply filter
+    pcl::CropBox<pcl::PCLPointCloud2> box;
+    geometry_msgs::TransformStamped gripper_azure_transform = tfBuffer->lookupTransform("azure_kinect_rgb_camera_link", "l_gripper_tool_frame", ros::Time(0));
+    Eigen::Affine3d gripper_azure_transform_matrix_d = tf2::transformToEigen(gripper_azure_transform);
+    Eigen::Affine3f gripper_azure_transform_matrix = gripper_azure_transform_matrix_d.cast <float> ();
+    Eigen::Vector3f euler_rotation = gripper_azure_transform_matrix.rotation().matrix().eulerAngles(0, 1, 2);
+    Eigen::Vector3f translation = gripper_azure_transform_matrix.translation();
+    box.setTranslation(translation);
+    box.setRotation(euler_rotation);
+    box.setMin(Eigen::Vector4f(-0.1, -0.1, -0.3, 1));
+    box.setMax(Eigen::Vector4f(0.1, 0.1, 0.0, 1));
+    box.setInputCloud(pcl_pc2);
+    box.filter(filtered_pcl_pc2);
+
+    // Convert filtered pointcloud back to sensor_msgs::PointCloud2 and publish it
     sensor_msgs::PointCloud2 cloud_filtered_msg;
-    pcl_conversions::moveFromPCL(pcl_pc2, cloud_filtered_msg);
+    pcl_conversions::moveFromPCL(filtered_pcl_pc2, cloud_filtered_msg);
     cloud_filtered_msg.header.stamp = ros::Time::now();
     debug_pub.publish(cloud_filtered_msg);
     cropped_pub.publish(cloud_filtered_msg);
@@ -120,6 +127,9 @@ int main(int argc, char **argv){
     // Call this way to set correct namespace
     moveit::planning_interface::MoveGroupInterface::Options opt("left_arm", "robot_description", ros::NodeHandle("/move_group"));
     left_arm = new moveit::planning_interface::MoveGroupInterface(opt);
+    // Make sure state monitor is initialized
+    ros::Duration(0.5).sleep();
+    //geometry_msgs::PoseStamped gripper_pose = left_arm->getCurrentPose(); 
     ros::Subscriber raw_sub = n.subscribe("pc_raw", 10, cropPC);
     cropped_pub = n.advertise<sensor_msgs::PointCloud2>("pc_cropped", 10, true);
     ros::Subscriber filtered_sub = n.subscribe("pc_filtered", 10, transformPC);

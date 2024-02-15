@@ -124,7 +124,7 @@ class HandoverMover():
             hand_pose = self.get_hand_pose_pc()
         else:
             rospy.loginfo("Unknown grasp_pose_mode {}".format(req.grasp_pose_mode))
-            return False
+            return False, None
         if req.handover_pose_mode == "ik":
             return self.move_fixed_pose_above()
         elif req.handover_pose_mode == "fixed":
@@ -133,7 +133,7 @@ class HandoverMover():
             return self.move_sampled_pose_above(hand_pose)
         else:
             rospy.loginfo("Unknown mode {}".format(req.handover_pose_mode))
-            return False
+            return False, None
 
     def update_pc(self, pc):
         self.pc = pc
@@ -741,7 +741,7 @@ class HandoverMover():
             rospy.loginfo("Handover pose found.")
         else:
             rospy.logerr("No handover pose found.")
-            return False
+            return False, None
 
         # Setup pre_hand_pose
         pre_hand_pose = do_transform_pose(pre_hand_pose, base_handover_transform)
@@ -801,7 +801,7 @@ class HandoverMover():
         self.hand.set_joint_value_target(hand_joint_state)
         self.hand.go()
 
-        return True
+        return True, handover_transform
 
     def move_fixed_pose_above(self):
         gripper_pose = self.get_gripper_pose()
@@ -891,7 +891,7 @@ class HandoverMover():
         if not plan:
             raise Exception("No path was found to the joint state \n {}.".format(joint_target_state))
 
-        return True
+        return True, None
 
     def move_fixed_pose(self, hand_pose):
         gripper_pose = self.get_gripper_pose()
@@ -905,7 +905,7 @@ class HandoverMover():
         self.hand.set_pose_target(hand_pose)
         self.hand.go()
 
-        return True
+        return True, None
 
     def move_fixed_pose_pc_above(self):
         self.setup_fingers()
@@ -969,7 +969,7 @@ class HandoverMover():
         self.hand.set_pose_target(hand_pose)
         self.hand.go()
 
-        return True
+        return True, None
 
     def get_hand_pose_pc(self):
         hand_pose = self.get_gripper_pose()

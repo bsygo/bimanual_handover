@@ -556,6 +556,7 @@ class HandoverMover():
                     gripper_marker.colors.append(ColorRGBA(1, 0, 0, 1))
 
             if self.analyse:
+                self.bag.write('transforms', transformation)
                 if previous_linear is None:
                     previous_linear = transformation.transform.translation
                     x = min(transformed_gripper.pose.position.x, transformed_hand.pose.position.x) + abs(transformed_gripper.pose.position.x - transformed_hand.pose.position.x)/2
@@ -592,16 +593,6 @@ class HandoverMover():
                     min_score = min(iteration_scores)
                     all_min_scores.append(min_score)
                     min_score_marker.colors.append(ColorRGBA(min_score, 1-min_score, 0, 1))
-                    '''
-                    if all(value >= 1  for value in iteration_results):
-                        combined_marker.colors.append(ColorRGBA(1, 0, 0, 1))
-                    elif sum([value == 0 for value in iteration_results]) > len(iteration_results)/4:
-                        combined_marker.colors.append(ColorRGBA(0, 1, 0, 1))
-                    elif sum([value == 0 for value in iteration_results]) > 1:
-                        combined_marker.colors.append(ColorRGBA(1, 1, 0, 1))
-                    elif 0 in iteration_results:
-                        combined_marker.colors.append(ColorRGBA(1, 0.5, 0, 1))
-                    '''
 
                     all_results.append(sum(iteration_results))
                     iteration_results = []

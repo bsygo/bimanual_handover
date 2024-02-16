@@ -98,12 +98,12 @@ class WorkspaceVisualizer():
                 colors = self.recolor_combined()
             else:
                 colors = points.colors
-            # 344 - value because during data collection, 1 meant failure and 0
-            # success by 344 tested values and data is just sum of values
+            # 343 - value because during data collection, 1 meant failure and 0
+            # success by 343 tested values and data is just sum of values
             if mode == "greater":
-                indices = [i for i in range(len(self.all_results.data)) if 344 - self.all_results.data[i] > threshold]
+                indices = [i for i in range(len(self.all_results.data)) if 343 - self.all_results.data[i] > threshold]
             elif mode == "smaller":
-                indices = [i for i in range(len(self.all_results.data)) if 344 - self.all_results.data[i] < threshold]
+                indices = [i for i in range(len(self.all_results.data)) if 343 - self.all_results.data[i] < threshold]
         elif data_type == "min_score":
             points = self.min_score
             colors = points.colors
@@ -136,7 +136,7 @@ class WorkspaceVisualizer():
     def publish_intersection(self, req):
         points = self.min_score
         colors = points.colors
-        combined_indices = [i for i in range(len(self.all_results.data)) if 344 - self.all_results.data[i] > 80.0]
+        combined_indices = [i for i in range(len(self.all_results.data)) if 343 - self.all_results.data[i] > 80.0]
         min_score_indices = [i for i in range(len(self.all_min_scores.data)) if self.all_min_scores.data[i] < 0.21]
         _, score_data = self.recolor_avg_score()
         avg_score_indices = [i for i in range(len(score_data)) if score_data[i] < 0.33]
@@ -215,7 +215,7 @@ class WorkspaceVisualizer():
         colors = []
         values = []
         for index in range(len(self.all_results.data)):
-            value = 344 - self.all_results.data[index]
+            value = 343 - self.all_results.data[index]
             if value > max_results:
                 max_results = value
             values.append(value)
@@ -228,13 +228,13 @@ class WorkspaceVisualizer():
         colors = []
         data = []
         for index in range(len(self.all_avg_scores.data)):
-            unnormalized_data = self.all_avg_scores.data[index] * 344
+            unnormalized_data = self.all_avg_scores.data[index] * 343
             unnormalized_data = unnormalized_data - self.all_results.data[index]
             if unnormalized_data == 0:
                 colors.append(ColorRGBA(1, 0, 0, 1))
                 data.append(1.0)
             else:
-                normalized_data = unnormalized_data/(344 - self.all_results.data[index])
+                normalized_data = unnormalized_data/(343 - self.all_results.data[index])
                 colors.append(ColorRGBA(normalized_data, 1 - normalized_data, 0, 1))
                 data.append(normalized_data)
         return colors, data
@@ -309,7 +309,7 @@ class WorkspaceVisualizer():
                 self.gripper_markers = msg
                 self.gripper_points, self.gripper_colors = self.group_points_and_colors_from_markers(self.gripper_markers)
         bag.close()
-        self.correct_all_results_values()
+        #self.correct_all_results_values()
         rospy.loginfo("Loaded bag: {}".format(bag_name.data))
 
 def create_marker(name):

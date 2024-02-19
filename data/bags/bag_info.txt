@@ -21,3 +21,5 @@ After repairs:
 
 can:
 - side: 15_02_2024_17_18
+- side extended: 16_02_2024_16_24
+

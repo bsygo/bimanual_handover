@@ -24,3 +24,4 @@ build/
 dist/
 src/bimanual_handover.*
 *.json
+!workspace_analysis_19_02_2024_17_59.json

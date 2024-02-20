@@ -53,7 +53,7 @@ class StepTransform():
             transformations.append(new_transform)
 
         return transformations
-    
+
     def is_evaluated(self):
         return self.number_solutions is None
 
@@ -62,7 +62,7 @@ class StepTransform():
         self.min_score = min_score
         self.avg_score = avg_score
         self.scores = scores
-        self.gripper_positions = gripper_positions 
+        self.gripper_positions = gripper_positions
         self.hand_positions = hand_positions
 
     def key(self):
@@ -95,6 +95,9 @@ class TransformHandler():
         self.wa = WorkspaceAnalyzer()
         self.data = {}
         self.time = datetime.now().strftime("%d_%m_%Y_%H_%M")
+
+    def get_data(self):
+        return self.data
 
     def initial_block(self):
         x = np.arange(0, 1)
@@ -190,7 +193,6 @@ class TransformHandler():
 class WorkspaceAnalyzer():
 
     def __init__(self):
-        rospy.init_node('workspace_analyzer')
         roscpp_initialize('')
         rospy.on_shutdown(self.shutdown)
 
@@ -426,7 +428,7 @@ class WorkspaceAnalyzer():
             transformed_gripper = do_transform_pose(transformed_gripper, handover_base_transform)
             transformed_hand = do_transform_pose(transformed_hand, handover_base_transform)
 
-            # Evaluate 
+            # Evaluate
             score, hand_joint_state, gripper_joint_state = self.check_poses(transformed_gripper, transformed_hand)
             if score < 1:
                 hand_pos_diff, hand_quat_diff = self.calculate_fk_diff(hand_joint_state, transformed_hand, "hand")
@@ -560,6 +562,7 @@ class WorkspaceAnalyzer():
 
 def main():
     #load = "workspace_analysis_19_02_2024_17_32.json"
+    rospy.init_node("workspace_analyzer")
     load = None
     th = TransformHandler()
     rospy.loginfo("TransformHandler started.")

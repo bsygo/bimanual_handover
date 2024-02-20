@@ -8,6 +8,10 @@ from visualization_msgs.msg import Marker
 from std_msgs.msg import String, ColorRGBA
 from bimanual_handover_msgs.msg import Layers, Volume
 from geometry_msgs.msg import Vector3
+import matplotlib.pyplot as plt
+import matplotlib
+import numpy as np
+from bimanual_handover.workspace_analyzer import StepTransform, TransformHandler
 
 class WorkspaceVisualizer():
 
@@ -100,13 +104,19 @@ class WorkspaceVisualizer():
                 colors = points.colors
             # 343 - value because during data collection, 1 meant failure and 0
             # success by 343 tested values and data is just sum of values
+            #matplotlib.use('Qt5Agg')
+            inverted_data = [343.0 - data for data in self.all_results.data]
+            plt.hist(inverted_data, bins = int(max(inverted_data)), range=(0, max(inverted_data)))
+            plt.show()
             if mode == "greater":
-                indices = [i for i in range(len(self.all_results.data)) if 343 - self.all_results.data[i] > threshold]
+                indices = [i for i in range(len(inverted_data)) if inverted_data[i] > threshold]
             elif mode == "smaller":
-                indices = [i for i in range(len(self.all_results.data)) if 343 - self.all_results.data[i] < threshold]
+                indices = [i for i in range(len(inverted_data)) if inverted_data[i] < threshold]
         elif data_type == "min_score":
             points = self.min_score
             colors = points.colors
+            plt.hist(self.all_min_scores.data, bins = 100, range=(0, 1.0))
+            plt.show()
             if mode == "greater":
                 indices = [i for i in range(len(self.all_min_scores.data)) if self.all_min_scores.data[i] > threshold]
             elif mode == "smaller":
@@ -118,6 +128,8 @@ class WorkspaceVisualizer():
             else:
                 colors = points.colors
                 score_data = self.all_svg_scores.data
+            plt.hist(score_data, bins = 100, range=(0, 1.0))
+            plt.show()
             if mode == "greater":
                 indices = [i for i in range(len(score_data)) if score_data[i] > threshold]
             elif mode == "smaller":
@@ -129,6 +141,8 @@ class WorkspaceVisualizer():
             marker.points.append(points.points[index])
             marker.colors.append(colors[index])
 
+        rospy.loginfo("Fraction of tested solutions: {}".format(len(marker.points)/len(points.points)))
+
         # Publish marker
         self.volume_pub.publish(marker)
         rospy.loginfo("Requested volume published.")
@@ -136,10 +150,10 @@ class WorkspaceVisualizer():
     def publish_intersection(self, req):
         points = self.min_score
         colors = points.colors
-        combined_indices = [i for i in range(len(self.all_results.data)) if 343 - self.all_results.data[i] > 80.0]
-        min_score_indices = [i for i in range(len(self.all_min_scores.data)) if self.all_min_scores.data[i] < 0.21]
+        combined_indices = [i for i in range(len(self.all_results.data)) if 343 - self.all_results.data[i] > 75.0]
+        min_score_indices = [i for i in range(len(self.all_min_scores.data)) if self.all_min_scores.data[i] < 0.19]
         _, score_data = self.recolor_avg_score()
-        avg_score_indices = [i for i in range(len(score_data)) if score_data[i] < 0.33]
+        avg_score_indices = [i for i in range(len(score_data)) if score_data[i] < 0.32]
 
         indices = []
         for index in combined_indices:
@@ -154,6 +168,8 @@ class WorkspaceVisualizer():
 
         self.print_steps(indices)
         rospy.loginfo(indices)
+
+        rospy.loginfo("Fraction of tested solutions: {}".format(len(marker.points)/len(points.points)))
 
         # Publish marker
         self.volume_pub.publish(marker)
@@ -312,6 +328,99 @@ class WorkspaceVisualizer():
         #self.correct_all_results_values()
         rospy.loginfo("Loaded bag: {}".format(bag_name.data))
 
+class WorkspaceVisualizerV2():
+
+    def __init__(self):
+        self.transform_handler = TransformHandler()
+        self.data = None
+
+        self.layer_sub = rospy.Subscriber("workspace_visualizer/set_layers", Layers, self.publish_layers)
+        self.layer_pub = rospy.Publisher("workspace_visualizer/pub_layers", Marker, queue_size = 1, latch = True)
+        self.volume_sub = rospy.Subscriber("workspace_visualizer/set_volume", Volume, self.publish_volume)
+        self.volume_pub = rospy.Publisher("workspace_visualizer/pub_volume", Marker, queue_size = 1, latch = True)
+        self.intersection_sub = rospy.Subscriber("workspace_visualizer/set_intersection", String, self.publish_intersection)
+        self.intersection_pub = rospy.Publisher("workspace_visualizer/pub_intersection", Marker, queue_size = 1, latch = True)
+
+        rospy.spin()
+
+    def load_json(self, file_name):
+        self.transform_handler.load(file_name)
+        self.data = self.transform_handler.get_data()
+
+    def publish_volume(self, msg):
+        data_type = msg.data_type
+        threshold = msg.threshold
+        mode = msg.mode
+
+        # Ignore invalid solutions for avg_score
+        if self.data_type == "avg_score":
+            recalculated_data = self.recalculate_avg_score()
+
+        filtered_transforms = []
+        colors = []
+        for transform in self.data:
+            if self.data_type == "number_solutions":
+                if self.mode == "greater":
+                    if transform.number_solutions > threshold:
+                        filtered_transforms.append(transform)
+                        value = (343 - transform.number_solutions)/343
+                        colors.append(ColorRGBA(value, 1 - value, 0, 1))
+                elif self.mode == "smaller":
+                    if transfomr.number_solutions < threshold:
+                        filtered_transforms.append(transform)
+                        value = (343 - transform.number_solutions)/343
+                        colors.append(ColorRGBA(value, 1 - value, 0, 1))
+            elif self.data_type == "avg_score":
+                if self.mode == "greater":
+                    if recalculated_data[transform.key()] > threshold:
+                        filtered_transforms.append(transform)
+                        colors.append(ColorRGBA(recalculated_data[transform.key()], 1 - recalculated_data[transform.key()], 0, 1))
+                elif self.mode == "smaller":
+                    if recalculated_data[transform.key()] < threshold:
+                        filtered_transforms.append(transform)
+                        colors.append(ColorRGBA(recalculated_data[transform.key()], 1 - recalculated_data[transform.key()], 0, 1))
+            elif self.data_type == "min_score":
+                if self.mode == "greater":
+                    if transform.min_score > threshold:
+                        filtered_transforms.append(transform)
+                        colors.append(ColorRGBA(transform.min_score, 1 - transform.min_score, 0, 1))
+                elif self.mode == "smaller":
+                    if transfomr.min_score < threshold:
+                        filtered_transforms.append(transform)
+                        colors.append(ColorRGBA(transform.min_score, 1 - transform.min_score, 0, 1))
+
+        markers = self.create_markers(filtered_transforms, colors)
+        self.volume_pub.publish(markers)
+
+    def recalculate_avg_score(self):
+        data = {}
+        for transform in self.data:
+            unnormalized_data = transform.avg_score * 343
+            unnormalized_data = unnormalized_data - transform.number_solutions
+            if unnormalized_data == 0:
+                data.append(1.0)
+            else:
+                normalized_data = unnormalized_data/(343 - transform.number_solutions)
+                data[transform.key()] = normalized_data
+        return data
+
+    def create_markers(self, transforms, colors):
+        markers = create_marker("volume")
+        markers.colors = colors
+        gripper_pose = get_gripper_pose()
+        for transform in transforms:
+            markers.points.append(Point(gripper_pose.pose.position.x + transform.x * 0.06, gripper_pose.pose.position.z + transform.z * 0.06, gripper_pose.pose.position.z + transform.z * 0.06))
+        return markers
+
+def get_gripper_pose(self):
+    gripper_pose = PoseStamped()
+    gripper_pose.header.frame_id = "base_footprint"
+    gripper_pose.pose.position.x = 0.4753863391864514
+    gripper_pose.pose.position.y = 0.03476345653124885
+    gripper_pose.pose.position.z = 0.6746350873056409
+    gripper_pose.pose.orientation = Quaternion(*quaternion_from_euler(0, 0, -1.5708))
+    return gripper_pose
+
 def create_marker(name):
     marker = Marker()
     marker.header.frame_id = "base_footprint"
@@ -325,7 +434,7 @@ def create_marker(name):
 
 def main():
     rospy.init_node("workspace_visualizer")
-    WorkspaceVisualizer()
+    WorkspaceVisualizerV2()
 
 if __name__ == "__main__":
     main()

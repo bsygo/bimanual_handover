@@ -190,6 +190,14 @@ class TransformHandler():
         for key, value in serialized_data.items():
             self.data[key] = StepTransform(0, 0, 0).parse(value)
 
+    def load_independent(filename):
+        data = {}
+        with open(filename, "r") as file:
+            serialized_data = json.load(file)
+        for key, value in serialized_data.items():
+            data[key] = StepTransform(0, 0, 0).parse(value)
+        return data
+
 class WorkspaceAnalyzer():
 
     def __init__(self):

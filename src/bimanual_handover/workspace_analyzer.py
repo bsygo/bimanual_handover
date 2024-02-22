@@ -193,6 +193,13 @@ class TransformHandler():
         for key, value in serialized_data.items():
             self.data[key] = StepTransform(0, 0, 0).parse(value)
 
+    def save_independent(data, filepath):
+        serialize_data = {}
+        for key, value in data.items():
+            serialize_data[key] = value.serialize()
+        with open(filepath, "w") as file:
+            json.dump(serialize_data, file)
+
     def load_independent(filename):
         data = {}
         with open(filename, "r") as file:

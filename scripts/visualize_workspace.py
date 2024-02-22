@@ -5,7 +5,7 @@ import rospkg
 import rosbag
 import os
 from visualization_msgs.msg import Marker
-from std_msgs.msg import String, ColorRGBA
+from std_msgs.msg import String, ColorRGBA, Int64
 from bimanual_handover_msgs.msg import Layers, Volume
 from geometry_msgs.msg import Vector3, PoseStamped, Quaternion, Point
 from tf.transformations import quaternion_from_euler
@@ -13,6 +13,8 @@ import matplotlib.pyplot as plt
 import matplotlib
 import numpy as np
 from bimanual_handover.workspace_analyzer import StepTransform, TransformHandler
+from datetime import datetime
+from copy import deepcopy
 
 class WorkspaceVisualizer():
 
@@ -334,8 +336,10 @@ class WorkspaceVisualizerV2():
     def __init__(self):
         self.data = None
         self.pkg_path = rospkg.RosPack().get_path('bimanual_handover')
+        self.time = datetime.now().strftime("%d_%m_%Y_%H_%M")
 
         self.load_json_sub = rospy.Subscriber("workspace_visualizer/load_json", String, self.load_json)
+        self.cut_data_sub = rospy.Subscriber("workspace_visualizer/cut_data", Int64, self.cut_data)
         #self.layer_sub = rospy.Subscriber("workspace_visualizer/set_layers", Layers, self.publish_layers)
         #self.layer_pub = rospy.Publisher("workspace_visualizer/pub_layers", Marker, queue_size = 1, latch = True)
         self.volume_sub = rospy.Subscriber("workspace_visualizer/set_volume", Volume, self.publish_volume)
@@ -349,6 +353,65 @@ class WorkspaceVisualizerV2():
     def load_json(self, file_name):
         self.data = TransformHandler.load_independent(self.pkg_path + "/data/workspace_analysis/" + file_name.data)
         rospy.loginfo("Data from file {} loaded.".format(file_name.data))
+
+    def get_transforms_layers(self):
+        x_layers = {}
+        y_layers = {}
+        z_layers = {}
+        for transform in self.data.values():
+            if transform.x in x_layers.keys():
+                x_layers[transform.x].append(transform)
+            else:
+                x_layers[transform.x] = [transform]
+            if transform.y in y_layers.keys():
+                y_layers[transform.y].append(transform)
+            else:
+                y_layers[transform.y] = [transform]
+            if transform.z in z_layers.keys():
+                z_layers[transform.z].append(transform)
+            else:
+                z_layers[transform.z] = [transform]
+        rospy.loginfo("Split data into layers.")
+        return x_layers, y_layers, z_layers
+
+    def cut_data(self, threshold):
+        # Threshold is maximum number of failed solution allowed
+        threshold = threshold.data
+        x_layers, y_layers, z_layers = self.get_transforms_layers()
+        cut_data = deepcopy(self.data)
+        for layer in x_layers.keys():
+            cut = True
+            for transform in x_layers[layer]:
+                if transform.number_solutions <= threshold:
+                    cut = False
+                    break
+            if cut:
+                for transform in x_layers[layer]:
+                    if transform.key() in cut_data.keys():
+                        del cut_data[transform.key()]
+        for layer in y_layers.keys():
+            cut = True
+            for transform in y_layers[layer]:
+                if transform.number_solutions <= threshold:
+                    cut = False
+                    break
+            if cut:
+                for transform in y_layers[layer]:
+                    if transform.key() in cut_data.keys():
+                        del cut_data[transform.key()]
+        for layer in z_layers.keys():
+            cut = True
+            for transform in z_layers[layer]:
+                if transform.number_solutions <= threshold:
+                    cut = False
+                    break
+            if cut:
+                for transform in z_layers[layer]:
+                    if transform.key() in cut_data.keys():
+                        del cut_data[transform.key()]
+        filepath = self.pkg_path + "/data/workspace_analysis/workspace_analysis_" + self.time + ".json"
+        TransformHandler.save_independent(cut_data, filepath)
+        rospy.loginfo("Saved cut data.")
 
     def publish_volume(self, msg):
         data_type = msg.data_type

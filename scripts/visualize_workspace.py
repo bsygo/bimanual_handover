@@ -340,6 +340,7 @@ class WorkspaceVisualizerV2():
 
         self.load_json_sub = rospy.Subscriber("workspace_visualizer/load_json", String, self.load_json)
         self.cut_data_sub = rospy.Subscriber("workspace_visualizer/cut_data", Int64, self.cut_data)
+        self.write_bag_sub = rospy.Subscriber("workspace_visualizer/write_bag", Int64, self.write_transforms_to_rosbag)
         #self.layer_sub = rospy.Subscriber("workspace_visualizer/set_layers", Layers, self.publish_layers)
         #self.layer_pub = rospy.Publisher("workspace_visualizer/pub_layers", Marker, queue_size = 1, latch = True)
         self.volume_sub = rospy.Subscriber("workspace_visualizer/set_volume", Volume, self.publish_volume)
@@ -412,6 +413,20 @@ class WorkspaceVisualizerV2():
         filepath = self.pkg_path + "/data/workspace_analysis/workspace_analysis_" + self.time + ".json"
         TransformHandler.save_independent(cut_data, filepath)
         rospy.loginfo("Saved cut data.")
+
+    def write_transforms_to_rosbag(self, threshold):
+        # Threshold is maximum number of failed solution allowed
+        threshold = threshold.data
+        path = self.pkg_path + "/data/workspace_analysis/"
+        bag = rosbag.Bag('{}workspace_analysis_{}.bag'.format(path, self.time), 'w')
+        for transform in self.data.values():
+            if transform.number_solutions  <= threshold:
+                msgs = transform.get_transform_msgs()
+                for i in range(len(msgs)):
+                    if transform.scores[i] < 1.0:
+                        bag.write('transforms', msgs[i])
+        bag.close()
+        rospy.loginfo("Transforms written into rosbag.")
 
     def publish_volume(self, msg):
         data_type = msg.data_type

@@ -72,9 +72,12 @@ class HandoverCommander():
             self.process_pc_srv(True)
 
         rospy.loginfo('Sending service request to handover_mover_srv.')
-        # side = rospy.get_param("handover_mover/side")
         handover_pose_mode = rospy.get_param("handover_mover/handover_pose_mode")
+        if self.record_attempt:
+            self.record_file.write("Starting handover time: {} \n".format(rospy.Time.now()))
         handover_mover_result = self.handover_mover_srv(side, grasp_pose_mode, handover_pose_mode, object_type)
+        if self.record_attempt:
+            self.record_file.write("Finishing handover time: {} \n".format(rospy.Time.now()))
         if not handover_mover_result.success:
             rospy.logerr('Moving to handover pose failed.')
             return False

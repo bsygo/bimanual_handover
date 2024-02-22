@@ -222,7 +222,7 @@ class WorkspaceAnalyzer():
         self.verbose = rospy.get_param("/handover/handover_mover/verbose")
 
         # Setup FK
-        self.fk_robot = URDF.from_parameter_server(key = "robot_description")
+        self.fk_robot = URDF.from_parameter_server(key = "/robot_description")
         self.kdl_kin_hand = KDLKinematics(self.fk_robot, "base_footprint", "rh_manipulator")
         self.kdl_kin_gripper = KDLKinematics(self.fk_robot, "base_footprint", "l_gripper_tool_frame")
 

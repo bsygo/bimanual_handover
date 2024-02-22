@@ -340,14 +340,15 @@ class WorkspaceVisualizerV2():
 
         self.load_json_sub = rospy.Subscriber("workspace_visualizer/load_json", String, self.load_json)
         self.cut_data_sub = rospy.Subscriber("workspace_visualizer/cut_data", Int64, self.cut_data)
-        self.write_bag_sub = rospy.Subscriber("workspace_visualizer/write_bag", Int64, self.write_transforms_to_rosbag)
+        self.write_bag_sub = rospy.Subscriber("workspace_visualizer/write_bag", Int64, self.write_transforms_to_rosbag_receiver)
         self.plot_transform_data_sub = rospy.Subscriber("workspace_visualizer/plot_transform_data", Bool, self.plot_transform_data)
+        self.write_intersection_bag_sub = rospy.Subscriber("workspace_visualizer/write_intersection_bag", Int64, self.write_intersection_to_rosbag)
         #self.layer_sub = rospy.Subscriber("workspace_visualizer/set_layers", Layers, self.publish_layers)
         #self.layer_pub = rospy.Publisher("workspace_visualizer/pub_layers", Marker, queue_size = 1, latch = True)
         self.volume_sub = rospy.Subscriber("workspace_visualizer/set_volume", Volume, self.publish_volume)
         self.volume_pub = rospy.Publisher("workspace_visualizer/pub_volume", Marker, queue_size = 1, latch = True)
-        #self.intersection_sub = rospy.Subscriber("workspace_visualizer/set_intersection", String, self.publish_intersection)
-        #self.intersection_pub = rospy.Publisher("workspace_visualizer/pub_intersection", Marker, queue_size = 1, latch = True)
+        self.intersection_sub = rospy.Subscriber("workspace_visualizer/set_intersection", Int64, self.publish_intersection)
+        self.intersection_pub = rospy.Publisher("workspace_visualizer/pub_intersection", Marker, queue_size = 1, latch = True)
 
         rospy.loginfo("VisualizerV2 ready.")
         rospy.spin()
@@ -415,13 +416,17 @@ class WorkspaceVisualizerV2():
         TransformHandler.save_independent(cut_data, filepath)
         rospy.loginfo("Saved cut data.")
 
-    def write_transforms_to_rosbag(self, threshold):
+    def write_transforms_to_rosbag_receiver(self, threshold):
+        self.write_transforms_to_rosbag(threshold.data)
+
+    def write_transforms_to_rosbag(self, threshold, data = None):
         # Threshold is maximum number of failed solution allowed
-        threshold = threshold.data
         path = self.pkg_path + "/data/workspace_analysis/"
         bag = rosbag.Bag('{}workspace_analysis_{}.bag'.format(path, self.time), 'w')
-        for transform in self.data.values():
-            if transform.number_solutions  <= threshold:
+        if data is None:
+            data = self.data.values()
+        for transform in data:
+            if transform.number_solutions <= threshold:
                 msgs = transform.get_transform_msgs()
                 for i in range(len(msgs)):
                     if transform.scores[i] < 1.0:
@@ -429,13 +434,13 @@ class WorkspaceVisualizerV2():
         bag.close()
         rospy.loginfo("Transforms written into rosbag.")
 
-    def plot_transform_data(self, msg):
+    def get_data_as_lists(self, ignore_invalid_transforms = True):
         number_solutions_data = []
         min_score_data = []
         avg_score_data = []
         recalculated_avg_score = self.recalculate_avg_score()
         for transform in self.data.values():
-            if msg.data:
+            if ignore_invalid_transforms:
                 number_solutions_data.append(343 - transform.number_solutions)
                 min_score_data.append(transform.min_score)
                 avg_score_data.append(recalculated_avg_score[transform.key()])
@@ -446,6 +451,25 @@ class WorkspaceVisualizerV2():
                     min_score_data.append(transform.min_score)
                 if not recalculated_avg_score[transform.key()] == 1.0:
                     avg_score_data.append(recalculated_avg_score[transform.key()])
+        return number_solutions_data, min_score_data, avg_score_data
+
+    def get_percentage_cutoff(self, percentage):
+        number_transforms = len(self.data.keys())
+        cutoff = int(number_transforms/100 * percentage)
+        number_solutions_data, min_score_data, avg_score_data = self.get_data_as_lists()
+
+        number_solutions_data.sort(reverse = True)
+        min_score_data.sort()
+        avg_score_data.sort()
+
+        rospy.loginfo("The best {} percent of transforms have equal or above {} solutions.".format(percentage, number_solutions_data[cutoff]))
+        rospy.loginfo("The best {} percent of transforms have equal or above {} min_score.".format(percentage, min_score_data[cutoff]))
+        rospy.loginfo("The best {} percent of transforms have equal or above {} avg_score.".format(percentage, avg_score_data[cutoff]))
+
+        return number_solutions_data[cutoff], min_score_data[cutoff], avg_score_data[cutoff]
+
+    def plot_transform_data(self, msg):
+        number_solutions_data, min_score_data, avg_score_data = self.get_data_as_lists(msg.data)
 
         plt.hist(number_solutions_data, bins = int(max(number_solutions_data)), range=(0, max(number_solutions_data)))
         plt.show()
@@ -455,6 +479,32 @@ class WorkspaceVisualizerV2():
 
         plt.hist(avg_score_data, bins = 100, range=(0, 1))
         plt.show()
+
+    def get_intersection_data(self, percentage):
+        number_solutions_cutoff, min_score_cutoff, avg_score_cutoff = self.get_percentage_cutoff(percentage)
+        recalculated_data = self.recalculate_avg_score()
+        filtered_inverted_values = []
+
+        filtered_transforms = []
+        colors = []
+        for transform in self.data.values():
+            inverted_value = (343 - transform.number_solutions)
+            if inverted_value >= number_solutions_cutoff:
+                if recalculated_data[transform.key()] <= avg_score_cutoff:
+                    if transform.min_score <= min_score_cutoff:
+                        filtered_transforms.append(transform)
+                        colors.append(ColorRGBA(transform.min_score, 1 - transform.min_score, 0, 1))
+        return filtered_transforms, colors
+
+    def write_intersection_to_rosbag(self, percentage):
+        filtered_transforms, _ = self.get_intersection_data(percentage.data)
+        self.write_transforms_to_rosbag(343, filtered_transforms)
+
+    def publish_intersection(self, percentage):
+        filtered_transforms, colors = self.get_intersection_data(percentage.data)
+        markers = self.create_markers(filtered_transforms, colors)
+        self.intersection_pub.publish(markers)
+        rospy.loginfo("Intersection volume published.")
 
     def publish_volume(self, msg):
         data_type = msg.data_type

@@ -7,7 +7,8 @@ import os
 from visualization_msgs.msg import Marker
 from std_msgs.msg import String, ColorRGBA
 from bimanual_handover_msgs.msg import Layers, Volume
-from geometry_msgs.msg import Vector3
+from geometry_msgs.msg import Vector3, PoseStamped, Quaternion, Point
+from tf.transformations import quaternion_from_euler
 import matplotlib.pyplot as plt
 import matplotlib
 import numpy as np
@@ -331,21 +332,22 @@ class WorkspaceVisualizer():
 class WorkspaceVisualizerV2():
 
     def __init__(self):
-        self.transform_handler = TransformHandler()
         self.data = None
 
-        self.layer_sub = rospy.Subscriber("workspace_visualizer/set_layers", Layers, self.publish_layers)
-        self.layer_pub = rospy.Publisher("workspace_visualizer/pub_layers", Marker, queue_size = 1, latch = True)
+        self.load_json_sub = rospy.Subscriber("workspace_visualizer/load_json", String, self.load_json)
+        #self.layer_sub = rospy.Subscriber("workspace_visualizer/set_layers", Layers, self.publish_layers)
+        #self.layer_pub = rospy.Publisher("workspace_visualizer/pub_layers", Marker, queue_size = 1, latch = True)
         self.volume_sub = rospy.Subscriber("workspace_visualizer/set_volume", Volume, self.publish_volume)
         self.volume_pub = rospy.Publisher("workspace_visualizer/pub_volume", Marker, queue_size = 1, latch = True)
-        self.intersection_sub = rospy.Subscriber("workspace_visualizer/set_intersection", String, self.publish_intersection)
-        self.intersection_pub = rospy.Publisher("workspace_visualizer/pub_intersection", Marker, queue_size = 1, latch = True)
+        #self.intersection_sub = rospy.Subscriber("workspace_visualizer/set_intersection", String, self.publish_intersection)
+        #self.intersection_pub = rospy.Publisher("workspace_visualizer/pub_intersection", Marker, queue_size = 1, latch = True)
 
+        rospy.loginfo("VisualizerV2 ready.")
         rospy.spin()
 
     def load_json(self, file_name):
-        self.transform_handler.load(file_name)
-        self.data = self.transform_handler.get_data()
+        self.data = TransformHandler.load_independent(file_name.data)
+        rospy.loginfo("Data from file {} loaded.".format(file_name.data))
 
     def publish_volume(self, msg):
         data_type = msg.data_type
@@ -353,48 +355,49 @@ class WorkspaceVisualizerV2():
         mode = msg.mode
 
         # Ignore invalid solutions for avg_score
-        if self.data_type == "avg_score":
+        if data_type == "avg_score":
             recalculated_data = self.recalculate_avg_score()
 
         filtered_transforms = []
         colors = []
-        for transform in self.data:
-            if self.data_type == "number_solutions":
-                if self.mode == "greater":
+        for transform in self.data.values():
+            if data_type == "number_solutions":
+                if mode == "greater":
                     if transform.number_solutions > threshold:
                         filtered_transforms.append(transform)
                         value = (343 - transform.number_solutions)/343
                         colors.append(ColorRGBA(value, 1 - value, 0, 1))
-                elif self.mode == "smaller":
+                elif mode == "smaller":
                     if transfomr.number_solutions < threshold:
                         filtered_transforms.append(transform)
                         value = (343 - transform.number_solutions)/343
                         colors.append(ColorRGBA(value, 1 - value, 0, 1))
-            elif self.data_type == "avg_score":
-                if self.mode == "greater":
+            elif data_type == "avg_score":
+                if mode == "greater":
                     if recalculated_data[transform.key()] > threshold:
                         filtered_transforms.append(transform)
                         colors.append(ColorRGBA(recalculated_data[transform.key()], 1 - recalculated_data[transform.key()], 0, 1))
-                elif self.mode == "smaller":
+                elif mode == "smaller":
                     if recalculated_data[transform.key()] < threshold:
                         filtered_transforms.append(transform)
                         colors.append(ColorRGBA(recalculated_data[transform.key()], 1 - recalculated_data[transform.key()], 0, 1))
-            elif self.data_type == "min_score":
-                if self.mode == "greater":
+            elif data_type == "min_score":
+                if mode == "greater":
                     if transform.min_score > threshold:
                         filtered_transforms.append(transform)
                         colors.append(ColorRGBA(transform.min_score, 1 - transform.min_score, 0, 1))
-                elif self.mode == "smaller":
+                elif mode == "smaller":
                     if transfomr.min_score < threshold:
                         filtered_transforms.append(transform)
                         colors.append(ColorRGBA(transform.min_score, 1 - transform.min_score, 0, 1))
 
         markers = self.create_markers(filtered_transforms, colors)
         self.volume_pub.publish(markers)
+        rospy.loginfo("Volume published.")
 
     def recalculate_avg_score(self):
         data = {}
-        for transform in self.data:
+        for transform in self.data.values():
             unnormalized_data = transform.avg_score * 343
             unnormalized_data = unnormalized_data - transform.number_solutions
             if unnormalized_data == 0:
@@ -409,10 +412,10 @@ class WorkspaceVisualizerV2():
         markers.colors = colors
         gripper_pose = get_gripper_pose()
         for transform in transforms:
-            markers.points.append(Point(gripper_pose.pose.position.x + transform.x * 0.06, gripper_pose.pose.position.z + transform.z * 0.06, gripper_pose.pose.position.z + transform.z * 0.06))
+            markers.points.append(Point(gripper_pose.pose.position.x + transform.x * 0.06, gripper_pose.pose.position.y + transform.y * 0.06, gripper_pose.pose.position.z + transform.z * 0.06))
         return markers
 
-def get_gripper_pose(self):
+def get_gripper_pose():
     gripper_pose = PoseStamped()
     gripper_pose.header.frame_id = "base_footprint"
     gripper_pose.pose.position.x = 0.4753863391864514

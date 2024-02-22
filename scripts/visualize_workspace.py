@@ -333,6 +333,7 @@ class WorkspaceVisualizerV2():
 
     def __init__(self):
         self.data = None
+        self.pkg_path = rospkg.RosPack().get_path('bimanual_handover')
 
         self.load_json_sub = rospy.Subscriber("workspace_visualizer/load_json", String, self.load_json)
         #self.layer_sub = rospy.Subscriber("workspace_visualizer/set_layers", Layers, self.publish_layers)
@@ -346,7 +347,7 @@ class WorkspaceVisualizerV2():
         rospy.spin()
 
     def load_json(self, file_name):
-        self.data = TransformHandler.load_independent(file_name.data)
+        self.data = TransformHandler.load_independent(self.pkg_path + "/data/workspace_analysis/" + file_name.data)
         rospy.loginfo("Data from file {} loaded.".format(file_name.data))
 
     def publish_volume(self, msg):
@@ -357,21 +358,22 @@ class WorkspaceVisualizerV2():
         # Ignore invalid solutions for avg_score
         if data_type == "avg_score":
             recalculated_data = self.recalculate_avg_score()
+        elif data_type == "number_solutions":
+            filtered_inverted_values = []
 
         filtered_transforms = []
         colors = []
         for transform in self.data.values():
             if data_type == "number_solutions":
+                inverted_value = (343 - transform.number_solutions)
                 if mode == "greater":
-                    if transform.number_solutions > threshold:
+                    if inverted_value > threshold:
                         filtered_transforms.append(transform)
-                        value = (343 - transform.number_solutions)/343
-                        colors.append(ColorRGBA(value, 1 - value, 0, 1))
+                        filtered_inverted_values.append(inverted_value)
                 elif mode == "smaller":
-                    if transfomr.number_solutions < threshold:
+                    if inverted_value < threshold:
                         filtered_transforms.append(transform)
-                        value = (343 - transform.number_solutions)/343
-                        colors.append(ColorRGBA(value, 1 - value, 0, 1))
+                        filtered_inverted_values.append(inverted_value)
             elif data_type == "avg_score":
                 if mode == "greater":
                     if recalculated_data[transform.key()] > threshold:
@@ -387,9 +389,15 @@ class WorkspaceVisualizerV2():
                         filtered_transforms.append(transform)
                         colors.append(ColorRGBA(transform.min_score, 1 - transform.min_score, 0, 1))
                 elif mode == "smaller":
-                    if transfomr.min_score < threshold:
+                    if transform.min_score < threshold:
                         filtered_transforms.append(transform)
                         colors.append(ColorRGBA(transform.min_score, 1 - transform.min_score, 0, 1))
+
+        if data_type == "number_solutions":
+            max_value = max(filtered_inverted_values)
+            for value in filtered_inverted_values:
+                color_value = value/max_value
+                colors.append(ColorRGBA(1 - color_value, color_value, 0, 1))
 
         markers = self.create_markers(filtered_transforms, colors)
         self.volume_pub.publish(markers)

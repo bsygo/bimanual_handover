@@ -20,6 +20,7 @@ from std_msgs.msg import ColorRGBA
 from visualization_msgs.msg import Marker
 from copy import deepcopy
 from moveit_msgs.msg import DisplayRobotState
+import rospkg
 
 class StepTransform():
 
@@ -95,6 +96,7 @@ class TransformHandler():
         self.wa = WorkspaceAnalyzer()
         self.data = {}
         self.time = datetime.now().strftime("%d_%m_%Y_%H_%M")
+        self.pkg_path = rospkg.RosPack().get_path('bimanual_handover')
 
     def get_data(self):
         return self.data
@@ -129,63 +131,64 @@ class TransformHandler():
         return border_dict
 
     def expand(self):
-        expansion_grid_x = [0, 0]
-        expansion_grid_y = [0, 0]
-        expansion_grid_z = [0, 0]
         expand = False
+        limit = 0 # 309
         border_dict = self.get_border_values()
+        expansion_grid_x = [border_dict["min_x"], border_dict["max_x"]]
+        expansion_grid_y = [border_dict["min_y"], border_dict["max_y"]]
+        expansion_grid_z = [border_dict["min_z"], border_dict["max_z"]]
         for transform in self.data.values():
             if transform.x == border_dict["min_x"]:
-                if transform.number_solutions >= 5:
+                if transform.number_solutions <= limit:
                     expansion_grid_x[0] = border_dict["min_x"] - 1
                     expand = True
             if transform.y == border_dict["min_y"]:
-                if transform.number_solutions >= 5:
+                if transform.number_solutions <= limit:
                     expansion_grid_y[0] = border_dict["min_y"] - 1
                     expand = True
             if transform.z == border_dict["min_z"]:
-                if transform.number_solutions >= 5:
+                if transform.number_solutions <= limit:
                     expansion_grid_z[0] = border_dict["min_z"] - 1
                     expand = True
             if transform.x == border_dict["max_x"]:
-                if transform.number_solutions >= 5:
+                if transform.number_solutions <= limit:
                     expansion_grid_x[1] = border_dict["max_x"] + 1
                     expand = True
             if transform.y == border_dict["max_y"]:
-                if transform.number_solutions >= 5:
+                if transform.number_solutions <= limit:
                     expansion_grid_y[1] = border_dict["max_y"] + 1
                     expand = True
             if transform.z == border_dict["max_z"]:
-                if transform.number_solutions >= 5:
+                if transform.number_solutions <= limit:
                     expansion_grid_z[1] = border_dict["max_z"] + 1
                     expand = True
-        if expand:
-            x = np.arange(expansion_grid_x[0], expansion_grid_x[1] + 1)
-            y = np.arange(expansion_grid_y[0], expansion_grid_y[1] + 1)
-            z = np.arange(expansion_grid_z[0], expansion_grid_z[1] + 1)
-            x, y, z = np.meshgrid(x, y, z)
-            grid = np.column_stack([x.ravel(), y.ravel(), z.ravel()])
-            skip_counter = 0
-            for step in grid:
-                if not str(step.tolist()) in self.data.keys():
-                    step_transform = StepTransform(step[0], step[1], step[2])
-                    self.data[step_transform.key()] = step_transform
-                    self.wa.analyze_transform(step_transform)
-                    self.save()
-                else:
-                    skip_counter += 1
-            rospy.loginfo("{} values were skipped during last expansion.".format(skip_counter))
+
+        x = np.arange(expansion_grid_x[0], expansion_grid_x[1] + 1)
+        y = np.arange(expansion_grid_y[0], expansion_grid_y[1] + 1)
+        z = np.arange(expansion_grid_z[0], expansion_grid_z[1] + 1)
+        x, y, z = np.meshgrid(x, y, z)
+        grid = np.column_stack([x.ravel(), y.ravel(), z.ravel()])
+        skip_counter = 0
+        for step in grid:
+            if not str(step.tolist()) in self.data.keys():
+                step_transform = StepTransform(step[0], step[1], step[2])
+                self.data[step_transform.key()] = step_transform
+                self.wa.analyze_transform(step_transform)
+                self.save()
+            else:
+                skip_counter += 1
+        rospy.loginfo("{} values were skipped during last expansion.".format(skip_counter))
         return expand
 
     def save(self):
         serialize_data = {}
         for key, value in self.data.items():
             serialize_data[key] = value.serialize()
-        with open("workspace_analysis_{}.json".format(self.time), "w") as file:
+        with open(self.pkg_path + "/data/workspace_analysis/" + "workspace_analysis_{}.json".format(self.time), "w") as file:
             json.dump(serialize_data, file)
 
     def load(self, filename):
-        with open(filename, "r") as file:
+        with open(self.pkg_path + "/data/workspace_analysis/" + filename, "r") as file:
             serialized_data = json.load(file)
         for key, value in serialized_data.items():
             self.data[key] = StepTransform(0, 0, 0).parse(value)
@@ -569,9 +572,9 @@ class WorkspaceAnalyzer():
                 return hand_pose
 
 def main():
-    #load = "workspace_analysis_19_02_2024_17_32.json"
+    load = "workspace_analysis_20_02_2024_16_17.json"
     rospy.init_node("workspace_analyzer")
-    load = None
+    #load = None
     th = TransformHandler()
     rospy.loginfo("TransformHandler started.")
     if load is None:

@@ -81,6 +81,7 @@ class HandoverMover():
         self.handover_frame_pub = rospy.Publisher("handover_frame_pose", PoseStamped, queue_size = 1)
 
         # Debug
+        self.pkg_path = rospkg.RosPack().get_path('bimanual_handover')
         self.verbose = rospy.get_param("handover_mover/verbose")
         self.debug = rospy.get_param("handover_mover/debug")
         if self.debug:
@@ -99,7 +100,6 @@ class HandoverMover():
             self.debug_score_markers_pub = rospy.Publisher('debug/handover_mover/score_markers', Marker, queue_size = 1, latch = True)
             self.debug_min_score_markers_pub = rospy.Publisher('debug/handover_mover/min_score_markers', Marker, queue_size = 1, latch = True)
             self.time = datetime.now().strftime("%d_%m_%Y_%H_%M")
-            self.pkg_path = rospkg.RosPack().get_path('bimanual_handover')
             self.path = self.pkg_path + "/data/bags/"
             self.bag = rosbag.Bag('{}workspace_analysis_{}.bag'.format(self.path, self.time), 'w')
 
@@ -436,7 +436,7 @@ class HandoverMover():
         elif self.handover_pose_mode == "random_sample":
             transformations = self.get_random_sample_transformations(1000)
         elif self.handover_pose_mode == "load_sample":
-            transformations = self.load_transformations()
+            transformations = self.load_transforms()
         if self.debug:
             debug_counter = 0
             best_debug_index = None

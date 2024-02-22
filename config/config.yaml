@@ -6,10 +6,10 @@ record_attempt: False
 # Handover mover
 handover_mover: 
     grasp_pose_mode: fixed # pc or fixed
-    handover_pose_mode: fixed # ik, fixed, sample or random_sample
+    handover_pose_mode: sample # ik, fixed, sample or random_sample
     verbose: False
-    debug: False
-    analyse: False
+    debug: True
+    analyse: True
 
 # Grasp tester
 grasp_tester: 

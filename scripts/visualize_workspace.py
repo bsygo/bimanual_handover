@@ -5,7 +5,7 @@ import rospkg
 import rosbag
 import os
 from visualization_msgs.msg import Marker
-from std_msgs.msg import String, ColorRGBA, Int64
+from std_msgs.msg import String, ColorRGBA, Int64, Bool
 from bimanual_handover_msgs.msg import Layers, Volume
 from geometry_msgs.msg import Vector3, PoseStamped, Quaternion, Point
 from tf.transformations import quaternion_from_euler
@@ -341,6 +341,7 @@ class WorkspaceVisualizerV2():
         self.load_json_sub = rospy.Subscriber("workspace_visualizer/load_json", String, self.load_json)
         self.cut_data_sub = rospy.Subscriber("workspace_visualizer/cut_data", Int64, self.cut_data)
         self.write_bag_sub = rospy.Subscriber("workspace_visualizer/write_bag", Int64, self.write_transforms_to_rosbag)
+        self.plot_transform_data_sub = rospy.Subscriber("workspace_visualizer/plot_transform_data", Bool, self.plot_transform_data)
         #self.layer_sub = rospy.Subscriber("workspace_visualizer/set_layers", Layers, self.publish_layers)
         #self.layer_pub = rospy.Publisher("workspace_visualizer/pub_layers", Marker, queue_size = 1, latch = True)
         self.volume_sub = rospy.Subscriber("workspace_visualizer/set_volume", Volume, self.publish_volume)
@@ -428,6 +429,33 @@ class WorkspaceVisualizerV2():
         bag.close()
         rospy.loginfo("Transforms written into rosbag.")
 
+    def plot_transform_data(self, msg):
+        number_solutions_data = []
+        min_score_data = []
+        avg_score_data = []
+        recalculated_avg_score = self.recalculate_avg_score()
+        for transform in self.data.values():
+            if msg.data:
+                number_solutions_data.append(343 - transform.number_solutions)
+                min_score_data.append(transform.min_score)
+                avg_score_data.append(recalculated_avg_score[transform.key()])
+            else:
+                if not transform.number_solutions == 343:
+                    number_solutions_data.append(343 - transform.number_solutions)
+                if not transform.min_score == 1.0:
+                    min_score_data.append(transform.min_score)
+                if not recalculated_avg_score[transform.key()] == 1.0:
+                    avg_score_data.append(recalculated_avg_score[transform.key()])
+
+        plt.hist(number_solutions_data, bins = int(max(number_solutions_data)), range=(0, max(number_solutions_data)))
+        plt.show()
+
+        plt.hist(min_score_data, bins = 100, range=(0, 1))
+        plt.show()
+
+        plt.hist(avg_score_data, bins = 100, range=(0, 1))
+        plt.show()
+
     def publish_volume(self, msg):
         data_type = msg.data_type
         threshold = msg.threshold
@@ -487,7 +515,7 @@ class WorkspaceVisualizerV2():
             unnormalized_data = transform.avg_score * 343
             unnormalized_data = unnormalized_data - transform.number_solutions
             if unnormalized_data == 0:
-                data.append(1.0)
+                data[transform.key()] = 1.0
             else:
                 normalized_data = unnormalized_data/(343 - transform.number_solutions)
                 data[transform.key()] = normalized_data

@@ -3,6 +3,7 @@
 import rospy
 from bimanual_handover_msgs.srv import InitialSetupSrv, ProcessPC, MoveHandover, GraspTesterSrv, FinishHandoverSrv, HandoverControllerSrv, HandCloserSrv
 import rospkg
+import rosbag
 from datetime import datetime
 
 class HandoverCommander():
@@ -41,13 +42,16 @@ class HandoverCommander():
         self.record_attempt = rospy.get_param("record_attempt", False)
         if self.record_attempt:
             time = datetime.now().strftime("%d_%m_%Y_%H_%M")
-            self.record_file = open(rospkg.RosPack().get_path('bimanual_handover') + "/data/records/handover_attempts_{}.txt".format(time), 'a')
+            pkg_path = rospkg.RosPack().get_path('bimanual_handover') 
+            self.record_file = open("{}/data/records/handover_attempts_{}.txt".format(pkg_path, time), 'a')
+            self.record_bag = open("{}/data/bags/handover_attempts_{}.bag".format(pkg_path, time), 'w')
 
         rospy.spin()
 
     def shutdown(self):
         if self.record_attempt:
             self.record_file.close()
+            self.record_bag.close()
 
     def handover_controller_srv(self, req):
         if req.handover_type == "full":
@@ -111,7 +115,8 @@ class HandoverCommander():
         if self.record_attempt:
             human_object = input("Please enter which object was used. \n")
             human_success = input("Handover finished. Please enter if the attempt was successful [0] or failed [1]. \n")
-            self.record_file.write("Closer type: {}; Object: {}; Side: {}; Test: {}; Result: {}; Sampling: {}; Transform: {} \n".format(closer_type, human_object, side, grasp_response.success, human_success, handover_pose_mode, handover_mover_result.transform))
+            self.record_file.write("Closer type: {}; Object: {}; Side: {}; Test: {}; Result: {}; Sampling: {} \n".format(closer_type, human_object, side, grasp_response.success, human_success, handover_pose_mode))
+            self.record_bag.write('transform', handover_mover_result.transform)
 
         return True
 

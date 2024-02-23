@@ -148,12 +148,16 @@ class RealEnv(gym.Env):
         self.fingers.go()
 
     def reset_hand_pose(self):
+        # Always select can, other objects not implemented
+        '''
         if self.current_object[0] == 1:
             object_type = "can"
         elif self.current_object[1] == 1:
             object_type = "book"
         elif self.current_object[2] == 1:
             object_type = "unknown"
+        '''
+        object_type = "can"
         self.handover_controller_srv("train", object_type, self.current_side)
 
     def step(self, action):
@@ -257,10 +261,8 @@ class RealEnv(gym.Env):
                 trajectory.points = [trajectory_point]
                 follow_traj = FollowJointTrajectoryGoal(trajectory = trajectory)
                 robot_trajectory = RobotTrajectory(joint_trajectory = trajectory)
-                print(robot_trajectory)
                 disp_traj = DisplayTrajectory(trajectory = [robot_trajectory], trajectory_start = self.robot.get_current_state())
                 self.traj_pub.publish(disp_traj)
-                #self.fingers.execute(robot_trajectory)
                 self.traj_client.send_goal(follow_traj)
                 self.traj_client.wait_for_result()
 

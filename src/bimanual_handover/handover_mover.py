@@ -421,7 +421,7 @@ class HandoverMover():
             if self.object_type == "can":
                 # From workspace analysis
                 if self.side == "side":
-                    score_limit = 0.21
+                    score_limit = 0.20
                 else:
                     score_limit = 0.15#0.22 # old: can->0.51 book->0.56/0.57 new: can->0.2/0.21 book->0.38
             elif self.object_type == "book":

@@ -81,6 +81,7 @@ class HandoverMover():
         self.handover_frame_pub = rospy.Publisher("handover_frame_pose", PoseStamped, queue_size = 1)
 
         # Debug
+        self.pkg_path = rospkg.RosPack().get_path('bimanual_handover')
         self.verbose = rospy.get_param("handover_mover/verbose")
         self.debug = rospy.get_param("handover_mover/debug")
         if self.debug:
@@ -99,9 +100,8 @@ class HandoverMover():
             self.debug_score_markers_pub = rospy.Publisher('debug/handover_mover/score_markers', Marker, queue_size = 1, latch = True)
             self.debug_min_score_markers_pub = rospy.Publisher('debug/handover_mover/min_score_markers', Marker, queue_size = 1, latch = True)
             self.time = datetime.now().strftime("%d_%m_%Y_%H_%M")
-            pkg_path = rospkg.RosPack().get_path('bimanual_handover')
-            path = pkg_path + "/data/bags/"
-            self.bag = rosbag.Bag('{}workspace_analysis_{}.bag'.format(path, self.time), 'w')
+            self.path = self.pkg_path + "/data/bags/"
+            self.bag = rosbag.Bag('{}workspace_analysis_{}.bag'.format(self.path, self.time), 'w')
 
         # Start service
         rospy.Service('handover_mover_srv', MoveHandover, self.move_handover)
@@ -129,7 +129,7 @@ class HandoverMover():
             return self.move_fixed_pose_above()
         elif req.handover_pose_mode == "fixed":
             return self.move_fixed_pose(hand_pose)
-        elif req.handover_pose_mode == "sample" or req.handover_pose_mode == "random_sample":
+        elif req.handover_pose_mode == "sample" or req.handover_pose_mode == "random_sample" or req.handover_pose_mode == "load_sample":
             return self.move_sampled_pose_above(hand_pose)
         else:
             rospy.loginfo("Unknown mode {}".format(req.handover_pose_mode))
@@ -137,6 +137,16 @@ class HandoverMover():
 
     def update_pc(self, pc):
         self.pc = pc
+
+    def load_transforms(self):
+        filename = rospy.get_param("handover_mover/sample_file")
+        transforms = []
+        transforms_bag = rosbag.Bag(self.pkg_path + "/data/workspace_analysis/" + filename, 'r')
+        for _, msg, _ in transforms_bag.read_messages():
+            transforms.append(msg)
+        transforms_bag.close()
+        random.shuffle(transforms)
+        return transforms
 
     def get_random_sample_transformations(self, number_transforms):
         translation_step = 0.06
@@ -178,56 +188,12 @@ class HandoverMover():
         rotation_step = math.pi * 30/180
         if self.analyse:
             #linear_combinations = [[x, y, z] for x in range(0, 2) for y in range(0, 2) for z in range(0, 2)]
-            linear_combinations = [[x, y, z] for x in range(-5, 3) for y in range(-4, 9) for z in range(-6, 5)]
+            linear_combinations = [[x, y, z] for x in range(-5, 6) for y in range(-8, 9) for z in range(-6, 8)] #for x in range(-5, 3) for y in range(-4, 9) for z in range(-6, 5)]
             angular_combinations = [[x, y, z] for x in range(-3, 4) for y in range(-3, 4) for z in range(-3, 4)]
             #angular_combinations = [[x, y, z] for x in range(0, 2) for y in range(0, 2) for z in range(0, 2)]
         else:
-            if self.object_type == "can" and self.side == "side":
-                # Linear values from workspace analysis
-                linear_combinations = [[x, y, z] for x in range(0, 3) for y in range(2, 6) for z in range(-4, 1)]
-                angular_combinations = [[-3, -3, -2], [-3, -3, -1], [-3, -3, 0], [-3, -3, 1], [-3, -3, 2], [-3, -3, 3],
-                                        [-3, -2, -1], [-3, -2, 0], [-3, -2, 1], [-3, -2, 2], [-3, -2, 3], [-3, -1, -3],
-                                        [-3, -1, -1], [-3, -1, 0], [-3, -1, 1], [-3, -1, 2], [-3, -1, 3], [-3, 0, -3],
-                                        [-3, 0, -2], [-3, 0, -1], [-3, 0, 0], [-3, 0, 1], [-3, 0, 2], [-3, 0, 3],
-                                        [-3, 1, -3], [-3, 2, -3], [-3, 2, -2], [-3, 3, -3], [-3, 3, -2], [-3, 3, -1],
-                                        [-2, -3, -3], [-2, -3, -2], [-2, -3, -1], [-2, -3, 0], [-2, -3, 1], [-2, -3, 2],
-                                        [-2, -3, 3], [-2, -2, -2], [-2, -2, -1], [-2, -2, 0], [-2, -2, 1], [-2, -2, 2],
-                                        [-2, -2, 3], [-2, -1, -3], [-2, -1, -2], [-2, -1, -1], [-2, -1, 0], [-2, -1, 1],
-                                        [-2, -1, 2], [-2, 0, -3], [-2, 0, -2], [-2, 0, -1], [-2, 0, 0], [-2, 1, -3],
-                                        [-2, 1, -2], [-2, 1, -1], [-2, 2, -3], [-2, 2, -2], [-2, 2, -1], [-2, 3, -3],
-                                        [-2, 3, -2], [-2, 3, -1], [-2, 3, 0], [-1, -3, -3], [-1, -3, -2], [-1, -3, -1],
-                                        [-1, -3, 0], [-1, -3, 1], [-1, -3, 2], [-1, -3, 3], [-1, -2, -3], [-1, -2, -2],
-                                        [-1, -2, -1], [-1, -2, 0], [-1, -2, 1], [-1, -2, 2], [-1, -1, -3], [-1, -1, -2],
-                                        [-1, -1, -1], [-1, -1, 0], [-1, -1, 1], [-1, -1, 2], [-1, 0, -3], [-1, 0, -2],
-                                        [-1, 0, -1], [-1, 0, 0], [-1, 0, 1], [-1, 1, -3], [-1, 1, -2], [-1, 1, -1],
-                                        [-1, 1, 0], [-1, 1, 1], [-1, 2, -3], [-1, 2, -2], [-1, 2, -1], [-1, 2, 0],
-                                        [-1, 2, 1], [-1, 3, -3], [-1, 3, -2], [-1, 3, -1], [-1, 3, 0], [-1, 3, 1], [0, -3, -3],
-                                        [0, -3, -2], [0, -3, -1], [0, -3, 0], [0, -3, 1], [0, -3, 2], [0, -2, -3], [0, -2, -2],
-                                        [0, -2, -1], [0, -2, 0], [0, -2, 1], [0, -2, 2], [0, -1, -3], [0, -1, -2], [0, -1, -1],
-                                        [0, -1, 0], [0, -1, 1], [0, -1, 2], [0, 0, -3], [0, 0, -2], [0, 0, -1], [0, 0, 0],
-                                        [0, 0, 1], [0, 0, 2], [0, 1, -3], [0, 1, -2], [0, 1, -1], [0, 1, 0], [0, 1, 1],
-                                        [0, 1, 2], [0, 2, -3], [0, 2, -2], [0, 2, -1], [0, 2, 0], [0, 2, 1], [0, 2, 2],
-                                        [0, 3, -3], [0, 3, -2], [0, 3, -1], [0, 3, 0], [0, 3, 1], [0, 3, 2], [1, -3, -3],
-                                        [1, -3, -2], [1, -3, -1], [1, -3, 0], [1, -3, 1], [1, -2, -3], [1, -2, -2], [1, -2, -1],
-                                        [1, -2, 0], [1, -2, 1], [1, -1, -3], [1, -1, -2], [1, -1, -1], [1, -1, 0], [1, -1, 1],
-                                        [1, 0, -3], [1, 0, -2], [1, 0, -1], [1, 0, 0], [1, 0, 1], [1, 0, 2], [1, 1, -3],
-                                        [1, 1, -2], [1, 1, -1], [1, 1, 0], [1, 1, 1], [1, 1, 2], [1, 1, 3], [1, 2, -3],
-                                        [1, 2, -2], [1, 2, -1], [1, 2, 0], [1, 2, 1], [1, 2, 2], [1, 2, 3], [1, 3, -3],
-                                        [1, 3, -2], [1, 3, -1], [1, 3, 0], [1, 3, 1], [1, 3, 2], [1, 3, 3], [2, -3, -3],
-                                        [2, -3, -2], [2, -3, -1], [2, -3, 0], [2, -2, -3], [2, -2, -2], [2, -2, -1], [2, -2, 0],
-                                        [2, -2, 3], [2, -1, -3], [2, -1, -2], [2, -1, -1], [2, -1, 0], [2, -1, 1], [2, -1, 3],
-                                        [2, 0, -3], [2, 0, -2], [2, 0, -1], [2, 0, 0], [2, 0, 1], [2, 0, 2], [2, 0, 3], [2, 1, -3],
-                                        [2, 1, -2], [2, 1, -1], [2, 1, 0], [2, 1, 1], [2, 1, 2], [2, 1, 3], [2, 2, -3], [2, 2, -2],
-                                        [2, 2, -1], [2, 2, 0], [2, 2, 1], [2, 2, 2], [2, 2, 3], [2, 3, -2], [2, 3, -1], [2, 3, 0],
-                                        [2, 3, 1], [2, 3, 2], [2, 3, 3], [3, -3, -3], [3, -3, -2], [3, -3, -1], [3, -2, -3],
-                                        [3, -2, -2], [3, -2, 3], [3, -1, -3], [3, -1, -2], [3, -1, -1], [3, -1, 0], [3, -1, 1],
-                                        [3, -1, 2], [3, -1, 3], [3, 0, -3], [3, 0, -2], [3, 0, -1], [3, 0, 0], [3, 0, 1],
-                                        [3, 0, 2], [3, 0, 3], [3, 1, -3], [3, 1, -2], [3, 1, -1], [3, 1, 0], [3, 1, 1],
-                                        [3, 1, 2], [3, 1, 3], [3, 2, -3], [3, 2, -2], [3, 2, -1], [3, 2, 0], [3, 2, 1],
-                                        [3, 2, 2], [3, 2, 3], [3, 3, -1], [3, 3, 0], [3, 3, 1], [3, 3, 2], [3, 3, 3]]
-            else:
-                linear_combinations = [[x, y, z] for x in range(0, 2) for y in range(0, 5) for z in range(-3, 1)]
-                angular_combinations = [[x, y, z] for x in range(-1, 2) for y in range(-1, 2) for z in range(-1, 2)]
+            linear_combinations = [[x, y, z] for x in range(0, 2) for y in range(0, 5) for z in range(-3, 1)]
+            angular_combinations = [[x, y, z] for x in range(-1, 2) for y in range(-1, 2) for z in range(-1, 2)]
         transformations = []
 
         # Aggregate transforms to show for debugging
@@ -469,6 +435,8 @@ class HandoverMover():
             transformations = self.get_sample_transformations()
         elif self.handover_pose_mode == "random_sample":
             transformations = self.get_random_sample_transformations(1000)
+        elif self.handover_pose_mode == "load_sample":
+            transformations = self.load_transforms()
         if self.debug:
             debug_counter = 0
             best_debug_index = None
@@ -556,6 +524,7 @@ class HandoverMover():
                     gripper_marker.colors.append(ColorRGBA(1, 0, 0, 1))
 
             if self.analyse:
+                self.bag.write('transforms', transformation)
                 if previous_linear is None:
                     previous_linear = transformation.transform.translation
                     x = min(transformed_gripper.pose.position.x, transformed_hand.pose.position.x) + abs(transformed_gripper.pose.position.x - transformed_hand.pose.position.x)/2
@@ -592,16 +561,6 @@ class HandoverMover():
                     min_score = min(iteration_scores)
                     all_min_scores.append(min_score)
                     min_score_marker.colors.append(ColorRGBA(min_score, 1-min_score, 0, 1))
-                    '''
-                    if all(value >= 1  for value in iteration_results):
-                        combined_marker.colors.append(ColorRGBA(1, 0, 0, 1))
-                    elif sum([value == 0 for value in iteration_results]) > len(iteration_results)/4:
-                        combined_marker.colors.append(ColorRGBA(0, 1, 0, 1))
-                    elif sum([value == 0 for value in iteration_results]) > 1:
-                        combined_marker.colors.append(ColorRGBA(1, 1, 0, 1))
-                    elif 0 in iteration_results:
-                        combined_marker.colors.append(ColorRGBA(1, 0.5, 0, 1))
-                    '''
 
                     all_results.append(sum(iteration_results))
                     iteration_results = []

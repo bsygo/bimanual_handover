@@ -6,7 +6,8 @@ record_attempt: False
 # Handover mover
 handover_mover: 
     grasp_pose_mode: fixed # pc or fixed
-    handover_pose_mode: fixed # ik, fixed, sample or random_sample
+    handover_pose_mode: fixed # ik, fixed, sample, load_sample or random_sample
+    sample_file: workspace_analysis_22_02_2024_14_23.bag
     verbose: False
     debug: False
     analyse: False

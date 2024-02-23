@@ -44,7 +44,7 @@ class HandoverCommander():
             time = datetime.now().strftime("%d_%m_%Y_%H_%M")
             pkg_path = rospkg.RosPack().get_path('bimanual_handover') 
             self.record_file = open("{}/data/records/handover_attempts_{}.txt".format(pkg_path, time), 'a')
-            self.record_bag = open("{}/data/bags/handover_attempts_{}.bag".format(pkg_path, time), 'w')
+            self.record_bag = rosbag.Bag("{}/data/bags/handover_attempts_{}.bag".format(pkg_path, time), 'w')
 
         rospy.spin()
 
@@ -118,7 +118,10 @@ class HandoverCommander():
         if self.record_attempt:
             human_object = input("Please enter which object was used. \n")
             human_success = input("Handover finished. Please enter if the attempt was successful [0] or failed [1]. \n")
+            comment = input("Please enter any additional comment about the attempt. \n")
             self.record_file.write("Closer type: {}; Object: {}; Side: {}; Test: {}; Result: {}; Sampling: {} \n".format(closer_type, human_object, side, grasp_response.success, human_success, handover_pose_mode))
+            self.record_file.write("Comment: {} \n".format(comment))
+            self.record_file.write("––– \n")
             self.record_bag.write('transform', handover_mover_result.transform)
 
         return True

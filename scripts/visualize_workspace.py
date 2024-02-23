@@ -339,6 +339,8 @@ class WorkspaceVisualizerV2():
         self.time = datetime.now().strftime("%d_%m_%Y_%H_%M")
 
         self.load_json_sub = rospy.Subscriber("workspace_visualizer/load_json", String, self.load_json)
+        self.combine_jsons_sub = rospy.Subscriber("workspace_visualizer/combine_jsons", String, self.combine_jsons)
+        self.print_min_max_sub = rospy.Subscriber("workspace_visualizer/print_min_max", String, self.print_min_max_values)
         self.cut_data_sub = rospy.Subscriber("workspace_visualizer/cut_data", Int64, self.cut_data)
         self.write_bag_sub = rospy.Subscriber("workspace_visualizer/write_bag", Int64, self.write_transforms_to_rosbag_receiver)
         self.plot_transform_data_sub = rospy.Subscriber("workspace_visualizer/plot_transform_data", Bool, self.plot_transform_data)
@@ -356,6 +358,45 @@ class WorkspaceVisualizerV2():
     def load_json(self, file_name):
         self.data = TransformHandler.load_independent(self.pkg_path + "/data/workspace_analysis/" + file_name.data)
         rospy.loginfo("Data from file {} loaded.".format(file_name.data))
+
+    def combine_jsons(self, filename):
+        # Load first file with load_json and call this with second file to
+        # combine
+        second_data = TransformHandler.load_independent(self.pkg_path + "/data/workspace_analysis/" + filename.data)
+        rospy.loginfo("Data from file {} loaded.".format(filename.data))
+        for key, value in second_data.items():
+            self.data[key] = value
+        filepath = self.pkg_path + "/data/workspace_analysis/workspace_analysis_" + self.time + ".json"
+        TransformHandler.save_independent(self.data, filepath)
+        rospy.loginfo("Saved combined data.")
+
+    def print_min_max_values(self, msg):
+        min_max_values = {}
+        min_max_values["x_min"] = 1000
+        min_max_values["y_min"] = 1000
+        min_max_values["z_min"] = 1000
+        min_max_values["x_max"] = -1000
+        min_max_values["y_max"] = -1000
+        min_max_values["z_max"] = -1000
+        for transform in self.data.values():
+            if transform.x < min_max_values["x_min"]:
+                min_max_values["x_min"] = transform.x
+            if transform.y < min_max_values["y_min"]:
+                min_max_values["y_min"] = transform.y
+            if transform.z < min_max_values["z_min"]:
+                min_max_values["z_min"] = transform.z
+            if transform.x > min_max_values["x_max"]:
+                min_max_values["x_max"] = transform.x
+            if transform.y > min_max_values["y_max"]:
+                min_max_values["y_max"] = transform.y
+            if transform.z > min_max_values["z_max"]:
+                min_max_values["z_max"] = transform.z
+        rospy.loginfo("x min: {}".format(min_max_values["x_min"]))
+        rospy.loginfo("y min: {}".format(min_max_values["y_min"]))
+        rospy.loginfo("z min: {}".format(min_max_values["z_min"]))
+        rospy.loginfo("x max: {}".format(min_max_values["x_max"]))
+        rospy.loginfo("y max: {}".format(min_max_values["y_max"]))
+        rospy.loginfo("z max: {}".format(min_max_values["z_max"]))
 
     def get_transforms_layers(self):
         x_layers = {}

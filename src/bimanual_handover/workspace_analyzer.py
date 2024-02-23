@@ -102,9 +102,9 @@ class TransformHandler():
         return self.data
 
     def initial_block(self):
-        x = np.arange(0, 1)
-        y = np.arange(0, 1)
-        z = np.arange(0, 1)
+        x = np.arange(-9, -8)
+        y = np.arange(-10, -9)
+        z = np.arange(-6, 1)
         x, y, z = np.meshgrid(x, y, z)
         grid = np.column_stack([x.ravel(), y.ravel(), z.ravel()])
         for step in grid:
@@ -579,18 +579,18 @@ class WorkspaceAnalyzer():
                 return hand_pose
 
 def main():
-    load = "workspace_analysis_20_02_2024_16_17.json"
+    #load = "workspace_analysis_20_02_2024_16_17.json"
     rospy.init_node("workspace_analyzer")
-    #load = None
+    load = None
     th = TransformHandler()
     rospy.loginfo("TransformHandler started.")
     if load is None:
-        rospy.loginfo("Now load file provided. Initialized without previous values.")
+        rospy.loginfo("No load file provided. Initialized without previous values.")
         th.initial_block()
     else:
         rospy.loginfo("Loading data from file {}.".format(load))
         th.load(load)
-    expanded = True
+    expanded = False # True
     while expanded:
         rospy.loginfo("Workspace expanded.")
         expanded = th.expand()

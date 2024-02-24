@@ -59,7 +59,17 @@ def main():
 
     # Setup environment
     rospy.loginfo('Setting up env.')
-    env = handover_env.RealEnv(fingers, str_date)
+    if not model_path == '':
+        if checkpoint:
+            steps_pattern = re.compile(r".*_(?P<steps>\d+)_steps.*")
+            matches = steps_pattern.match(model_path)
+            initial_steps = int(matches.group('steps'))
+            initial_timesteps = initial_steps % 1000
+        else:
+            initial_timesteps = 0
+    else:
+        initial_timesteps = 0
+    env = handover_env.RealEnv(fingers, str_date, initial_timesteps)
     if env_check:
         check_env(env)
         rospy.loginfo('Env check completed.')
@@ -72,7 +82,7 @@ def main():
             model = PPO("MlpPolicy", env, policy_kwargs = policy_kwargs, n_steps = 50, batch_size = 5, n_epochs = 50, verbose = 1, tensorboard_log = "{}/logs/tensorboard".format(path))
             rospy.loginfo('PPO model created.')
         elif model_type == "sac":
-            model = SAC("MlpPolicy", env, policy_kwargs = policy_kwargs, batch_size = 50, buffer_size = 10000, verbose = 1, tensorboard_log = "{}/logs/tensorboard".format(path))
+            model = SAC("MlpPolicy", env, policy_kwargs = policy_kwargs, batch_size = 50, buffer_size = 12000, verbose = 1, tensorboard_log = "{}/logs/tensorboard".format(path))
             rospy.loginfo('SAC model created.')
 
         # Write model info into file

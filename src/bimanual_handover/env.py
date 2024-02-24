@@ -29,7 +29,7 @@ import rosbag
 # Environment used for training on the real robot
 class RealEnv(gym.Env):
 
-    def __init__(self, fingers, time):
+    def __init__(self, fingers, time, initial_steps):
         super().__init__()
         rospy.on_shutdown(self.close)
         self.contact_modality = rospy.get_param("contact_modality")
@@ -96,6 +96,9 @@ class RealEnv(gym.Env):
         self.current_attempt_step = 0
         self.reset_steps = 1000
         self.current_reset_step = 1000 # To set an object in first reset call
+        self.initial_steps = initial_steps
+        print(self.initial_steps)
+        self.initial_run = True
 
         self.traj_client = actionlib.SimpleActionClient('/hand/rh_trajectory_controller/follow_joint_trajectory', FollowJointTrajectoryAction)
         self.traj_client.wait_for_server()
@@ -161,7 +164,6 @@ class RealEnv(gym.Env):
         self.handover_controller_srv("train", object_type, self.current_side)
 
     def step(self, action):
-        rospy.loginfo("Step start time: {}".format(rospy.Time.now()))
         while self.interrupted:
             rospy.sleep(1)
 
@@ -377,7 +379,6 @@ class RealEnv(gym.Env):
 
         info = {}
         truncated = False
-        rospy.loginfo("Step end time: {}".format(rospy.Time.now()))
         return observation, reward, terminated, truncated, info
 
     def reset(self, seed=None):
@@ -450,8 +451,8 @@ class RealEnv(gym.Env):
             # Reset, insert new object, move to pose
             accepted_input = False
             while not accepted_input:
-                # IDs: 1 - can, 2 - book, 3 -
-                object_id = input("Please enter the id of the next used object:")
+                # IDs: 1 - can, 2 - bleach, 3 - paper roll
+                object_id = input("Please enter the id of the next used object ([1]:can, [2]:bleach, [3]:paper roll):")
                 if object_id in ["1", "2", "3"]:
                     check = input("Object set to {}. Press enter to continue. If the wrong object was selected, please enter [a].".format(object_id))
                     if not check == "a":
@@ -492,7 +493,11 @@ class RealEnv(gym.Env):
             if self.one_hot_input:
                 for value in one_hot:
                     observation.append(value)
-            self.current_reset_step = 0
+            if self.initial_run:
+                self.current_reset_step = self.initial_steps
+                self.initial_run = False
+            else:
+                self.current_reset_step = 0
             self.reset_hand_pose()
         else:
             # Add one-hot encoding

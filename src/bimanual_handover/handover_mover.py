@@ -421,11 +421,11 @@ class HandoverMover():
             if self.object_type == "can":
                 # From workspace analysis
                 if self.side == "side":
-                    score_limit = 0.20
+                    score_limit = 0.19
                 else:
                     score_limit = 0.15#0.22 # old: can->0.51 book->0.56/0.57 new: can->0.2/0.21 book->0.38
             elif self.object_type == "book":
-                score_limit = 0.2
+                score_limit = 0.3
         deviation_limit = 0.01
         best_score = 1
         best_transform = None
@@ -973,8 +973,8 @@ class HandoverMover():
             if self.side == "top":
                 self.setup_fingers()
                 hand_pose.pose.position.x = min_point[0] + math.dist([max_point[0]], [min_point[0]])/2 - 0.06
-                hand_pose.pose.position.y = min_point[1] + math.dist([max_point[1]], [min_point[1]])/2 + 0.02
-                hand_pose.pose.position.z = max_point[2] + 0.05
+                hand_pose.pose.position.y = min_point[1] + math.dist([max_point[1]], [min_point[1]])/2# + 0.04
+                hand_pose.pose.position.z = max_point[2] + 0.03
                 hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(-1.5708, 3.14159, -1.5708))
                 return hand_pose
             # Not correct numbers
@@ -1015,8 +1015,8 @@ class HandoverMover():
         elif self.object_type == "book":
             if self.side == "top":
                 self.setup_fingers()
-                hand_pose.pose.position.x += -0.05
-                hand_pose.pose.position.y += -0.02
+                hand_pose.pose.position.x += -0.06
+                hand_pose.pose.position.y += 0.0
                 hand_pose.pose.position.z += 0.167
                 hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(-1.5708, 3.14159, -1.5708))
                 return hand_pose

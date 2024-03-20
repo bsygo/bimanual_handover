@@ -22,6 +22,9 @@ from moveit_msgs.msg import DisplayTrajectory, RobotTrajectory
 from sr_robot_msgs.msg import BiotacAll
 from pr2_msgs.msg import PressureState
 from geometry_msgs.msg import WrenchStamped
+import actionlib
+from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
+from control_msgs.msg import FollowJointTrajectoryAction, FollowJointTrajectoryGoal
 
 class DemoCloser():
 
@@ -377,7 +380,7 @@ class ModelCloser():
         self.contact_modality = rospy.get_param("hand_closer/model_closer/contact_modality")
 
         # Set observation inputs
-        self.joint_states_input = rospy.get_param("hand_closer/model_closer/observation_space/joint_states")
+        self.joint_values_input = rospy.get_param("hand_closer/model_closer/observation_space/joint_values")
         self.pca_input = rospy.get_param("hand_closer/model_closer/observation_space/pca")
         self.effort_input = rospy.get_param("hand_closer/model_closer/observation_space/effort")
         self.tactile_input = rospy.get_param("hand_closer/model_closer/observation_space/tactile")
@@ -406,6 +409,9 @@ class ModelCloser():
         self.tactile_sub = rospy.Subscriber('/hand/rh/tactile', BiotacAll, self.tactile_callback)
         self.effort_sub = rospy.Subscriber('/hand/joint_states', JointState, self.effort_callback)
         self.joint_values_sub = rospy.Subscriber('/hand/joint_states', JointState, callback = self.joint_values_callback)
+
+        self.traj_client = actionlib.SimpleActionClient('/hand/rh_trajectory_controller/follow_joint_trajectory', FollowJointTrajectoryAction)
+        self.traj_client.wait_for_server()
 
         # Start service
         rospy.loginfo("hand_closer_srv ready.")
@@ -465,8 +471,8 @@ class ModelCloser():
         # Add one-hot encoding
         if self.one_hot_input:
             for value in self.current_object:
-                current_observation.append(value)
-        observation = np.array(current_observation, dtype = np.float32)
+                observation.append(value)
+        observation = np.array(observation, dtype = np.float32)
         action, _states = self.model.predict(observation, deterministic = True)
         return action
 
@@ -535,8 +541,19 @@ class ModelCloser():
             del result[key]
 
         # Move fingers to configuration
-        self.fingers.set_joint_value_target(result)
-        self.fingers.go()
+        trajectory = JointTrajectory()
+        trajectory.header.stamp = rospy.Time.now()
+        trajectory.joint_names = list(result.keys())
+        trajectory_point = JointTrajectoryPoint()
+        trajectory_point.positions = list(result.values())
+        trajectory_point.time_from_start = rospy.Duration.from_sec(0.2)
+        trajectory.points = [trajectory_point]
+        follow_traj = FollowJointTrajectoryGoal(trajectory = trajectory)
+        self.traj_client.send_goal(follow_traj)
+        self.traj_client.wait_for_result()
+
+        #self.fingers.set_joint_value_target(result)
+        #self.fingers.go()
 
     def close_hand(self, req):
         # Set object to the requested one
@@ -550,9 +567,11 @@ class ModelCloser():
         self.initial_effort = deepcopy(self.current_effort)
 
         # Generate and execute actions
-        while not self.contacts_made:
+        counter = 0
+        while not self.contacts_made and counter < 50:
             action = self.get_next_action()
             self.exec_action(action)
+            counter += 1
 
         self.contacts_made = False
         return True

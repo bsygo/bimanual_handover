@@ -157,6 +157,8 @@ class GraspTester():
         return joint_values
 
     def test_grasp(self, req):
+        finger_links = self.robot.get_link_names("right_fingers")
+        self.psi.disable_collision_detections(finger_links, finger_links)
         if self.debug:
             self.debug_snapshot_pub.publish(True)
         if req.direction == "x":

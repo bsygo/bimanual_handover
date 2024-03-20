@@ -55,7 +55,7 @@ void cropPC(const sensor_msgs::PointCloud2ConstPtr& input_cloud){
 
     // Set parameters for CropBox filter and apply filter
     pcl::CropBox<pcl::PCLPointCloud2> box;
-    geometry_msgs::TransformStamped gripper_azure_transform = tfBuffer->lookupTransform("azure_kinect_rgb_camera_link", "l_gripper_tool_frame", ros::Time(0));
+    geometry_msgs::TransformStamped gripper_azure_transform = tfBuffer->lookupTransform("azure_kinect_rgb_camera_link", "l_gripper_tool_frame", ros::Time::now(), ros::Duration(60));
     Eigen::Affine3d gripper_azure_transform_matrix_d = tf2::transformToEigen(gripper_azure_transform);
     Eigen::Affine3f gripper_azure_transform_matrix = gripper_azure_transform_matrix_d.cast <float> ();
     Eigen::Vector3f euler_rotation = gripper_azure_transform_matrix.rotation().matrix().eulerAngles(0, 1, 2);
@@ -97,7 +97,7 @@ void transformPC(const sensor_msgs::PointCloud2ConstPtr& input_cloud){
 
     //debug_pub.publish(input_cloud);
     sensor_msgs::PointCloud2 gripper_transformed_cloud_filtered_msg;
-    geometry_msgs::TransformStamped base_gripper_transform_msg = tfBuffer->lookupTransform("l_gripper_tool_frame", "base_footprint", ros::Time(0));
+    geometry_msgs::TransformStamped base_gripper_transform_msg = tfBuffer->lookupTransform("l_gripper_tool_frame", "base_footprint", ros::Time::now(), ros::Duration(60));
     Eigen::Matrix4f base_gripper_transform_matrix;
     pcl_ros::transformAsMatrix(base_gripper_transform_msg.transform, base_gripper_transform_matrix);
     pcl_ros::transformPointCloud(base_gripper_transform_matrix, *input_cloud, gripper_transformed_cloud_filtered_msg);
@@ -109,7 +109,7 @@ void transformPC(const sensor_msgs::PointCloud2ConstPtr& input_cloud){
     pcl_ros::transformPointCloud(pc_transform_matrix, gripper_transformed_cloud_filtered_msg, transformed_cloud_filtered_msg);
 
     sensor_msgs::PointCloud2 base_transformed_cloud_filtered_msg;
-    geometry_msgs::TransformStamped gripper_base_transform_msg = tfBuffer->lookupTransform("base_footprint", "l_gripper_tool_frame", ros::Time(0));
+    geometry_msgs::TransformStamped gripper_base_transform_msg = tfBuffer->lookupTransform("base_footprint", "l_gripper_tool_frame", ros::Time::now(), ros::Duration(60));
     Eigen::Matrix4f gripper_base_transform_matrix;
     pcl_ros::transformAsMatrix(gripper_base_transform_msg.transform, gripper_base_transform_matrix);
     pcl_ros::transformPointCloud(gripper_base_transform_matrix, transformed_cloud_filtered_msg, base_transformed_cloud_filtered_msg);

@@ -102,9 +102,9 @@ class TransformHandler():
         return self.data
 
     def initial_block(self):
-        x = np.arange(-9, -8)
-        y = np.arange(-10, -9)
-        z = np.arange(-6, 1)
+        x = np.arange(-9, 7) # -9, 7
+        y = np.arange(-12, -11) # [(-17, -11), (-11, -5), (-5, 1), (1, 7), (7, 12)], -17, 12
+        z = np.arange(-7, 12) # -7, 12
         x, y, z = np.meshgrid(x, y, z)
         grid = np.column_stack([x.ravel(), y.ravel(), z.ravel()])
         for step in grid:
@@ -132,7 +132,7 @@ class TransformHandler():
 
     def expand(self):
         expand = False
-        limit = 0 # 309
+        limit = 0 #309
         border_dict = self.get_border_values()
         expansion_grid_x = [border_dict["min_x"], border_dict["max_x"]]
         expansion_grid_y = [border_dict["min_y"], border_dict["max_y"]]
@@ -224,8 +224,8 @@ class WorkspaceAnalyzer():
         rospy.wait_for_service('/bio_ik/get_bio_ik')
         self.bio_ik_srv = rospy.ServiceProxy('/bio_ik/get_bio_ik', GetIK)
 
-        self.side = "side"
-        self.object_type = "can"
+        self.side = "top"
+        self.object_type = "book"
         self.verbose = rospy.get_param("/handover/handover_mover/verbose")
 
         # Setup FK
@@ -454,7 +454,7 @@ class WorkspaceAnalyzer():
                 if self.verbose:
                     rospy.loginfo("Hand pos diff: {}".format(hand_pos_diff))
                     rospy.loginfo("Gripper pos diff: {}".format(gripper_pos_diff))
-                if (hand_pos_diff or gripper_pos_diff) > deviation_limit:
+                if hand_pos_diff > deviation_limit or gripper_pos_diff > deviation_limit:
                     score = 1
 
             # Debug hand and gripper states
@@ -579,7 +579,7 @@ class WorkspaceAnalyzer():
                 return hand_pose
 
 def main():
-    #load = "workspace_analysis_20_02_2024_16_17.json"
+    #load = "workspace_analysis_can_side_grown.json"
     rospy.init_node("workspace_analyzer")
     load = None
     th = TransformHandler()
@@ -590,7 +590,7 @@ def main():
     else:
         rospy.loginfo("Loading data from file {}.".format(load))
         th.load(load)
-    expanded = False # True
+    expanded = False #True
     while expanded:
         rospy.loginfo("Workspace expanded.")
         expanded = th.expand()

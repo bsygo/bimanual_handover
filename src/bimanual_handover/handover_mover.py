@@ -84,6 +84,11 @@ class HandoverMover():
         self.pkg_path = rospkg.RosPack().get_path('bimanual_handover')
         self.verbose = rospy.get_param("handover_mover/verbose")
         self.debug = rospy.get_param("handover_mover/debug")
+        self.write_time = rospy.get_param("handover_mover/write_time")
+        if self.write_time:
+            self.time = datetime.now().strftime("%d_%m_%Y_%H_%M")
+            time_path = self.pkg_path + "/data/records/"
+            self.time_file = open('{}sampling_times_{}.txt'.format(time_path, self.time), 'w')
         if self.debug:
             self.debug_gripper_pose_pub = rospy.Publisher('debug/handover_mover/gripper_pose', PoseStamped, queue_size = 1, latch = True)
             self.debug_hand_pose_pub = rospy.Publisher('debug/handover_mover/hand_pose', PoseStamped, queue_size = 1, latch = True)
@@ -110,6 +115,8 @@ class HandoverMover():
     def shutdown(self):
         if self.analyse:
             self.bag.close()
+        if self.write_time:
+            self.time_file.close()
         roscpp_shutdown()
 
     def move_handover(self, req):
@@ -418,14 +425,14 @@ class HandoverMover():
         if self.analyse:
             score_limit = 0.0
         else:
-            if self.object_type == "can":
+            if self.object_type == "can" or self.object_type == "bleach" or self.object_type == "roll":
                 # From workspace analysis
                 if self.side == "side":
                     score_limit = 0.19
                 else:
-                    score_limit = 0.15#0.22 # old: can->0.51 book->0.56/0.57 new: can->0.2/0.21 book->0.38
+                    score_limit = 0.16#0.15#0.22 # old: can->0.51 book->0.56/0.57 new: can->0.2/0.21 book->0.38
             elif self.object_type == "book":
-                score_limit = 0.3
+                score_limit = 0.2
         deviation_limit = 0.01
         best_score = 1
         best_transform = None
@@ -483,8 +490,11 @@ class HandoverMover():
                 gripper_pos_diff, gripper_quat_diff = self.calculate_fk_diff(gripper_joint_state, transformed_gripper, "gripper")
                 if self.debug and self.verbose:
                     rospy.loginfo("Hand pos diff: {}".format(hand_pos_diff))
+                    rospy.loginfo("Hand quat diff: {}".format(hand_quat_diff))
                     rospy.loginfo("Gripper pos diff: {}".format(gripper_pos_diff))
-                if (hand_pos_diff or gripper_pos_diff) > deviation_limit:
+                    rospy.loginfo("Gripper quat diff: {}".format(gripper_quat_diff))
+                    rospy.loginfo("---")
+                if hand_pos_diff > deviation_limit or gripper_pos_diff > deviation_limit:
                     score = 1
 
             if self.debug:
@@ -661,6 +671,11 @@ class HandoverMover():
         elif chain_type == "gripper":
             pose_fk = self.kdl_kin_gripper.forward(target, base_link = "base_footprint", end_link = "l_gripper_tool_frame")
 
+        if self.debug and self.verbose:
+            rospy.loginfo("Pose type: {}".format(chain_type))
+            rospy.loginfo("Target pose:")
+            rospy.loginfo(target_pose)
+
         # Calculate pos dist
         fk_pos_list = pose_fk[:3, 3].flatten().tolist()[0]
         target_pos_list = [target_pose.pose.position.x, target_pose.pose.position.y, target_pose.pose.position.z]
@@ -701,7 +716,16 @@ class HandoverMover():
             self.debug_gripper_pose_pub.publish(gripper_pose)
 
         # Get required transforms
+        if self.write_time:
+            self.time_file.write('Sampling type: {} \n'.format(self.handover_pose_mode))
+            self.time_file.write('Object type: {} \n'.format(self.object_type))
+            self.time_file.write('Pose type: {} \n'.format(self.grasp_pose_mode))
+            self.time_file.write('Side: {} \n'.format(self.side))
+            self.time_file.write('Sampling start time: {} \n'.format(rospy.Time.now()))
         handover_transform, hand_joint_state, gripper_joint_state = self.get_handover_transform(gripper_pose, hand_pose)
+        if self.write_time:
+            self.time_file.write('Sampling finish time: {} \n'.format(rospy.Time.now()))
+            self.time_file.write('--- \n')
         base_handover_transform = self.tf_buffer.lookup_transform("handover_frame", "base_footprint", rospy.Time(0))
         handover_base_transform = self.tf_buffer.lookup_transform("base_footprint", "handover_frame", rospy.Time(0))
 
@@ -768,6 +792,11 @@ class HandoverMover():
         # Move hand to generated joint state
         self.hand.set_joint_value_target(hand_joint_state)
         self.hand.go()
+
+        base_gripper_transform = self.tf_buffer.lookup_transform("l_gripper_tool_frame", "base_footprint", rospy.Time(0))
+        final_hand = self.hand.get_current_pose()
+        final_hand = do_transform_pose(final_hand, base_gripper_transform)
+        rospy.loginfo(final_hand)
 
         return True, handover_transform
 
@@ -954,17 +983,23 @@ class HandoverMover():
                     min_point[x] = point[x]
 
         # Offsets need to be tested
-        if self.object_type == "can":
+        if self.object_type == "can" or self.object_type == "bleach" or self.object_type == "roll":
             if self.side == "top":
                 self.setup_fingers()
+                hand_pose.pose.position.x = min_point[0] + math.dist([max_point[0]], [min_point[0]])/2 - 0.05
+                hand_pose.pose.position.y = min_point[1] + math.dist([max_point[1]], [min_point[1]])/2 - 0.02# + 0.04
+                hand_pose.pose.position.z = max_point[2] + 0.03
+                hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(-1.5708, 3.14159, -1.5708))
+                '''
                 hand_pose.pose.position.x = min_point[0] + math.dist([max_point[0]], [min_point[0]])/2 - 0.01
                 hand_pose.pose.position.y = min_point[1] + math.dist([max_point[1]], [min_point[1]])/2 - 0.07
                 hand_pose.pose.position.z = max_point[2] + 0.05
                 hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(-1.5708, 3.14159, 0))
+                '''
                 return hand_pose
             elif self.side == "side":
                 self.setup_fingers_together()
-                hand_pose.pose.position.x = min_point[0] + math.dist([max_point[0]], [min_point[0]])/2 + 0.06
+                hand_pose.pose.position.x = min_point[0] + math.dist([max_point[0]], [min_point[0]])/2 + 0.07
                 hand_pose.pose.position.y = min_point[1] - 0.02
                 hand_pose.pose.position.z += 0.1
                 hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(0, -1.5708, -1.5708))
@@ -997,17 +1032,17 @@ class HandoverMover():
 
     def get_hand_pose_fixed(self):
         hand_pose = self.get_gripper_pose()
-        if self.object_type == "can":
+        if self.object_type == "can" or self.object_type == "bleach" or self.object_type == "roll":
             if self.side == "top":
                 self.setup_fingers()
-                hand_pose.pose.position.x += 0.0
+                hand_pose.pose.position.x += 0.03
                 hand_pose.pose.position.y += -0.04
                 hand_pose.pose.position.z += 0.167
                 hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(-1.5708, 3.14159, 0))
                 return hand_pose
             elif self.side == "side":
                 self.setup_fingers_together()
-                hand_pose.pose.position.x += 0.04
+                hand_pose.pose.position.x += 0.06
                 hand_pose.pose.position.y += -0.055
                 hand_pose.pose.position.z += 0.1
                 hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(0, -1.5708, -1.5708))

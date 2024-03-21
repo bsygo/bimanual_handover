@@ -25,6 +25,7 @@ from geometry_msgs.msg import WrenchStamped
 import actionlib
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from control_msgs.msg import FollowJointTrajectoryAction, FollowJointTrajectoryGoal
+import json
 
 class DemoCloser():
 
@@ -373,11 +374,12 @@ class ModelCloser():
     def __init__(self):
         # Setup and load model paths
         rospack = rospkg.RosPack()
-        pkg_path = rospack.get_path('bimanual_handover')
-        model_path = pkg_path + rospy.get_param("hand_closer/model_closer/model_path")
+        self.pkg_path = rospack.get_path('bimanual_handover')
+        model_path = self.pkg_path + rospy.get_param("hand_closer/model_closer/model_path")
         self.model = SAC.load(model_path)
-        self.model.load_replay_buffer(pkg_path + rospy.get_param("hand_closer/model_closer/model_replay_buffer_path"))
+        self.model.load_replay_buffer(self.pkg_path + rospy.get_param("hand_closer/model_closer/model_replay_buffer_path"))
         self.contact_modality = rospy.get_param("hand_closer/model_closer/contact_modality")
+        self.write_actions = rospy.get_param("hand_closer/model_closer/write_actions")
 
         # Set observation inputs
         self.joint_values_input = rospy.get_param("hand_closer/model_closer/observation_space/joint_values")
@@ -559,8 +561,12 @@ class ModelCloser():
         # Set object to the requested one
         if req.object_type == "can":
             self.current_object = [1, 0, 0]
-        elif req.object_type == "book":
+        elif req.object_type == "bleach":
             self.current_object = [0, 1, 0]
+        elif req.object_type == "roll":
+            self.current_object = [0, 0, 1]
+        #elif req.object_type == "book":
+        #    self.current_object = [0, 1, 0]
 
         # Set initial values
         self.initial_tactile = deepcopy(self.current_tactile)
@@ -568,10 +574,19 @@ class ModelCloser():
 
         # Generate and execute actions
         counter = 0
+        if self.write_actions:
+            actions = []
         while not self.contacts_made and counter < 50:
             action = self.get_next_action()
+            if self.write_actions:
+                actions.append(action.tolist())
             self.exec_action(action)
             counter += 1
+
+        if self.write_actions:
+            filepath = self.pkg_path + "/data/action.json"
+            with open(filepath, 'w') as file:
+                json.dump(actions, file)
 
         self.contacts_made = False
         return True

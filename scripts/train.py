@@ -82,7 +82,8 @@ def main():
             model = PPO("MlpPolicy", env, policy_kwargs = policy_kwargs, n_steps = 50, batch_size = 5, n_epochs = 50, verbose = 1, tensorboard_log = "{}/logs/tensorboard".format(path))
             rospy.loginfo('PPO model created.')
         elif model_type == "sac":
-            model = SAC("MlpPolicy", env, policy_kwargs = policy_kwargs, batch_size = 50, buffer_size = 12000, verbose = 1, tensorboard_log = "{}/logs/tensorboard".format(path))
+            #model = SAC("MlpPolicy", env, policy_kwargs = policy_kwargs, batch_size = 50, buffer_size = 12000, verbose = 1, tensorboard_log = "{}/logs/tensorboard".format(path))
+            model = SAC("MlpPolicy", env, batch_size = 50, buffer_size = 12000, verbose = 1, tensorboard_log = "{}/logs/tensorboard".format(path), ent_coef = 0.001)
             rospy.loginfo('SAC model created.')
 
         # Write model info into file

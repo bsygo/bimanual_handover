@@ -1,0 +1,8 @@
+Interesting models:
+29_02_2024_13_37: final
+28_02_2024_17_09: 0 coeff, timescaled reward, full input
+28_02_2024_13_15: 0.05 fixed, timescaled reward, constant input
+28_02_2024_10_08: 0.1 learned, deleted intermediate reward
+27_02_2024_12_38: fixed handover and grasp pose
+26:02:2024:10:24: double train time
+

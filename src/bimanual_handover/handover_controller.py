@@ -90,6 +90,8 @@ class HandoverCommander():
             rospy.loginfo('Training setup finished.')
             return True
 
+        input("wait")
+
         rospy.loginfo('Sending service request to hand_closer_srv.')
         closing_response = self.hand_closer_srv(object_type)
         rospy.loginfo('Closing response: {}'.format(closing_response.finished))
@@ -103,12 +105,16 @@ class HandoverCommander():
             direction = rospy.get_param("grasp_tester/direction")
             grasp_response = self.grasp_tester_srv(direction, False, side)
             rospy.loginfo('Grasp response: {}'.format(grasp_response.success))
+            '''
             if not grasp_response.success:
                 rospy.logerr('Executing grasp failed.')
                 if self.record_attempt:
                     input("Grasped deemed as failure. Please press enter to continue executing the grasp after you have prepared to catch the object. \n")
                 else:
                     return False
+            '''
+
+        input("wait")
 
         rospy.loginfo('Sending service request to finish_handover_srv.')
         self.finish_handover_srv('placeholder')

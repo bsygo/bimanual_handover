@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<launch>
+<group ns="test">
+<node name="psi_tester" pkg="bimanual_handover" type="test_psi.py" output="screen" />
+</group>
+</launch>

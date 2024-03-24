@@ -30,7 +30,7 @@ class GraspTester():
         self.fingers.set_max_velocity_scaling_factor(1.0)
         self.fingers.set_max_acceleration_scaling_factor(1.0)
         self.robot = RobotCommander()
-        self.psi = PlanningSceneInterface(ns = "/")
+        self.psi = PlanningSceneInterface(ns = "/", synchronous = True)
 
         # Setup services
         rospy.wait_for_service('/bio_ik/get_bio_ik')
@@ -157,7 +157,10 @@ class GraspTester():
         return joint_values
 
     def test_grasp(self, req):
+        distal_link_names = ["rh_thdistal", "rh_ffdistal", "rh_mfdistal", "rh_rfdistal", "rh_lfdistal"]
         finger_links = self.robot.get_link_names("right_fingers")
+        for link in distal_link_names:
+            finger_links.append(link)
         self.psi.disable_collision_detections(finger_links, finger_links)
         if self.debug:
             self.debug_snapshot_pub.publish(True)

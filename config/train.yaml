@@ -1,7 +1,7 @@
-timesteps: 10000
+timesteps: 12000
 model_type: 'sac'
-model_path: '' #/models/checkpoints/sac_checkpoint_29_11_2023_16_09_9400_steps.zip' # set either path from bimanual_handover package or empty string
-checkpoint: False
+model_path: '/models/checkpoints/sac_checkpoint_19_03_2024_15_34_8300_steps' #'/models/checkpoints/sac_checkpoint_29_02_2024_13_37_10900_steps' #'/models/checkpoints/sac_checkpoint_28_02_2024_17_09_7400_steps' #'/models/checkpoints/sac_checkpoint_28_02_2024_13_15_9200_steps' #/models/checkpoints/sac_checkpoint_27_02_2024_15_26_4000_steps' #/models/checkpoints/sac_checkpoint_26_02_2024_10_24_22000_steps' # set either path from bimanual_handover package or empty string
+checkpoint: True
 
 # Env paramters
 contact_modality: 'effort' # effort or tactile
@@ -19,7 +19,9 @@ observation_space:
 architecture:
     # List of layer sizes for actor network
     actor: 
-        - 64
+        - 256
+        - 256
     # List of layer sizes for critic network
     critic:
-        - 64
+        - 256
+        - 256

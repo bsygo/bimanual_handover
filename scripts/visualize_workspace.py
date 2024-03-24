@@ -349,6 +349,8 @@ class WorkspaceVisualizerV2():
         #self.layer_pub = rospy.Publisher("workspace_visualizer/pub_layers", Marker, queue_size = 1, latch = True)
         self.volume_sub = rospy.Subscriber("workspace_visualizer/set_volume", Volume, self.publish_volume)
         self.volume_pub = rospy.Publisher("workspace_visualizer/pub_volume", Marker, queue_size = 1, latch = True)
+        self.hand_marker_sub = rospy.Subscriber("workspace_visualizer/set_hand_marker", String, self.publish_initial_hand_positions)
+        self.hand_marker_pub = rospy.Publisher("workspace_visualizer/pub_hand_marker", Marker, queue_size = 1, latch = True)
         self.intersection_sub = rospy.Subscriber("workspace_visualizer/set_intersection", Int64, self.publish_intersection)
         self.intersection_pub = rospy.Publisher("workspace_visualizer/pub_intersection", Marker, queue_size = 1, latch = True)
 
@@ -370,7 +372,9 @@ class WorkspaceVisualizerV2():
         TransformHandler.save_independent(self.data, filepath)
         rospy.loginfo("Saved combined data.")
 
-    def print_min_max_values(self, msg):
+    def get_min_max_values(self, data = None):
+        if data is None:
+            data = self.data
         min_max_values = {}
         min_max_values["x_min"] = 1000
         min_max_values["y_min"] = 1000
@@ -378,7 +382,7 @@ class WorkspaceVisualizerV2():
         min_max_values["x_max"] = -1000
         min_max_values["y_max"] = -1000
         min_max_values["z_max"] = -1000
-        for transform in self.data.values():
+        for transform in data.values():
             if transform.x < min_max_values["x_min"]:
                 min_max_values["x_min"] = transform.x
             if transform.y < min_max_values["y_min"]:
@@ -391,6 +395,10 @@ class WorkspaceVisualizerV2():
                 min_max_values["y_max"] = transform.y
             if transform.z > min_max_values["z_max"]:
                 min_max_values["z_max"] = transform.z
+        return min_max_values
+
+    def print_min_max_values(self, msg):
+        min_max_values = self.get_min_max_values()
         rospy.loginfo("x min: {}".format(min_max_values["x_min"]))
         rospy.loginfo("y min: {}".format(min_max_values["y_min"]))
         rospy.loginfo("z min: {}".format(min_max_values["z_min"]))
@@ -421,6 +429,7 @@ class WorkspaceVisualizerV2():
     def cut_data(self, threshold):
         # Threshold is maximum number of failed solution allowed
         threshold = threshold.data
+        add_buffer = True
         x_layers, y_layers, z_layers = self.get_transforms_layers()
         cut_data = deepcopy(self.data)
         for layer in x_layers.keys():
@@ -453,6 +462,52 @@ class WorkspaceVisualizerV2():
                 for transform in z_layers[layer]:
                     if transform.key() in cut_data.keys():
                         del cut_data[transform.key()]
+        if add_buffer:
+            min_max_values = self.get_min_max_values(data = cut_data)
+            print(min_max_values)
+            if min_max_values["x_min"] - 1 in x_layers.keys():
+                for transform in x_layers[min_max_values["x_min"] - 1]:
+                    if not transform.key() in cut_data.keys():
+                        cut_data[transform.key()] = transform
+            if min_max_values["x_max"] + 1 in x_layers.keys():
+                for transform in x_layers[min_max_values["x_max"] + 1]:
+                    if not transform.key() in cut_data.keys():
+                        cut_data[transform.key()] = transform
+            if min_max_values["y_min"] - 1 in y_layers.keys():
+                for transform in y_layers[min_max_values["y_min"] - 1]:
+                    if not transform.key() in cut_data.keys():
+                        cut_data[transform.key()] = transform
+            if min_max_values["y_max"] + 1 in y_layers.keys():
+                for transform in y_layers[min_max_values["y_max"] + 1]:
+                    if not transform.key() in cut_data.keys():
+                        cut_data[transform.key()] = transform
+            if min_max_values["z_min"] - 1 in z_layers.keys():
+                for transform in z_layers[min_max_values["z_min"] - 1]:
+                    if not transform.key() in cut_data.keys():
+                        cut_data[transform.key()] = transform
+            if min_max_values["z_max"] + 1 in z_layers.keys():
+                for transform in z_layers[min_max_values["z_max"] + 1]:
+                    if not transform.key() in cut_data.keys():
+                        cut_data[transform.key()] = transform
+        # Cut off buffer excess
+        excess_keys = []
+        for transform in cut_data.values():
+            if transform.x < (min_max_values["x_min"] - 1):
+                excess_keys.append(transform.key())
+            if transform.x > (min_max_values["x_max"] + 1):
+                excess_keys.append(transform.key())
+            if transform.y < (min_max_values["y_min"] - 1):
+                excess_keys.append(transform.key())
+            if transform.y > (min_max_values["y_max"] + 1):
+                excess_keys.append(transform.key())
+            if transform.z < (min_max_values["z_min"] - 1):
+                excess_keys.append(transform.key())
+            if transform.z > (min_max_values["z_max"] + 1):
+                excess_keys.append(transform.key())
+        for key in excess_keys:
+            if key in cut_data.keys():
+                del cut_data[key]
+
         filepath = self.pkg_path + "/data/workspace_analysis/workspace_analysis_" + self.time + ".json"
         TransformHandler.save_independent(cut_data, filepath)
         rospy.loginfo("Saved cut data.")
@@ -521,6 +576,21 @@ class WorkspaceVisualizerV2():
         plt.hist(avg_score_data, bins = 100, range=(0, 1))
         plt.show()
 
+    def publish_initial_hand_positions(self, msg):
+        transform = self.data["[0, 0, 0]"]
+        print(transform.x)
+        print(transform.y)
+        print(transform.z)
+        marker = create_marker("hand_markers")
+        marker.scale = Vector3(0.01, 0.01, 0.01)
+        for i in range(len(transform.hand_positions)):
+            if transform.scores[i] == 1.0:
+                marker.colors.append(ColorRGBA(1, 0, 0, 1))
+            else:
+                marker.colors.append(ColorRGBA(0, 1, 0, 1))
+            marker.points.append(Point(transform.hand_positions[i].x, transform.hand_positions[i].y, transform.hand_positions[i].z))
+        self.hand_marker_pub.publish(marker)
+    
     def get_intersection_data(self, percentage):
         number_solutions_cutoff, min_score_cutoff, avg_score_cutoff = self.get_percentage_cutoff(percentage)
         recalculated_data = self.recalculate_avg_score()
@@ -593,7 +663,10 @@ class WorkspaceVisualizerV2():
         if data_type == "number_solutions":
             max_value = max(filtered_inverted_values)
             for value in filtered_inverted_values:
-                color_value = value/max_value
+                if max_value == 0:
+                    color_value = 0
+                else:
+                    color_value = value/max_value
                 colors.append(ColorRGBA(1 - color_value, color_value, 0, 1))
 
         markers = self.create_markers(filtered_transforms, colors)

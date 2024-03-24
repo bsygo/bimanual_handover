@@ -102,9 +102,9 @@ class TransformHandler():
         return self.data
 
     def initial_block(self):
-        x = np.arange(-9, 7) # -9, 7
-        y = np.arange(-12, -11) # [(-17, -11), (-11, -5), (-5, 1), (1, 7), (7, 12)], -17, 12
-        z = np.arange(-7, 12) # -7, 12
+        x = np.arange(-8, 7) # corrected: -8, 7 # -9, 7
+        y = np.arange(-12, 10) # corrected: -12, 10 # [(-17, -11), (-11, -5), (-5, 1), (1, 7), (7, 12)], -17, 12
+        z = np.arange(-9, -7) # corrected: -7, 11 # -7, 12
         x, y, z = np.meshgrid(x, y, z)
         grid = np.column_stack([x.ravel(), y.ravel(), z.ravel()])
         for step in grid:

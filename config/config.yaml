@@ -1,16 +1,17 @@
 # Handover controller
-handover_type: train # full or train
+handover_type: full # full or train
 initial_setup: fixed
 record_attempt: False
 
 # Handover mover
 handover_mover: 
-    grasp_pose_mode: fixed # pc or fixed
-    handover_pose_mode: sample # ik, fixed, sample or random_sample
-    sample_file: workspace_analysis_22_02_2024_14_23.bag
+    grasp_pose_mode: pc # pc or fixed
+    handover_pose_mode: load_sample # ik, fixed, sample, load_sample or random_sample
+    sample_file: workspace_analysis_can_side_intersection.bag #workspace_analysis_book_top_intersection.bag
     verbose: False
-    debug: True
-    analyse: True
+    debug: False
+    analyse: False
+    write_time: False
 
 # Grasp tester
 grasp_tester: 
@@ -18,7 +19,7 @@ grasp_tester:
     direction: y
 
 hand_closer: 
-    closer_type: demo # threshold, pca, model or demo
+    closer_type: model # threshold, pca, model or demo
 
     # Threshold closer
     debug: False
@@ -27,15 +28,17 @@ hand_closer:
 
     # Model closer
     model_closer:
-        model_path: '/models/checkpoints/sac_checkpoint_29_11_2023_16_09_5400_steps' # '/models/sac_model_29_11_2023_16_09' '/models/important_models/sac_checkpoint_23_10_2023_15_47_12900_steps'  # Without zip
-        model_replay_buffer_path: '/models/checkpoints/sac_checkpoint_29_11_2023_16_09_replay_buffer_5400_steps' # '/models/sac_model_29_11_2023_16_09_replay_buffer' '/models/important_models/sac_checkpoint_23_10_2023_15_47_replay_buffer_12900_steps'  # Without pkl
+        # Finished 12_01
+        write_actions: True
+        model_path: '/models/sac_model_29_02_2024_13_37' #'/models/checkpoints/sac_checkpoint_29_02_2024_13_37_9000_steps' #'/models/sac_model_28_02_2024_13_15' #'/models/checkpoints/sac_checkpoint_27_02_2024_15_26_100_steps' #'/models/sac_model_27_02_2024_15_26' # side model: '/models/sac_model_29_02_2024_13_37' # top model: '/models/sac_model_19_03_2024_15_34' #'/models/checkpoints/sac_checkpoint_29_11_2023_16_09_5400_steps' # '/models/sac_model_29_11_2023_16_09' '/models/important_models/sac_checkpoint_23_10_2023_15_47_12900_steps'  # Without zip
+        model_replay_buffer_path: '/models/sac_model_29_02_2024_13_37_replay_buffer' #'/models/checkpoints/sac_checkpoint_29_02_2024_13_37_replay_buffer_9000_steps' #'/models/sac_model_28_02_2024_13_15_replay_buffer' #'/models/checkpoints/sac_checkpoint_27_02_2024_15_26_replay_buffer_100_steps' #'/models/sac_model_27_02_2024_15_26_replay_buffer' # side model buffer: '/models/sac_model_29_02_2024_13_37_replay_buffer' # top model buffer: '/models/sac_model_19_03_2024_15_34_replay_buffer' #'/models/checkpoints/sac_checkpoint_29_11_2023_16_09_replay_buffer_5400_steps' # '/models/sac_model_29_11_2023_16_09_replay_buffer' '/models/important_models/sac_checkpoint_23_10_2023_15_47_replay_buffer_12900_steps'  # Without pkl
         contact_modality: effort # effort or tactile
 
         # Structure of observation space for given model
         observation_space:                                                              
             joint_values: False                                                         
-            pca: True                                                                   
-            effort: True                                                                
+            pca: True
+            effort: True
             tactile: False                                                              
             one_hot: True   
 

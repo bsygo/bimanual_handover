@@ -13,8 +13,10 @@ def main():
     while (not success) and count < 10:
         try:
             # (-1.1 -> 0.8), (-0.5 -> 0.4)
-            alphas = np.array([0, 0, 0, 0, 0])#[0.5, -0.53, -0.55])#[-1.02628934, -0.53937113, -0.62126708])#np.array([random.gauss(0, 0.5), random.gauss(0, 0.5), random.gauss(0, 0.5), random.gauss(0, 0.5), random.gauss(0, 0.5)])
-            syn_grasp_gen.move_joint_config(alphas)
+            alphas = np.array([-1.0, -0.5, 0.3])#[0.5, -0.53, -0.55])#[-1.02628934, -0.53937113, -0.62126708])#np.array([random.gauss(0, 0.5), random.gauss(0, 0.5), random.gauss(0, 0.5), random.gauss(0, 0.5), random.gauss(0, 0.5)])
+            joint_dict = syn_grasp_gen.gen_joint_config(alphas)
+            print(joint_dict['rh_LFJ5'])
+            # syn_grasp_gen.move_joint_config(alphas)
             success = True
         except Exception as e:
             print(e)

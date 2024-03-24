@@ -5,9 +5,13 @@ import rospy
 from std_msgs.msg import Int32
 
 def main():
-    rospy.init_node("object_selector")
-    pub = rospy.Publisher("/handover/object_selection", Int32, queue_size = 1)
-    objects = [1, 2]#, 3]
+    #rospy.init_node("object_selector")
+    #pub = rospy.Publisher("/handover/object_selection", Int32, queue_size = 1)
+    objects = [1, 2, 3]
+    object_list = [1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3]
+    random.shuffle(object_list)
+    print(object_list)
+    '''
     while not rospy.is_shutdown():
         input("Please press enter to select next object.")
         if rospy.is_shutdown():
@@ -18,6 +22,7 @@ def main():
         chosen_object_msg.data = chosen_object
         pub.publish(chosen_object)
         rospy.sleep(1)
+    '''
 
 if __name__ == "__main__":
     main()

@@ -152,15 +152,12 @@ class RealEnv(gym.Env):
 
     def reset_hand_pose(self):
         # Always select can, other objects not implemented
-        '''
         if self.current_object[0] == 1:
             object_type = "can"
         elif self.current_object[1] == 1:
-            object_type = "book"
+            object_type = "bleach"
         elif self.current_object[2] == 1:
-            object_type = "unknown"
-        '''
-        object_type = "can"
+            object_type = "roll"
         self.handover_controller_srv("train", object_type, self.current_side)
 
     def step(self, action):
@@ -201,6 +198,7 @@ class RealEnv(gym.Env):
                 reward += 0.1 * sum(contacts)
             elif self.contact_modality == "effort":
                 reward += 0.1 * sum(contacts)/2
+                #reward = reward * (1 - (self.current_attempt_step/self.max_attempt_steps))
 
             # Set termination reason
             if self.current_attempt_step >= self.max_attempt_steps:
@@ -270,6 +268,7 @@ class RealEnv(gym.Env):
 
                 # Determine reward based on how much the fingers closed compared to the previous configuration
                 reward = 0
+                '''
                 joint_diff = 0
                 # Sometimes the error "Failed to fetch current robot state" occurs here
                 # Possibly because finger joint values are not published in every joint_states msg.
@@ -285,6 +284,7 @@ class RealEnv(gym.Env):
                         joint_diff += - math.dist([current_joints[index]], [self.last_joints[index]])
                 reward = joint_diff
                 #print("Reward: {}".format(reward))
+                '''
             # Terminate with negative reward if desired movement failed
             except MoveItCommanderException as e:
                 rospy.logerr("Exception encountered: {}".format(e))

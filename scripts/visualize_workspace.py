@@ -347,6 +347,7 @@ class WorkspaceVisualizerV2():
         self.write_intersection_bag_sub = rospy.Subscriber("workspace_visualizer/write_intersection_bag", Int64, self.write_intersection_to_rosbag)
         #self.layer_sub = rospy.Subscriber("workspace_visualizer/set_layers", Layers, self.publish_layers)
         #self.layer_pub = rospy.Publisher("workspace_visualizer/pub_layers", Marker, queue_size = 1, latch = True)
+        self.volume_percentage_sub = rospy.Subscriber("workspace_visualizer/set_volume_percentage", Volume, self.publish_volume_percentage)
         self.volume_sub = rospy.Subscriber("workspace_visualizer/set_volume", Volume, self.publish_volume)
         self.volume_pub = rospy.Publisher("workspace_visualizer/pub_volume", Marker, queue_size = 1, latch = True)
         self.intersection_sub = rospy.Subscriber("workspace_visualizer/set_intersection", Int64, self.publish_intersection)
@@ -494,14 +495,23 @@ class WorkspaceVisualizerV2():
                     avg_score_data.append(recalculated_avg_score[transform.key()])
         return number_solutions_data, min_score_data, avg_score_data
 
-    def get_percentage_cutoff(self, percentage):
-        number_transforms = len(self.data.keys())
-        cutoff = int(number_transforms/100 * percentage)
+    def get_percentage_cutoff(self, percentage, mode = "smaller", ignore_invalid = True):
         number_solutions_data, min_score_data, avg_score_data = self.get_data_as_lists()
+        if not ignore_invalid:
+            number_transforms = len(self.data.keys())
+            cutoff = int(number_transforms/100 * percentage)
+        else:
+            number_transforms = len(number_solutions_data)
+            cutoff = int(number_transforms/100 * percentage)
 
-        number_solutions_data.sort(reverse = True)
-        min_score_data.sort()
-        avg_score_data.sort()
+        if mode == "smaller":
+            number_solutions_data.sort(reverse = True)
+            min_score_data.sort()
+            avg_score_data.sort()
+        elif mode == "greater":
+            number_solutions_data.sort()
+            min_score_data.sort(reverse = True)
+            avg_score_data.sort(reverse = True)
 
         rospy.loginfo("The best {} percent of transforms have equal or above {} solutions.".format(percentage, number_solutions_data[cutoff]))
         rospy.loginfo("The best {} percent of transforms have equal or above {} min_score.".format(percentage, min_score_data[cutoff]))
@@ -513,12 +523,21 @@ class WorkspaceVisualizerV2():
         number_solutions_data, min_score_data, avg_score_data = self.get_data_as_lists(msg.data)
 
         plt.hist(number_solutions_data, bins = int(max(number_solutions_data)), range=(0, max(number_solutions_data)))
+        plt.title("Valid Solution")
+        plt.xlabel("Number of valid solutions")
+        plt.ylabel("Number of positions")
         plt.show()
 
         plt.hist(min_score_data, bins = 100, range=(0, 1))
+        plt.title("Minimal Cost")
+        plt.xlabel("Cost")
+        plt.ylabel("Number of positions")
         plt.show()
 
         plt.hist(avg_score_data, bins = 100, range=(0, 1))
+        plt.title("Average Cost")
+        plt.xlabel("Cost")
+        plt.ylabel("Number of positions")
         plt.show()
 
     def get_intersection_data(self, percentage):
@@ -546,6 +565,21 @@ class WorkspaceVisualizerV2():
         markers = self.create_markers(filtered_transforms, colors)
         self.intersection_pub.publish(markers)
         rospy.loginfo("Intersection volume published.")
+
+    def publish_volume_percentage(self, msg):
+        number_cutoff, min_cutoff, avg_cutoff = self.get_percentage_cutoff(msg.threshold, mode = msg.mode)
+        if msg.data_type == "number_solutions":
+            msg.threshold = number_cutoff
+            if msg.mode == "smaller":
+                msg.mode = "greater"
+            else:
+                msg.mode = "smaller"
+        elif msg.data_type == "avg_score":
+            msg.threshold = avg_cutoff
+        elif msg.data_type == "min_score":
+            msg.threshold = min_cutoff
+        print(msg)
+        self.publish_volume(msg)
 
     def publish_volume(self, msg):
         data_type = msg.data_type

@@ -1,7 +1,7 @@
 # Handover controller
 handover_type: train # full or train
 initial_setup: fixed
-record_attempt: False
+record_attempt: True
 
 # Handover mover
 handover_mover: 
@@ -9,8 +9,8 @@ handover_mover:
     handover_pose_mode: fixed # ik, fixed, sample, load_sample or random_sample
     sample_file: workspace_analysis_22_02_2024_14_23.bag
     verbose: False
-    debug: False
-    analyse: False
+    debug: True
+    analyse: True
 
 # Grasp tester
 grasp_tester: 

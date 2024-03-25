@@ -1,6 +1,5 @@
 data/old_data/
 data/bags/*
-data/*
 models/*
 !models/important_models/
 logs/

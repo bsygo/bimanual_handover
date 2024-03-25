@@ -32,4 +32,11 @@ can side x pos 0.05 error corrected
 22_36+: last 6 slices
 
 24_03_2024:
-10_55: bottom slice 
+10_55: min z slice book top
+13_29: max y slice can side y neg
+14_34: min x slice can side 
+14_37: max x slice book top
+14_41: min x slice can side y neg
+14_44: min x slice can side x pos
+22_31: max y slice can side x pos
+

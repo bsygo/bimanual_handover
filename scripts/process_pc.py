@@ -10,6 +10,9 @@ from geometry_msgs.msg import PoseStamped
 global pub, received, left_arm
 
 def process_pc(req):
+    '''
+    Wait for processed pc and move left arm back to initial pose once received.
+    '''
     global pub, received, left_arm
     rospy.loginfo("Process_pc service request received.")
     pub.publish(req.publish)
@@ -27,6 +30,9 @@ def process_pc(req):
     return True
 
 def pc_received(pc):
+    '''
+    Set mode to wait for next point cloud.
+    '''
     global received
     received = True
 

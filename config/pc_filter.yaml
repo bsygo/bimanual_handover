@@ -9,8 +9,7 @@ cloud_filter_chain:
         filter/do_clipping: false
         filter/do_shadow_test: false
         bounding_box/compute: false
-        body_model/inflation/scale: 2.3 #2.1 #1.7
-        #body_model/inflation/contains_test/padding: 0.05
+        body_model/inflation/scale: 2.3
         transforms/timeout/reachable: 1.0
         transforms/timeout/unreachable: 1.0
         only_links:

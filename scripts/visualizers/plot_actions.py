@@ -6,6 +6,9 @@ import matplotlib.pyplot as plt
 import json
 
 def plot_actions_together(filenames):
+    '''
+    Plot all actions of each file in filenames together.
+    '''
     pkg_path = rospkg.RosPack().get_path('bimanual_handover')
     labels = ['First Action', 'Second Action', 'Third Action']
     first_action, second_action, third_action = read_data(filenames, pkg_path)
@@ -21,6 +24,9 @@ def plot_actions_together(filenames):
         plt.show()
 
 def plot_actions_seperate(filenames):
+    '''
+    Plot each action for each file in filenames seperately.
+    '''
     pkg_path = rospkg.RosPack().get_path('bimanual_handover')
     labels = ['Chips Can', 'Bleach Bottle', 'Paper Roll']
     first_action, second_action, third_action = read_data(filenames, pkg_path)
@@ -50,6 +56,9 @@ def plot_actions_seperate(filenames):
     plt.show()
 
 def read_data(filenames, pkg_path):
+    '''
+    Helper function to read action data from json file.
+    '''
     full_first_action_data = []
     full_second_action_data = []
     full_third_action_data = []

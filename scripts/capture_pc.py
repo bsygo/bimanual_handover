@@ -13,6 +13,10 @@ from tf2_geometry_msgs import do_transform_pose
 global pub, publish, left_arm, tf_buffer, debug_pub, pub_time
 
 def save_pc(new_pc):
+    '''
+    Check every time the robot perceives a point cloud if it needs to send the
+    point cloud towards further processing. Only do so if request came in.
+    '''
     global pub, publish, pub_time
     # Only publish when requested and pc is recent
     if publish and (new_pc.header.stamp > pub_time):
@@ -20,6 +24,10 @@ def save_pc(new_pc):
         publish = False
 
 def publish_pc(publish_pc):
+    '''
+    Move left arm to object observation pose in front of the camera if observation gets requested.
+    Also start the point clooud process chain once the arm is in the correct pose.
+    '''
     global publish, left_arm, tf_buffer, debug_pub, pub_time
     rospy.loginfo("Publish_pc request received.")
 
@@ -52,6 +60,7 @@ def main():
     left_arm.set_max_velocity_scaling_factor(1.0)
     left_arm.set_max_acceleration_scaling_factor(1.0)
 
+    # Set point cloud input channel depending if in demo mode or not
     if len(sys.argv) < 2:
         rospy.logerr("Missing argument for capture_pc.")
         return

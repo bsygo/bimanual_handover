@@ -15,6 +15,7 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <tf2_eigen/tf2_eigen.h>
 
+// Global publishers and other objects.
 ros::Publisher cropped_pub;
 ros::Publisher final_pub;
 ros::Publisher debug_pub;
@@ -25,6 +26,7 @@ tf2_ros::Buffer *tfBuffer;
 tf2_ros::TransformListener *tfListener;
 
 tf2::Transform getSamplePoseTransform(){
+    // Return transform to final pose for the point cloud.
     geometry_msgs::PoseStamped sample_pose;
     sample_pose.header.frame_id = "base_footprint";
     geometry_msgs::Point position;
@@ -37,7 +39,6 @@ tf2::Transform getSamplePoseTransform(){
     sample_pose.pose.position = position;
     sample_pose.pose.orientation = rotation_msg;
     debug_sample_pose_pub.publish(sample_pose);
-    //ROS_INFO_STREAM(sample_pose);
     
     tf2::Transform sample_pose_transform;
     tf2::fromMsg(sample_pose.pose, sample_pose_transform);
@@ -79,23 +80,23 @@ void transformPC(const sensor_msgs::PointCloud2ConstPtr& input_cloud){
     ros::AsyncSpinner spinner(1);
     spinner.start();
 
+    // Initialize gripper pose
     geometry_msgs::PoseStamped gripper_pose = left_arm->getCurrentPose(); 
-
-    // Transform pointcloud to sampling pose
     tf2::Transform gripper_pose_transform;
     tf2::Transform sample_pose_transform;
 
+    // Get tranform from gripper pose
     debug_gripper_pose_pub.publish(gripper_pose);
-    //ROS_INFO_STREAM(gripper_pose);
     tf2::fromMsg(gripper_pose.pose, gripper_pose_transform);
     sample_pose_transform = getSamplePoseTransform();
 
+    // Get transform from gripper pose to goal pose
     geometry_msgs::Pose sample_pose;
     tf2::toMsg(sample_pose_transform, sample_pose);
     tf2::Transform pc_transform = gripper_pose_transform.inverseTimes(sample_pose_transform);
     geometry_msgs::Transform pc_transform_msg = tf2::toMsg(pc_transform);
 
-    //debug_pub.publish(input_cloud);
+    // Transform point cloud to gripper frame
     sensor_msgs::PointCloud2 gripper_transformed_cloud_filtered_msg;
     geometry_msgs::TransformStamped base_gripper_transform_msg = tfBuffer->lookupTransform("l_gripper_tool_frame", "base_footprint", ros::Time::now(), ros::Duration(60));
     Eigen::Matrix4f base_gripper_transform_matrix;
@@ -103,11 +104,13 @@ void transformPC(const sensor_msgs::PointCloud2ConstPtr& input_cloud){
     pcl_ros::transformPointCloud(base_gripper_transform_matrix, *input_cloud, gripper_transformed_cloud_filtered_msg);
     gripper_transformed_cloud_filtered_msg.header.frame_id = "l_gripper_tool_frame";
     
+    // Transform point cloud from gripper pose to goal pose
     sensor_msgs::PointCloud2 transformed_cloud_filtered_msg;
     Eigen::Matrix4f pc_transform_matrix;
     pcl_ros::transformAsMatrix(pc_transform_msg, pc_transform_matrix);
     pcl_ros::transformPointCloud(pc_transform_matrix, gripper_transformed_cloud_filtered_msg, transformed_cloud_filtered_msg);
 
+    // Tranform point cloud into base footprint frame
     sensor_msgs::PointCloud2 base_transformed_cloud_filtered_msg;
     geometry_msgs::TransformStamped gripper_base_transform_msg = tfBuffer->lookupTransform("base_footprint", "l_gripper_tool_frame", ros::Time::now(), ros::Duration(60));
     Eigen::Matrix4f gripper_base_transform_matrix;
@@ -129,7 +132,7 @@ int main(int argc, char **argv){
     left_arm = new moveit::planning_interface::MoveGroupInterface(opt);
     // Make sure state monitor is initialized
     ros::Duration(0.5).sleep();
-    //geometry_msgs::PoseStamped gripper_pose = left_arm->getCurrentPose(); 
+    // Setup subscribers and publishers
     ros::Subscriber raw_sub = n.subscribe("pc_raw", 10, cropPC);
     cropped_pub = n.advertise<sensor_msgs::PointCloud2>("pc_cropped", 10, true);
     ros::Subscriber filtered_sub = n.subscribe("pc_filtered", 10, transformPC);

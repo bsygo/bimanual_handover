@@ -120,16 +120,9 @@ class GraspTester():
         return filtered_joint_state
 
     def move_bio_ik(self, target_pose):
-        # Disable collisions of the hand with itself to allow movement when
-        # fingers touch each other
-        links = self.robot.get_link_names("right_arm")
-        self.psi.disable_collision_detections(links, links)
-
-        # Disable collision detection for the request to allow solutions if the
-        # fingers touch each other
+        # Move right arm to target pose through bio_ik
         request = self.prepare_bio_ik_request('right_arm')
         request = self.add_goals(request, target_pose.pose)
-        request.avoid_collisions = False
         response = self.bio_ik_srv(request).ik_response
         if not response.error_code.val == 1:
             if self.debug:
@@ -144,6 +137,9 @@ class GraspTester():
             raise Exception("Moving to pose \n {} \n failed. No path was found to the joint state \n {}.".format(target_pose, filtered_joint_state))
 
     def enforce_bounds(self, joint_values):
+        '''
+        Helper functions to keep joint values within joint limits.
+        '''
         joint_names = self.right_arm.get_active_joints()
         for i in range(len(joint_names)):
             joint_object = self.robot.get_joint(joint_names[i])
@@ -157,13 +153,15 @@ class GraspTester():
         return joint_values
 
     def test_grasp(self, req):
+        # Disable collisions of the hand with itself to allow movement when
+        # fingers touch each other
         distal_link_names = ["rh_thdistal", "rh_ffdistal", "rh_mfdistal", "rh_rfdistal", "rh_lfdistal"]
         finger_links = self.robot.get_link_names("right_fingers")
         for link in distal_link_names:
             finger_links.append(link)
         self.psi.disable_collision_detections(finger_links, finger_links)
-        if self.debug:
-            self.debug_snapshot_pub.publish(True)
+
+        # Get force before movement
         if req.direction == "x":
             prev_ft = deepcopy(self.current_force_x)
         elif req.direction == "y":
@@ -173,7 +171,11 @@ class GraspTester():
         else:
             rospy.logerr("Unknown direction {} for grasp_tester. Currently only x, y and z are implemented.")
             return False
-        #rospy.loginfo("Initial force value: {}".format(prev_ft))
+
+        # Debug
+        if self.debug:
+            self.debug_snapshot_pub.publish(True)
+            rospy.loginfo("Initial force value: {}".format(prev_ft))
 
         # Get current pose
         current_pose = self.right_arm.get_current_pose()
@@ -195,8 +197,13 @@ class GraspTester():
         # Move to goal pose
         self.move_bio_ik(goal_pose)
 
+        # Debug
         if self.debug:
             self.debug_snapshot_pub.publish(False)
+            rospy.loginfo("Afterwards force value: {}".format(cur_ft))
+            rospy.loginfo("Force diff: {}".format(abs(prev_ft - cur_ft)))
+
+        # Get force after movement
         if req.direction == 'x':
             cur_ft = deepcopy(self.current_force_x)
         elif req.direction == 'y':
@@ -204,9 +211,7 @@ class GraspTester():
         elif req.direction == 'z':
             cur_ft = deepcopy(self.current_force_z)
 
-        if self.debug:
-            rospy.loginfo("Afterwards force value: {}".format(cur_ft))
-
+        # Reset fingers before moveing back during training to prevent object movement.
         if req.train:
             self.fingers.set_named_target('open')
             if req.side == "top":
@@ -232,9 +237,7 @@ class GraspTester():
                 rospy.logerr("Encountered exception [ {} ] while moving to pre-test pose with bounded joints.".format(e))
                 input("Please decide how to solve this issue and press Enter to continue.")
 
-        if self.debug:
-            rospy.loginfo("Force diff: {}".format(abs(prev_ft - cur_ft)))
-
+        # Check force difference
         if abs(prev_ft - cur_ft) >= 2:
             return True
         else:

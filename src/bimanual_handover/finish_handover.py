@@ -53,10 +53,8 @@ class FinishHandover():
         plan, fraction = self.left_arm.compute_cartesian_path([gripper_pose.pose], 0.01, 0.0)
         if fraction < 0.8:
             rospy.loginfo('Only {} of the path to remove the gripper from the object found.'.format(fraction))
-            #return False
+            return False
         self.left_arm.execute(plan)
-
-        input("wait")
 
         # Move left arm to side
         self.left_arm.set_named_target('left_arm_to_side')

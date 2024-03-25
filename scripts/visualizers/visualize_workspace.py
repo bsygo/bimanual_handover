@@ -609,7 +609,7 @@ class WorkspaceVisualizerV2():
                 marker.colors.append(ColorRGBA(0, 1, 0, 1))
             marker.points.append(Point(transform.hand_positions[i].x, transform.hand_positions[i].y, transform.hand_positions[i].z))
         self.hand_marker_pub.publish(marker)
-    
+
     def get_intersection_data(self, percentage):
         number_solutions_cutoff, min_score_cutoff, avg_score_cutoff = self.get_percentage_cutoff(percentage)
         recalculated_data = self.recalculate_avg_score()
@@ -655,6 +655,8 @@ class WorkspaceVisualizerV2():
         data_type = msg.data_type
         threshold = msg.threshold
         mode = msg.mode
+        alpha_scaling = False
+        halved = False
 
         # Ignore invalid solutions for avg_score
         if data_type == "avg_score":
@@ -662,9 +664,15 @@ class WorkspaceVisualizerV2():
         elif data_type == "number_solutions":
             filtered_inverted_values = []
 
+        if halved:
+            min_max_values = self.get_min_max_values()
+
         filtered_transforms = []
         colors = []
         for transform in self.data.values():
+            if halved:
+                if transform.z > (min_max_values["z_max"] + min_max_values["z_min"]):
+                    continue
             if data_type == "number_solutions":
                 inverted_value = (343 - transform.number_solutions)
                 if mode == "greater":
@@ -701,7 +709,10 @@ class WorkspaceVisualizerV2():
                     color_value = 0
                 else:
                     color_value = value/max_value
-                colors.append(ColorRGBA(1 - color_value, color_value, 0, 1))
+                if alpha_scaling:
+                    colors.append(ColorRGBA(1 - color_value, color_value, 0, color_value))
+                else:
+                    colors.append(ColorRGBA(1 - color_value, color_value, 0, 1))
 
         markers = self.create_markers(filtered_transforms, colors)
         self.volume_pub.publish(markers)

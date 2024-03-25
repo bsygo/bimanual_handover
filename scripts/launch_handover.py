@@ -5,9 +5,13 @@ from bimanual_handover_msgs.srv import HandoverControllerSrv
 import sys
 
 def main():
+    '''
+    Start the handover process for the stated object and grasp type.
+    '''
     rospy.init_node("launch_handover_node")
     rospy.wait_for_service('/handover/handover_controller_srv')
     srv = rospy.ServiceProxy('/handover/handover_controller_srv', HandoverControllerSrv)
+    # Process input or set default values.
     if len(sys.argv) < 3:
         rospy.loginfo('Missing parameters to call handover_controller. Calling with default parameters.')
         object_type = 'can'

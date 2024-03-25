@@ -8,6 +8,9 @@ from geometry_msgs.msg import PoseStamped
 global head, left_arm, tf_buffer, right_arm, hand, gripper, torso
 
 def reset_right_arm():
+    '''
+    Move the right arm into default configuration and spread fingers of right hand.
+    '''
     global right_arm, hand
     # Values from spread_hand script in tams_motorhand
     joint_values = [-0.07571641056445733, -0.05002482770016008, -0.23131151280059523, 0.007094041984987078, 0.02542655924667998, 0.349065850399, 0.020020591171226638, -0.31699402670752413, 0.028414672906931473, 0.08222580050009387, 0.349065850399, 0.008929532157657268, 0.002924555968379014, 0.010452066813274026, 0.349065850399, -0.11378487918959583, 0.014028701132086206, 0.0011093194398269044, 0.349065850399, -0.4480210297267876, 0.048130900509343995, 0.0018684990049854181, -0.11587408526722277, 0.349065850399]
@@ -17,6 +20,9 @@ def reset_right_arm():
     right_arm.go()
 
 def grasp_object():
+    '''
+    Interact with human operator to grasp object initially with the left gripper.
+    '''
     global gripper
     response = input("Do you want to change the current object? [Y/n]")
     if response in ["n", "N", "no", "No"]:
@@ -29,28 +35,16 @@ def grasp_object():
     gripper.set_named_target('closed')
     gripper.go()
 
-def move_pose(target_pose):
-    global head, left_arm
-    left_arm.set_pose_target(target_pose)
-    left_arm.go()
-    # Call look at service for head
-    return
-
-def move_head_only():
-    global head
-    head.set_joint_value_target([0.0, 0.872665])
-    head.go()
-
 def move_fixed():
+    '''
+    Move head and torso of the robot into the default configuration for the handover.
+    Also move the left arm into the correct pose to initially grasp the object with the gripper.
+    '''
     global head, left_arm, torso
     head.set_joint_value_target([0.0, 0.872665])
     head.go()
     torso.set_joint_value_target([0.0167])
     torso.go()
-    '''
-    joint_values = dict(l_shoulder_pan_joint=0.6877300386981536, l_shoulder_lift_joint=0.0014527860014343034, l_upper_arm_roll_joint=1.988643872487468, l_forearm_roll_joint=-0.48605351559908117, l_elbow_flex_joint=-1.7236114019354039, l_wrist_flex_joint=-0.6663365621588351, l_wrist_roll_joint=-0.9874690540253139)
-    left_arm.set_joint_value_target(joint_values)
-    '''
     target_pose = PoseStamped()
     target_pose.header.frame_id = "base_footprint"
     target_pose.pose.position.x = 0.5027
@@ -65,11 +59,6 @@ def initial_setup(req):
     if req.mode == "fixed":
         move_fixed()
         grasp_object()
-    elif req.mode == "pose":
-        move_pose(req.target_pose)
-        grasp_object()
-    elif req.mode == "head":
-        move_head_only()
     return True
 
 def shutdown():

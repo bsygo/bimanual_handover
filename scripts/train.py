@@ -38,10 +38,15 @@ def main():
     env_check = rospy.get_param("env_check")
     checkpoint = rospy.get_param("checkpoint")
     model_path = rospy.get_param("model_path")
+    entropy_coefficient = rospy.get_param("architecture/entropy_coefficient")
     actor_architecture = rospy.get_param("architecture/actor")
     critic_architecture = rospy.get_param("architecture/critic")
-    policy_kwargs = dict(activation_fn=th.nn.ReLU,
-                         net_arch=dict(pi=actor_architecture, qf=critic_architecture))
+    if model_type == 'sac':
+        policy_kwargs = dict(activation_fn=th.nn.ReLU,
+                             net_arch=dict(pi=actor_architecture, qf=critic_architecture))
+    else:
+        policy_kwargs = dict(activation_fn=th.nn.ReLU,
+                             net_arch=dict(pi=actor_architecture, vf=critic_architecture))
 
     # Set logging parameters
     if model_path == '':
@@ -82,8 +87,7 @@ def main():
             model = PPO("MlpPolicy", env, policy_kwargs = policy_kwargs, n_steps = 50, batch_size = 5, n_epochs = 50, verbose = 1, tensorboard_log = "{}/logs/tensorboard".format(path))
             rospy.loginfo('PPO model created.')
         elif model_type == "sac":
-            #model = SAC("MlpPolicy", env, policy_kwargs = policy_kwargs, batch_size = 50, buffer_size = 12000, verbose = 1, tensorboard_log = "{}/logs/tensorboard".format(path))
-            model = SAC("MlpPolicy", env, batch_size = 50, buffer_size = 12000, verbose = 1, tensorboard_log = "{}/logs/tensorboard".format(path), ent_coef = 0.001)
+            model = SAC("MlpPolicy", env, policy_kwargs = policy_kwargs, batch_size = 50, buffer_size = 12000, verbose = 1, tensorboard_log = "{}/logs/tensorboard".format(path), ent_coef = entropy_coefficient)
             rospy.loginfo('SAC model created.')
 
         # Write model info into file

@@ -6,12 +6,6 @@
         <arg name="demo_pc" value="$(arg demo)" />
     </include>
     <rosparam file="$(find bimanual_handover)/config/config.yaml" />
-    <!-- Upload everything needed to be able to create a robot model with the additional link rh_grasp fro plannning. -->
-    <param name="robot_description_grasp" command="xacro '$(find bimanual_handover)/robots/tams_pr2.urdf.xacro'" />
-    <param name="robot_description_grasp_semantic" textfile="$(find bimanual_handover)/robots/tams_pr2.srdf" />
-    <group ns="robot_description_grasp_kinematics">
-        <rosparam command="load" file="$(find bimanual_handover)/robots/kinematics.yaml" />
-    </group>
     <node name="initial_setup_node" pkg="bimanual_handover" type="initial_setup.py" output="screen" />
     <node name="process_pc_node" pkg="bimanual_handover" type="process_pc.py" output="screen" />
     <node name="capture_pc_node" pkg="bimanual_handover" type="capture_pc.py" output="screen" args="$(arg demo)"/>
@@ -21,8 +15,6 @@
     <node name="handover_mover_node" pkg="bimanual_handover" type="handover_mover.py" output="screen" />
     <node name="finish_handover_node" pkg="bimanual_handover" type="finish_handover.py" output="screen" />
     <node name="handover_controller_node" pkg="bimanual_handover" type="handover_controller.py" output="screen" />
-    <!-- <node name="launch_handover_node" pkg="bimanual_handover" type="launch_handover.py" output="screen" args="$(arg grasp_mode) $(arg handover_type) $(arg object_type)" /> -->
-    <!-- <node name="collision_checker" pkg="bimanual_handover" type="collision_checker" output="screen" /> -->
     </group>
     <node name="bio_ik_srv" pkg="bio_ik_service" type="bio_ik_service" output="screen" />
 </launch>

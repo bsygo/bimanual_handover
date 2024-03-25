@@ -9,6 +9,9 @@ from copy import deepcopy
 global transform
 
 def set_transform(pose):
+    '''
+    Update the current transform for the handover frame to the requested pose.
+    '''
     global transform
     new_transform = TransformStamped()
     new_transform.header.frame_id = pose.header.frame_id
@@ -18,6 +21,9 @@ def set_transform(pose):
     transform = new_transform
 
 def broadcast_transform():
+    '''
+    Constantly broadcast the current transform for the handover frame.
+    '''
     global transform
     rate = rospy.Rate(5)
     broadcaster = TransformBroadcaster()
@@ -28,6 +34,9 @@ def broadcast_transform():
         rate.sleep()
 
 def init_transform():
+    '''
+    Publish default transform during node startup so transform broadcaster can start.
+    '''
     initial_pose = PoseStamped()
     initial_pose.header.frame_id = "base_footprint"
     initial_pose.pose.orientation.w = 1

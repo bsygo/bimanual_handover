@@ -1425,6 +1425,14 @@ Visualization Manager:
         {}
       Queue Size: 100
       Value: true
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /workspace_visualizer/pub_intersection
+      Name: Marker
+      Namespaces:
+        volume: true
+      Queue Size: 100
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -1441,7 +1449,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 1.7770264148712158
+      Distance: 2.4859836101531982
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -1449,17 +1457,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.75
       Focal Point:
-        X: 0.4410949945449829
-        Y: 0.019193757325410843
-        Z: 0.8504354357719421
+        X: 0.4389359951019287
+        Y: -0.07372865080833435
+        Z: 0.850483775138855
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.5697963237762451
+      Pitch: 1.5397963523864746
       Target Frame: base_footprint
-      Yaw: 6.274942874908447
+      Yaw: 0.0017571458593010902
     Saved: ~
 Window Geometry:
   Displays:

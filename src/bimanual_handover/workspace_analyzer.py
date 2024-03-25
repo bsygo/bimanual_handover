@@ -581,7 +581,7 @@ class WorkspaceAnalyzer():
 def main():
     #load = "workspace_analysis_can_side_grown.json"
     rospy.init_node("workspace_analyzer")
-    load = None
+    #load = None
     th = TransformHandler()
     rospy.loginfo("TransformHandler started.")
     if load is None:

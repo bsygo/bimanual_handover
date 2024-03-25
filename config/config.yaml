@@ -1,7 +1,7 @@
 # Handover controller
 handover_type: full # full or train
 initial_setup: fixed
-record_attempt: False
+record_attempt: True
 
 # Handover mover
 handover_mover: 

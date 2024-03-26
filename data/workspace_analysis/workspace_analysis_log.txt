@@ -40,3 +40,5 @@ can side x pos 0.05 error corrected
 14_44: min x slice can side x pos
 22_31: max y slice can side x pos
 
+25_03_2024:
+16_58: min z slice book top (hopefully last one added below previous one)

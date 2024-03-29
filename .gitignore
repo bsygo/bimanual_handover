@@ -4,6 +4,7 @@ logs/*
 build/*
 dist/*
 src/bimanual_handover.*
-!data/workspace_analysis/*.bag
+!data/workspace_analysis/workspace_analysis_side_intersection.bag
+!data/workspace_analysis/workspace_analysis_top_intersection.bag
 !data/pc_full.pcd
 !data/pub_pcl.sh

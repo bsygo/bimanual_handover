@@ -1,17 +1,17 @@
 # Handover controller
-handover_type: full # full or train
+handover_type: train # full or train
 initial_setup: fixed
 record_attempt: False
 
 # Handover mover
 handover_mover: 
     grasp_pose_mode: fixed # pc or fixed
-    handover_pose_mode: fixed # fixed, load_sample or random_sample
-    sample_file: workspace_analysis_can_side_intersection.bag 
-    # side sample file: workspace_analysis_can_side_intersection.bag 
-    # top sample file: workspace_analysis_book_top_intersection.bag
-    verbose: False
+    handover_pose_mode: load_sample # fixed, load_sample or random_sample
+    sample_file: workspace_analysis_top_intersection.bag 
+    # side sample file: workspace_analysis_side_intersection.bag 
+    # top sample file: workspace_analysis_top_intersection.bag
     debug: False
+    verbose: False
     write_time: False
 
 # Grasp tester
@@ -24,19 +24,17 @@ hand_closer:
 
     # Threshold closer
     debug: False
-    collect: False
     mode: effort # effort or tactile
 
     # Model closer
     model_closer:
-        write_actions: True
+        write_actions: False
         model_path: '/models/sac_model_29_02_2024_13_37'
         # side model: '/models/sac_model_29_02_2024_13_37' 
         # top model: '/models/sac_model_19_03_2024_15_34'
         model_replay_buffer_path: '/models/sac_model_29_02_2024_13_37_replay_buffer'
         # side model buffer: '/models/sac_model_29_02_2024_13_37_replay_buffer' 
         # top model buffer: '/models/sac_model_19_03_2024_15_34_replay_buffer'
-        contact_modality: effort # effort or tactile
 
         # Structure of observation space for given model
         observation_space:                                                              

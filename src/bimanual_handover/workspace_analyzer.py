@@ -23,6 +23,9 @@ from moveit_msgs.msg import DisplayRobotState
 import rospkg
 
 class StepTransform():
+    '''
+    Class to handle one transform.
+    '''
 
     def __init__(self, x, y, z):
         # Initialize coordinates
@@ -43,6 +46,9 @@ class StepTransform():
         self.hand_positions = None
 
     def get_transform_msgs(self):
+        '''
+        Return all transforms for this pose as transform msgs.
+        '''
         rotations = [[x, y, z] for x in range(self.rot_low_step, self.rot_up_step + 1) for y in range(self.rot_low_step, self.rot_up_step + 1) for z in range(self.rot_low_step, self.rot_up_step + 1)]
         transformations = []
         for rotation in rotations:
@@ -56,9 +62,15 @@ class StepTransform():
         return transformations
 
     def is_evaluated(self):
+        '''
+        Return if position already was evaluated with all metrics.
+        '''
         return self.number_solutions is None
 
     def set_eval_results(self, number_solutions, min_score, avg_score, scores, gripper_positions, hand_positions):
+        '''
+        Set evlauation results for each metric.
+        '''
         self.number_solutions = number_solutions
         self.min_score = min_score
         self.avg_score = avg_score
@@ -67,6 +79,9 @@ class StepTransform():
         self.hand_positions = hand_positions
 
     def key(self):
+        '''
+        Return key value for saving in dict.
+        '''
         return str([self.x, self.y, self.z])
 
     def serialize(self):
@@ -91,6 +106,9 @@ class StepTransform():
         return self
 
 class TransformHandler():
+    '''
+    Handle the workspace analysis.
+    '''
 
     def __init__(self):
         self.wa = WorkspaceAnalyzer()
@@ -99,12 +117,18 @@ class TransformHandler():
         self.pkg_path = rospkg.RosPack().get_path('bimanual_handover')
 
     def get_data(self):
+        '''
+        Return the currently loaded data.
+        '''
         return self.data
 
     def initial_block(self):
-        x = np.arange(-8, 7) # corrected: -8, 7 # -9, 7
-        y = np.arange(-12, 10) # corrected: -12, 10 # [(-17, -11), (-11, -5), (-5, 1), (1, 7), (7, 12)], -17, 12
-        z = np.arange(-9, -7) # corrected: -7, 11 # -7, 12
+        '''
+        Set the initial starting block from where the workspace grid grows.
+        '''
+        x = np.arange(0, 1)
+        y = np.arange(0, 1)
+        z = np.arange(0, 1)
         x, y, z = np.meshgrid(x, y, z)
         grid = np.column_stack([x.ravel(), y.ravel(), z.ravel()])
         for step in grid:
@@ -114,6 +138,9 @@ class TransformHandler():
             self.save()
 
     def get_border_values(self):
+        '''
+        Get the min and max values along all three axes for the currently loaded data.
+        '''
         border_dict = {"min_x": 1000, "min_y": 1000, "min_z": 1000, "max_x": -1000, "max_y": -1000, "max_z": -1000}
         for transform in self.data.values():
             if transform.x < border_dict["min_x"]:
@@ -131,44 +158,64 @@ class TransformHandler():
         return border_dict
 
     def expand(self):
+        '''
+        Check if the currently loaded workspace needs expansion and expand if necessary.
+        '''
         expand = False
-        limit = 0 #309
+        # Theshold for maximum allowed failed solutions
+        limit = 342
         border_dict = self.get_border_values()
         expansion_grid_x = [border_dict["min_x"], border_dict["max_x"]]
         expansion_grid_y = [border_dict["min_y"], border_dict["max_y"]]
         expansion_grid_z = [border_dict["min_z"], border_dict["max_z"]]
+        expansion_dict = {"min_x": False, "max_x": False, "min_y": False, "max_y": False, "min_z": False, "max_z": False}
+
+        # Check for each position in the border region of the current workspace
+        # if it has at least the required amount of solutions and expand into
+        # that direction if that is the case
         for transform in self.data.values():
             if transform.x == border_dict["min_x"]:
                 if transform.number_solutions <= limit:
                     expansion_grid_x[0] = border_dict["min_x"] - 1
                     expand = True
+                    expansion_dict["min_x"] = True
             if transform.y == border_dict["min_y"]:
                 if transform.number_solutions <= limit:
                     expansion_grid_y[0] = border_dict["min_y"] - 1
                     expand = True
+                    expansion_dict["min_y"] = True
             if transform.z == border_dict["min_z"]:
                 if transform.number_solutions <= limit:
                     expansion_grid_z[0] = border_dict["min_z"] - 1
                     expand = True
+                    expansion_dict["min_z"] = True
             if transform.x == border_dict["max_x"]:
                 if transform.number_solutions <= limit:
                     expansion_grid_x[1] = border_dict["max_x"] + 1
                     expand = True
+                    expansion_dict["max_x"] = True
             if transform.y == border_dict["max_y"]:
                 if transform.number_solutions <= limit:
                     expansion_grid_y[1] = border_dict["max_y"] + 1
                     expand = True
+                    expansion_dict["max_y"] = True
             if transform.z == border_dict["max_z"]:
                 if transform.number_solutions <= limit:
                     expansion_grid_z[1] = border_dict["max_z"] + 1
                     expand = True
+                    expansion_dict["max_z"] = True
 
+        # Define a new grid along the new borders. If no expansion happened,
+        # this grid will be the old grid.
+        print(expansion_dict)
         x = np.arange(expansion_grid_x[0], expansion_grid_x[1] + 1)
         y = np.arange(expansion_grid_y[0], expansion_grid_y[1] + 1)
         z = np.arange(expansion_grid_z[0], expansion_grid_z[1] + 1)
         x, y, z = np.meshgrid(x, y, z)
         grid = np.column_stack([x.ravel(), y.ravel(), z.ravel()])
         skip_counter = 0
+        # Check for each position in the new grid if it is already in the
+        # current workspace and add if it that is not the case
         for step in grid:
             if not str(step.tolist()) in self.data.keys():
                 step_transform = StepTransform(step[0], step[1], step[2])
@@ -181,6 +228,9 @@ class TransformHandler():
         return expand
 
     def save(self):
+        '''
+        Save the current data as a .json file.
+        '''
         serialize_data = {}
         for key, value in self.data.items():
             serialize_data[key] = value.serialize()
@@ -188,12 +238,18 @@ class TransformHandler():
             json.dump(serialize_data, file)
 
     def load(self, filename):
+        '''
+        Load data from the given .json file.
+        '''
         with open(self.pkg_path + "/data/workspace_analysis/" + filename, "r") as file:
             serialized_data = json.load(file)
         for key, value in serialized_data.items():
             self.data[key] = StepTransform(0, 0, 0).parse(value)
 
     def save_independent(data, filepath):
+        '''
+        Static method to save given data as .json file.
+        '''
         serialize_data = {}
         for key, value in data.items():
             serialize_data[key] = value.serialize()
@@ -201,6 +257,9 @@ class TransformHandler():
             json.dump(serialize_data, file)
 
     def load_independent(filename):
+        '''
+        Static method to load data from given .json file.
+        '''
         data = {}
         with open(filename, "r") as file:
             serialized_data = json.load(file)
@@ -221,12 +280,13 @@ class WorkspaceAnalyzer():
         self.fingers = MoveGroupCommander("right_fingers", ns = "/")
         self.robot = RobotCommander()
 
+        # Wait for bio_ik service
         rospy.wait_for_service('/bio_ik/get_bio_ik')
         self.bio_ik_srv = rospy.ServiceProxy('/bio_ik/get_bio_ik', GetIK)
 
-        self.side = "top"
-        self.object_type = "book"
-        self.verbose = rospy.get_param("/handover/handover_mover/verbose")
+        # Set the object and grasp type for the workspace analysis
+        self.side = "side"
+        self.object_type = "can"
 
         # Setup FK
         self.fk_robot = URDF.from_parameter_server(key = "/robot_description")
@@ -238,7 +298,9 @@ class WorkspaceAnalyzer():
         TransformListener(self.tf_buffer)
         self.handover_frame_pub = rospy.Publisher("handover_frame_pose", PoseStamped, queue_size = 1)
 
-        self.debug = True
+        # Debug stuff
+        self.verbose = rospy.get_param("/handover/handover_mover/verbose")
+        self.debug = False
         if self.debug:
             self.debug_gripper_pose_pub = rospy.Publisher('debug/handover_mover/gripper_pose', PoseStamped, queue_size = 1, latch = True)
             self.debug_hand_pose_pub = rospy.Publisher('debug/handover_mover/hand_pose', PoseStamped, queue_size = 1, latch = True)
@@ -254,6 +316,9 @@ class WorkspaceAnalyzer():
         roscpp_shutdown()
 
     def add_pose_goal(self, request, pose, eef_link):
+        '''
+        Add pose goal to given bio_ik request
+        '''
         goal = PoseGoal()
         goal.link_name = eef_link
         goal.weight = 20.0
@@ -262,6 +327,9 @@ class WorkspaceAnalyzer():
         return request
 
     def score(self, joint_state):
+        '''
+        Calculate cost of given joint configuration
+        '''
         # Should be the maximum distance to any joint limit. Need to check joint limits if correct
         epsilon_old = math.pi
 
@@ -289,6 +357,10 @@ class WorkspaceAnalyzer():
         return score
 
     def check_pose(self, pose, manipulator, robot_state):
+        '''
+        Calculate an IK solution for the given pose and manipulator. The robot
+        state is the initial robot state to start calculating with.
+        '''
         # Set parameters based on manipulator and mode
         if manipulator == "hand":
             group_name = "right_arm"
@@ -326,6 +398,10 @@ class WorkspaceAnalyzer():
             return filtered_joint_state, result.solution_fitness
 
     def check_poses(self, gripper_pose, hand_pose):
+        '''
+        Get a joint configuration for both arms for the given poses and calculate
+        the cost of the combined configuration.
+        '''
         # To have the same initial state for both planning approaches
         initial_state = self.robot.get_current_state()
 
@@ -360,6 +436,9 @@ class WorkspaceAnalyzer():
         return self.score(combined_joint_state), hand_state, gripper_state
 
     def send_handover_frame(self, gripper_pose, hand_pose):
+        '''
+        Publish the handover frame for the given hand and gripper poses.
+        '''
         rospy.sleep(1)
         frame_pose = PoseStamped()
         frame_pose.header.frame_id = "base_footprint"
@@ -374,6 +453,9 @@ class WorkspaceAnalyzer():
         rospy.sleep(1)
 
     def create_marker(self, name):
+        '''
+        Return an empty cube list RVIZ marker.
+        '''
         marker = Marker()
         marker.header.frame_id = "base_footprint"
         marker.ns = name
@@ -385,6 +467,9 @@ class WorkspaceAnalyzer():
         return marker
 
     def create_display_state(self, initial_state, changed_state):
+        '''
+        Helper function to create a DisplayRobotState for RVIZ.
+        '''
         display_state = DisplayRobotState()
         display_state.state = initial_state
         positions = list(display_state.state.joint_state.position)
@@ -398,6 +483,9 @@ class WorkspaceAnalyzer():
         return display_state
 
     def analyze_transform(self, pos_transform):
+        '''
+        Anaylze the given transform.
+        '''
         gripper_pose = self.get_gripper_pose()
         hand_pose = self.get_hand_pose_fixed()
         self.send_handover_frame(gripper_pose, hand_pose)
@@ -474,6 +562,7 @@ class WorkspaceAnalyzer():
             hand_marker.points.append(transformed_hand.pose.position)
             gripper_marker.points.append(transformed_gripper.pose.position)
             if score < 1:
+                input("wait for screenshot \n")
                 hand_marker.colors.append(ColorRGBA(0, 1, 0, 1))
                 gripper_marker.colors.append(ColorRGBA(0, 1, 0, 1))
             else:
@@ -501,9 +590,14 @@ class WorkspaceAnalyzer():
         min_score = min(iteration_scores)
         avg_score = sum(iteration_scores)/len(iteration_scores)
 
+        # Save the resulst for the given transform
         pos_transform.set_eval_results(number_results, min_score, avg_score, iteration_results, gripper_positions, hand_positions)
 
     def calculate_fk_diff(self, joint_values, target_pose, chain_type):
+        '''
+        Calculate the difference between the desired target pose and the pose
+        actuall reached by the given joint config through FK.
+        '''
         target = list(joint_values.position)
         target = [self.robot.get_joint("torso_lift_joint").value()] + target
         if chain_type == "hand":
@@ -525,17 +619,26 @@ class WorkspaceAnalyzer():
         return pos_dist, quat_dist
 
     def setup_fingers(self):
+        '''
+        Set fingers into default, spread out pose.
+        '''
         # Values except for thumb taken from spread hand.
         joint_values = dict(rh_THJ4=1.13446, rh_LFJ4=-0.31699402670752413, rh_FFJ4=-0.23131151280059523, rh_MFJ4=0.008929532157657268, rh_RFJ4=-0.11378487918959583)
         self.fingers.set_joint_value_target(joint_values)
         self.fingers.go()
 
     def setup_fingers_together(self):
+        '''
+        Set fingers into default, parallel pose.
+        '''
         joint_values = dict(rh_THJ4=1.13446, rh_LFJ4=0, rh_FFJ4=0, rh_MFJ4=0, rh_RFJ4=0)
         self.fingers.set_joint_value_target(joint_values)
         self.fingers.go()
 
     def get_gripper_pose(self):
+        '''
+        Get the static gripper pose from where the sampling starts
+        '''
         gripper_pose = PoseStamped()
         gripper_pose.header.frame_id = "base_footprint"
         gripper_pose.pose.position.x = 0.4753863391864514
@@ -545,14 +648,17 @@ class WorkspaceAnalyzer():
         return gripper_pose
 
     def get_hand_pose_fixed(self):
+        '''
+        Get the fixed poses relative to the gripper.
+        '''
         hand_pose = self.get_gripper_pose()
-        if self.object_type == "can":
+        if self.object_type == "can" or self.object_type == "bleach" or self.object_type == "roll":
             if self.side == "top":
                 self.setup_fingers()
-                hand_pose.pose.position.x += 0.0
-                hand_pose.pose.position.y += -0.04
+                hand_pose.pose.position.x += -0.05
+                hand_pose.pose.position.y += -0.02
                 hand_pose.pose.position.z += 0.167
-                hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(-1.5708, 3.14159, 0))
+                hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(-1.5708, 3.14159, -1.5708))
                 return hand_pose
             elif self.side == "side":
                 self.setup_fingers_together()
@@ -561,36 +667,36 @@ class WorkspaceAnalyzer():
                 hand_pose.pose.position.z += 0.1
                 hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(0, -1.5708, -1.5708))
                 return hand_pose
-        elif self.object_type == "book":
-            if self.side == "top":
-                self.setup_fingers()
-                hand_pose.pose.position.x += -0.05
-                hand_pose.pose.position.y += -0.02
-                hand_pose.pose.position.z += 0.167
-                hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(-1.5708, 3.14159, -1.5708))
-                return hand_pose
-            # Not correct numbers
-            elif self.side == "side":
+            elif self.side == "side_x":
                 self.setup_fingers_together()
-                hand_pose.pose.position.x += 0.03
-                hand_pose.pose.position.y += -0.13
-                hand_pose.pose.position.z += 0.09
+                hand_pose.pose.position.x += 0.04 + 0.05
+                hand_pose.pose.position.y += -0.055
+                hand_pose.pose.position.z += 0.1
+                hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(0, -1.5708, -1.5708))
+                return hand_pose
+            elif self.side == "side_y":
+                self.setup_fingers_together()
+                hand_pose.pose.position.x += 0.04
+                hand_pose.pose.position.y += -0.055 - 0.05
+                hand_pose.pose.position.z += 0.1
                 hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(0, -1.5708, -1.5708))
                 return hand_pose
 
 def main():
-    #load = "workspace_analysis_can_side_grown.json"
+    # Specify from where to load data to continue expanding a workspace
+    # analysis. Set to None if starting a new one.
+    load = "workspace_analysis_can_side_final.json"
     rospy.init_node("workspace_analyzer")
-    #load = None
     th = TransformHandler()
     rospy.loginfo("TransformHandler started.")
+    # Start with a new block if no data was provided, otherwise continue expansion.
     if load is None:
         rospy.loginfo("No load file provided. Initialized without previous values.")
         th.initial_block()
     else:
         rospy.loginfo("Loading data from file {}.".format(load))
         th.load(load)
-    expanded = False #True
+    expanded = True
     while expanded:
         rospy.loginfo("Workspace expanded.")
         expanded = th.expand()

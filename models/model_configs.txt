@@ -1,0 +1,9 @@
+Configurations for each trained model
+
+Name: sac_model_26_02_2024_10_24; joint_values: False; pca: True; effort: True; tactile: False; one_hot: True; actor_architecture: [256, 256]; critic_architecture: [256, 256] 
+Name: sac_model_27_02_2024_12_38; joint_values: False; pca: True; effort: True; tactile: False; one_hot: True; actor_architecture: [256, 256]; critic_architecture: [256, 256] 
+Name: sac_model_28_02_2024_10_08; joint_values: False; pca: True; effort: True; tactile: False; one_hot: True; actor_architecture: [256, 256]; critic_architecture: [256, 256] 
+Name: sac_model_28_02_2024_13_15; joint_values: False; pca: False; effort: False; tactile: False; one_hot: True; actor_architecture: [256, 256]; critic_architecture: [256, 256] 
+Name: sac_model_28_02_2024_17_09; joint_values: False; pca: True; effort: True; tactile: False; one_hot: True; actor_architecture: [256, 256]; critic_architecture: [256, 256]  
+Name: sac_model_29_02_2024_13_37; joint_values: False; pca: True; effort: True; tactile: False; one_hot: True; actor_architecture: [256, 256]; critic_architecture: [256, 256] 
+Name: sac_model_19_03_2024_15_34; joint_values: False; pca: True; effort: True; tactile: False; one_hot: True; actor_architecture: [256, 256]; critic_architecture: [256, 256] 

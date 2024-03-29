@@ -1,0 +1,8 @@
+Hyperparameter Evaluation Models:
+29_02_2024_13_37: 0.001, timescaled reward, full input
+28_02_2024_17_09: 0 coeff, timescaled reward, full input
+28_02_2024_13_15: 0.05 fixed, timescaled reward, constant input
+28_02_2024_10_08: 0.1 learned, deleted intermediate reward
+27_02_2024_12_38: fixed handover and grasp pose
+26_02_2024_10_24: double train time
+

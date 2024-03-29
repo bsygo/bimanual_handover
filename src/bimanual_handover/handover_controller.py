@@ -67,7 +67,7 @@ class HandoverCommander():
         # Send request to initial_setup.
         rospy.loginfo('Sending service request to initial_setup_srv.')
         setup_mode = rospy.get_param("initial_setup")
-        if not self.initial_setup_srv(setup_mode, None).success:
+        if not self.initial_setup_srv(setup_mode).success:
             rospy.logerr('Moving to inital setup failed.')
             return False
 

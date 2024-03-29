@@ -30,7 +30,7 @@ def plot_episode_length():
     filenames = ['sac_26_02_2024_10_24_episode.json', 'sac_27_02_2024_12_38_episode.json', 'sac_28_02_2024_10_08_episode.json', 'sac_28_02_2024_13_15_episode.json', 'sac_28_02_2024_17_09_episode.json', 'sac_29_02_2024_13_37_episode.json']
     labels = ['Attempt 1', 'Attempt 2', 'Attempt 3', 'Attempt 4', 'Attempt 5', 'Attempt 6']
     x_data, y_data = read_data(filenames, pkg_path)
-    f = plt.figure(figsize=(5,5))
+    f = plt.figure(figsize=(8,5))
     for i in range(len(x_data)):
         plt.plot(x_data[i], y_data[i], label = labels[i])
     plt.xlabel("Steps")
@@ -44,12 +44,13 @@ def plot_reward():
     Plot rewards for each file in filenames.
     '''
     pkg_path = rospkg.RosPack().get_path('bimanual_handover')
+    # Use commented filenames and lables to plot values for the top grasp.
     #filenames = ['sac_19_03_2024_15_34_reward.json']
     #labels = ['Top Grasp Model']
     filenames = ['sac_26_02_2024_10_24_reward.json', 'sac_27_02_2024_12_38_reward.json', 'sac_28_02_2024_10_08_reward.json', 'sac_28_02_2024_13_15_reward.json', 'sac_28_02_2024_17_09_reward.json', 'sac_29_02_2024_13_37_reward.json']
     labels = ['Attempt 1', 'Attempt 2', 'Attempt 3', 'Attempt 4', 'Attempt 5', 'Attempt 6']
     x_data, y_data = read_data(filenames, pkg_path)
-    f = plt.figure(figsize=(5,5))
+    f = plt.figure(figsize=(8,5))
     for i in range(len(x_data)):
         plt.plot(x_data[i], y_data[i], label = labels[i])
     plt.xlabel("Steps")

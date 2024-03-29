@@ -13,7 +13,8 @@ def plot_actions_together(filenames):
     labels = ['First Action', 'Second Action', 'Third Action']
     first_action, second_action, third_action = read_data(filenames, pkg_path)
     for i in range(len(filenames)):
-        plt.figure(figsize=(5,5))
+        plt.figure(figsize=(5.5,5))
+        plt.subplots_adjust(left=0.155)
         plt.plot(first_action[i], label = labels[0])
         plt.plot(second_action[i], label = labels[1])
         plt.plot(third_action[i], label = labels[2])
@@ -30,7 +31,8 @@ def plot_actions_seperate(filenames):
     pkg_path = rospkg.RosPack().get_path('bimanual_handover')
     labels = ['Chips Can', 'Bleach Bottle', 'Paper Roll']
     first_action, second_action, third_action = read_data(filenames, pkg_path)
-    plt.figure(figsize=(5,5))
+    plt.figure(figsize=(5.5,5))
+    plt.subplots_adjust(left=0.155)
     for i in range(len(first_action)):
         plt.plot(first_action[i], label = labels[i])
     plt.xlabel("Timestep")
@@ -38,7 +40,8 @@ def plot_actions_seperate(filenames):
     plt.title("First Action")
     plt.legend()
     plt.show()
-    plt.figure(figsize=(5,5))
+    plt.figure(figsize=(5.5,5))
+    plt.subplots_adjust(left=0.155)
     for i in range(len(second_action)):
         plt.plot(second_action[i], label = labels[i])
     plt.xlabel("Timestep")
@@ -46,7 +49,8 @@ def plot_actions_seperate(filenames):
     plt.title("Second Action")
     plt.legend()
     plt.show()
-    plt.figure(figsize=(5,5))
+    plt.figure(figsize=(5.5,5))
+    plt.subplots_adjust(left=0.155)
     for i in range(len(third_action)):
         plt.plot(third_action[i], label = labels[i])
     plt.xlabel("Timestep")

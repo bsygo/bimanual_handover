@@ -91,14 +91,15 @@ class HandoverMover():
             self.debug_state_pub = rospy.Publisher('debug/handover_mover/robot_state', DisplayRobotState, queue_size = 1, latch = True)
             self.debug_gripper_state_pub = rospy.Publisher('debug/handover_mover/gripper_state', DisplayRobotState, queue_size = 1, latch = True)
             self.debug_hand_state_pub = rospy.Publisher('debug/handover_mover/hand_state', DisplayRobotState, queue_size = 1, latch = True)
+            self.debug_hand_markers_pub = rospy.Publisher('debug/handover_mover/hand_markers', Marker, queue_size = 1, latch = True)
+            self.debug_gripper_markers_pub = rospy.Publisher('debug/handover_mover/gripper_markers', Marker, queue_size = 1, latch = True)
+            self.debug_handover_marker_pub = rospy.Publisher('debug/handover_mover/handover_marker', Marker, queue_size = 1, latch = True)
 
         # Start service
         rospy.Service('handover_mover_srv', MoveHandover, self.move_handover)
         rospy.spin()
 
     def shutdown(self):
-        if self.analyse:
-            self.bag.close()
         if self.write_time:
             self.time_file.close()
         roscpp_shutdown()
@@ -150,6 +151,14 @@ class HandoverMover():
         transforms_bag.close()
         random.shuffle(transforms)
         return transforms
+        # Commented part was used for screenshots
+        '''
+        filtered_transforms = []
+        for transform in transforms:
+            if transform.transform.translation.x == 0.12 and transform.transform.translation.y == 0.06 and transform.transform.translation.z == 0.0:
+                filtered_transforms.append(transform)
+        return filtered_transforms
+        '''
 
     def get_random_sample_transformations(self, number_transforms):
         '''
@@ -303,11 +312,18 @@ class HandoverMover():
 
         return self.score(combined_joint_state), hand_state, gripper_state
 
-    def send_handover_frame(self, gripper_pose, hand_pose):
+    def send_handover_frame(self, frame_pose):
         '''
         Set pose of the handover frame for current grasp pose.
         '''
         rospy.sleep(1)
+        self.handover_frame_pub.publish(frame_pose)
+        rospy.sleep(1)
+
+    def get_handover_frame_pose(self, gripper_pose, hand_pose):
+        '''
+        Calculates the pose of the handover frame for the given gripper and hand poses.
+        '''
         frame_pose = PoseStamped()
         frame_pose.header.frame_id = "base_footprint"
         frame_pose.pose.orientation.w = 1
@@ -317,8 +333,7 @@ class HandoverMover():
         frame_pose.pose.position.y = y
         z = min(gripper_pose.pose.position.z, hand_pose.pose.position.z) + abs(gripper_pose.pose.position.z - hand_pose.pose.position.z)/2
         frame_pose.pose.position.z = z
-        self.handover_frame_pub.publish(frame_pose)
-        rospy.sleep(1)
+        return frame_pose
 
     def write_float_array_to_bag(self, topic, array):
         '''
@@ -328,11 +343,36 @@ class HandoverMover():
         array_msg.data = array
         self.bag.write(topic, array_msg)
 
+    def create_marker(self, name):
+        '''
+        Creates an empty RVIZ cube list marker.
+        '''
+        marker = Marker()
+        marker.header.frame_id = "base_footprint"
+        marker.ns = name
+        marker.type = Marker.CUBE_LIST
+        marker.action = Marker.ADD
+        marker.points = []
+        marker.colors = []
+        marker.scale = Vector3(0.01, 0.01, 0.01)
+        return marker
+
     def get_handover_transform(self, gripper_pose, hand_pose):
         '''
         Get a suitable handover pose transform for the given hand and gripper poses.
         '''
-        self.send_handover_frame(gripper_pose, hand_pose)
+        frame_pose = self.get_handover_frame_pose(gripper_pose, hand_pose)
+        self.send_handover_frame(frame_pose)
+
+        # Publish handover frame position as marker
+        if self.debug:
+            handover_marker = self.create_marker("handover_marker")
+            translated_pose = frame_pose
+            translated_pose.pose.position.x += 0.12
+            translated_pose.pose.position.y += 0.06
+            handover_marker.points.append(translated_pose.pose.position)
+            handover_marker.colors.append(ColorRGBA(0, 0, 1, 1))
+            self.debug_handover_marker_pub.publish(handover_marker)
 
         # Lookup transforms
         base_handover_transform = self.tf_buffer.lookup_transform("handover_frame", "base_footprint", rospy.Time(0))
@@ -371,6 +411,8 @@ class HandoverMover():
             poses.header.frame_id = "handover_frame"
             poses.poses = []
             initial_robot_state = self.robot.get_current_state()
+            hand_marker = self.create_marker("hand_markers")
+            gripper_marker = self.create_marker("gripper_markers")
 
         # Iterate through all transform until one falls below the stopping threshold
         rospy.loginfo("Iterating through sampled transformations.")
@@ -432,6 +474,14 @@ class HandoverMover():
                     positions = tuple(positions)
                     display_state.state.joint_state.position = positions
                     self.debug_hand_state_pub.publish(display_state)
+                hand_marker.points.append(transformed_hand.pose.position)
+                gripper_marker.points.append(transformed_gripper.pose.position)
+                if score < 1:
+                    hand_marker.colors.append(ColorRGBA(0, 1, 0, 1))
+                    gripper_marker.colors.append(ColorRGBA(0, 1, 0, 1))
+                else:
+                    hand_marker.colors.append(ColorRGBA(1, 0, 0, 1))
+                    gripper_marker.colors.append(ColorRGBA(1, 0, 0, 1))
 
             # Update current best cost
             if score < best_score:
@@ -457,6 +507,8 @@ class HandoverMover():
                 rospy.loginfo("Best score: {}".format(best_score))
                 rospy.loginfo("Best transform: {}".format(best_transform))
             self.debug_sampled_poses_pub.publish(poses)
+            self.debug_hand_markers_pub.publish(hand_marker)
+            self.debug_gripper_markers_pub.publish(gripper_marker)
 
         return best_transform, best_hand, best_gripper
 
@@ -669,32 +721,16 @@ class HandoverMover():
         if self.object_type == "can" or self.object_type == "bleach" or self.object_type == "roll":
             if self.side == "top":
                 self.setup_fingers()
-                hand_pose.pose.position.x += 0.03
-                hand_pose.pose.position.y += -0.04
+                hand_pose.pose.position.x += -0.05
+                hand_pose.pose.position.y += -0.02
                 hand_pose.pose.position.z += 0.167
-                hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(-1.5708, 3.14159, 0))
+                hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(-1.5708, 3.14159, -1.5708))
                 return hand_pose
             elif self.side == "side":
                 self.setup_fingers_together()
                 hand_pose.pose.position.x += 0.06
                 hand_pose.pose.position.y += -0.055
                 hand_pose.pose.position.z += 0.1
-                hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(0, -1.5708, -1.5708))
-                return hand_pose
-        elif self.object_type == "book":
-            if self.side == "top":
-                self.setup_fingers()
-                hand_pose.pose.position.x += -0.06
-                hand_pose.pose.position.y += 0.0
-                hand_pose.pose.position.z += 0.167
-                hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(-1.5708, 3.14159, -1.5708))
-                return hand_pose
-            # Not correct numbers
-            elif self.side == "side":
-                self.setup_fingers_together()
-                hand_pose.pose.position.x += 0.03
-                hand_pose.pose.position.y += -0.13
-                hand_pose.pose.position.z += 0.09
                 hand_pose.pose.orientation = Quaternion(*quaternion_from_euler(0, -1.5708, -1.5708))
                 return hand_pose
 

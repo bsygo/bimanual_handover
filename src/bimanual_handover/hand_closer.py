@@ -86,20 +86,12 @@ class ThresholdCloser():
         self.current_joint_state = None
         self.joint_state_sub = rospy.Subscriber('/hand/joint_states', JointState, self.joint_callback)
 
-        # Initialize debug and data collection
+        # Initialize debug
         self.debug = rospy.get_param("hand_closer/debug")
-        self.collect = rospy.get_param("hand_closer/collect")
         if self.debug:
             self.debug_pub = rospy.Publisher('debug/hand_closer/trajectory', DisplayTrajectory, latch = True, queue_size = 1)
             self.debug_snapshot_pub = rospy.Publisher('debug/hand_closer/snapshot', Bool, queue_size = 1, latch = True)
             self.debug_snapshot_pub.publish(False)
-        if self.collect:
-            rospack = rospkg.RosPack()
-            pkg_path = rospack.get_path('bimanual_handover')
-            now = datetime.now()
-            current_date = now.strftime("%d-%m-%Y-%H-%M-%S")
-            name = "closing_attempt_" + current_date + ".bag"
-            self.data_bag = Bag(pkg_path + "/data/" + name, 'w')
 
         # Start service
         rospy.Service('hand_closer_srv', HandCloserSrv, self.move_until_contacts)
@@ -200,16 +192,6 @@ class ThresholdCloser():
 
         # Go through each generated trajectory step
         for x in range(len(steps[0])):
-            # Write data into rosbag for later reuse
-            if self.collect:
-                pressure = rospy.wait_for_message('/pressure/l_gripper_motor', PressureState)
-                tactile = rospy.wait_for_message('/hand/rh/tactile', BiotacAll)
-                force = rospy.wait_for_message('/ft/l_gripper_motor', WrenchStamped)
-                joints = self.wait_for_hand_joints()
-                self.data_bag.write('obs_pressure', pressure)
-                self.data_bag.write('obs_tactile', tactile)
-                self.data_bag.write('obs_force', force)
-                self.data_bag.write('obs_joints', joints)
 
             # Decide which joints still need to be moved
             used_joints = []
@@ -239,11 +221,6 @@ class ThresholdCloser():
             # Update finger contacts
             finger_contacts = [joint_contacts[0] and joint_contacts[1], joint_contacts[2] and joint_contacts[3], joint_contacts[4] and joint_contacts[5], joint_contacts[6] and joint_contacts[7], joint_contacts[8]]
 
-            # Write joint values after movement into the rosbag
-            if self.collect:
-                joints = self.wait_for_hand_joints()
-                self.data_bag.write('res_joints', joints)
-
             # Stop if all fingers have made contact
             if sum(finger_contacts) == 5:
                 rospy.loginfo('contacts reached')
@@ -254,13 +231,9 @@ class ThresholdCloser():
                 self.joint_client.send_goal(msg)
                 self.joint_client.wait_for_result()
 
-                if self.collect:
-                    self.data_bag.close()
                 return True
 
         # Return failure if any finger still hsan't made contact
-        if self.collect:
-            self.data_bag.close()
         return True
 
 class ModelCloser():
@@ -275,7 +248,7 @@ class ModelCloser():
         model_path = self.pkg_path + rospy.get_param("hand_closer/model_closer/model_path")
         self.model = SAC.load(model_path)
         self.model.load_replay_buffer(self.pkg_path + rospy.get_param("hand_closer/model_closer/model_replay_buffer_path"))
-        self.contact_modality = rospy.get_param("hand_closer/model_closer/contact_modality")
+        self.contact_modality = rospy.get_param("hand_closer/mode")
         self.write_actions = rospy.get_param("hand_closer/model_closer/write_actions")
 
         # Set observation inputs
@@ -304,7 +277,7 @@ class ModelCloser():
         self.pca_con = sgg.SynGraspGen()
 
         # Settup relevant subscribers
-        self.closing_joints = ['rh_FFJ2', 'rh_FFJ3', 'rh_MFJ2', 'rh_MFJ3', 'rh_RFJ2', 'rh_RFJ3', 'rh_LFJ2', 'rh_LFJ3', 'rh_THJ2']
+        self.closing_joints = ['rh_FFJ2', 'rh_FFJ3', 'rh_MFJ2', 'rh_MFJ3', 'rh_RFJ2', 'rh_RFJ3', 'rh_LFJ2', 'rh_LFJ3', 'rh_THJ5']
         self.tactile_sub = rospy.Subscriber('/hand/rh/tactile', BiotacAll, self.tactile_callback)
         self.effort_sub = rospy.Subscriber('/hand/joint_states', JointState, self.effort_callback)
         self.joint_values_sub = rospy.Subscriber('/hand/joint_states', JointState, callback = self.joint_values_callback)
@@ -451,9 +424,6 @@ class ModelCloser():
         self.traj_client.send_goal(follow_traj)
         self.traj_client.wait_for_result()
 
-        #self.fingers.set_joint_value_target(result)
-        #self.fingers.go()
-
     def close_hand(self, req):
         # Set object to the requested one
         if req.object_type == "can":
@@ -462,8 +432,6 @@ class ModelCloser():
             self.current_object = [0, 1, 0]
         elif req.object_type == "roll":
             self.current_object = [0, 0, 1]
-        #elif req.object_type == "book":
-        #    self.current_object = [0, 1, 0]
 
         # Set initial values
         self.initial_tactile = deepcopy(self.current_tactile)
@@ -503,8 +471,6 @@ def init_mover():
         ModelCloser()
     elif mode == "demo":
         DemoCloser()
-    elif mode == "pca":
-        PCACloser()
     else:
         rospy.logerr("Unknown closer type: {}".format(mode))
 

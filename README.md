@@ -1,29 +1,31 @@
 # Overview
-This code belongs to my master's thesis "Bimanual Robot-to-Robot Handover Utilizing Multi-Modal Feedback". It covers the mentioned pipeline to perform bimanual handovers as well as the corresponding code for training a new grasping model, and performing a workplace analysis. Check the thesis for any conceptual questions. The next section gives an overview over the structure of this project. For starting anything, check the section about the desired part first.
+This code belongs to my master's thesis "Bimanual Robot-to-Robot Handover Utilizing Multi-Modal Feedback". It covers the mentioned pipeline to perform bimanual handovers on a PR2 robot as well as the corresponding code for training a new grasping model, and performing a workspace analysis. Check the thesis for any conceptual questions. The next section gives an overview over the code structure of this project. For starting anything, check the section about the desired part first. This repository contains all the required code, but not all data for the thesis.
+
+![](docs/handover_image.png)
 
 # Structure
-The config folder contains two types of files: yaml files and rviz configs. The yaml config files set the parameters for any handover or training attempt, so it is important to set them to the desired parameters before starting anything. Each section explains their config file in detail. The exception is pc\_filter.yaml, which is a config file for the robot\_self\_filter. It should not need any adaptation. The rviz configs are just helpful for visualizations and include the settings used to make screenshots from various angles of the workspace analysis for the thesis.
+The *config* folder contains two types of files: yaml files and rviz configs. The yaml config files set the parameters for any handover or training attempt, so it is important to set them to the desired parameters before starting anything. Each section explains their config file in detail. The exception is *pc\_filter.yaml*, which is a config file for the [robot\_body\_filter](https://github.com/peci1/robot_body_filter). It should not need any adaptation. The rviz configs are just helpful for visualizations and include the settings used to make screenshots from various angles of the workspace analysis for the thesis.
 
-The launch folder holds the launch files for this project. Only three out of the four available are designed to be launched manually. The pc\_filter.launch is called by other launch files exclusively. The files full.launch, train.launch, and workspace\_analysis.launch start the handover pipeline, the training process, and the workspace analysis respectively. Before calling one, it is advised to visit the section about the corresponding task first.
+The *launch* folder holds the launch files for this project. Only three out of the four available are designed to be launched manually. The *pc\_filter.launch* is called by other launch files exclusively. The files *full.launch*, *train.launch*, and *workspace\_analysis.launch* start the handover pipeline, the training process, and the workspace analysis respectively. Before calling one, it is advised to visit the section about the corresponding task first.
 
-The data folder contains a saved point cloud and a script to load it for the demo version of the pipeline. Further, the workspace\_analysis folder contains bags of available optimal handover poses to sample from. When not just using the git repository but the version conatining all data, the data folder also contains the subfolders actions, plots, and records. The first two contain data relevant for plotting, explained later during the available scripts. The last one contains data of the evaluation of the side and top grasp models. Additionally, the workspace analysis subfolder then also holds the raw analysis data for further visualiization.
+The *data* folder contains a saved point cloud and a script to load it for the demo version of the pipeline. Further, the *data/workspace\_analysis* folder contains bags of available optimal handover poses to sample from. When not just using the git repository but the version containing all data, it also contains the subfolders *data/actions*, *data/plots*, and *data/records*. The first two contain data relevant for plotting, explained later during the available scripts part. The last one contains data of the evaluation of the side and top grasp models. Additionally, the *data/workspace\_analysis* subfolder then also holds the raw analysis data for further visualiization.
 
-The models folder contains all available finished RL grasping models as options to use in the pipeline. The two best models for side and top grasps are listed in the config file for the pipeline. This folder also contains the replay buffer for each model. When using the full data version of this repository, it also contains a subfolder including all checkpoints of these models.
+The *models* folder contains all available finished RL grasping models as options to use in the pipeline. The two best models for side and top grasps are listed in the config file for the pipeline. This folder also contains the replay buffer for each model. Additionally, some .txt files provide further information about the models. When using the full data version of this repository, it also contains a subfolder *models/checkpoints*, which includes all checkpoints of these models.
 
-The src folder contains most parts of the pipeline, including all c++ code. Even though some files are theoretically callable, do not call them but use the correct launch files instead. Following is a list of contained files with a short description of their functionality:
-- handover\_controller.py: contains the main controller for the pipeline. It calls every service of the pipeline in the correct order to perform handovers. 
-- initial\_setup.py: contains the service to move the robot in the default starting configuration and grasp the object initially with the two-finger gripper with the help of a human operator.
-- capture\_pc.py: contains the service to move the gripper with the object before the RGB-D camera to gather a point cloud of the object. The point is published under the topic "pc/pc\_raw" for further processing.
-- pc\_crop.cpp: contains the service to receive a point cloud from the topic "pc/pc\_raw" and apply a cropbox filter to it. This point cloud is then send further on the topic "pc/pc\_cropped", which is the input topic for the robot\_self\_filter. It also receives point clouds on the topic "pc/pc\_filtered", which is the output topic of the robot\_self\_filter, and transforms them into the correct pose for later handover pose filtering. This transformed point cloud is published on the topic "pc/pc\_final".
-- capture\_pc.py: waits to receive a point cloud on the topic "pc/pc\_final". Once received, it moves the arm with the gripper back into the default pose and sends a confirmation.
-- handover\_mover.py: contains the service to choose a graps and handover pose and move to these poses. 
-- hand\_closer.py: contains the service for performing the grasping action with the hand.
-- grasp\_tester.py: contains the service to test a grasp by checking the force applied to the left arm through a small upwards motion of the hand.
-- finish\_handover.py: contains the service to retract the gripper once a grasp test was successul and move the hand into the finish pose.
-- syn\_gras\_gen.py: contains the code to generate joint configurations with the help of hand synergies and vice versa. Used for model training and when using a trained model for grasping during pipeline execution.
-- env.py: contains the definition of the training environment for the RL training. It fulfills the "gym" interface of "stable-baselines3".
-- workspace\_analyzer.py: contains code for performing a workspace analysis.
-- bio\_ik\_helper\_functions.py: contains static functions helpful for generationg bio\_ik requests.
+The *src* folder contains the code for the pipeline. Even though some files are theoretically callable, do not call them but use the correct launch files instead. Following is a list of contained files with a short description of their functionality:
+- *handover\_controller.py*: contains the main controller for the pipeline. It calls every service of the pipeline in the correct order to perform handovers. 
+- *initial\_setup.py*: contains the service to move the robot in the default starting configuration and grasp the object initially with the two-finger gripper with the help of a human operator.
+- *capture\_pc.py*: contains the service to move the gripper with the object before the RGB-D camera to gather a point cloud of the object. The point is published under the topic "pc/pc\_raw" for further processing.
+- *pc\_crop.cpp*: contains the service to receive a point cloud from the topic "pc/pc\_raw" and apply a cropbox filter to it. This point cloud is then send further on the topic "pc/pc\_cropped", which is the input topic for the *robot\_body\_filter*. It also receives point clouds on the topic "pc/pc\_filtered", which is the output topic of the *robot\_self\_filter*, and transforms them into the correct pose for later handover pose filtering. This transformed point cloud is published on the topic "pc/pc\_final".
+- *capture\_pc.py*: waits to receive a point cloud on the topic "pc/pc\_final". Once received, it moves the arm with the gripper back into the default pose and sends a confirmation.
+- *handover\_mover.py*: contains the service to choose a graps and handover pose and move to these poses. 
+- *hand\_closer.py*: contains the service for performing the grasping action with the hand.
+- *grasp\_tester.py*: contains the service to test a grasp by checking the force applied to the left arm through a small upwards motion of the hand.
+- *finish\_handover.py*: contains the service to retract the gripper once a grasp test was successul and move the hand into the finish pose.
+- *syn\_gras\_gen.py*: contains the code to generate joint configurations with the help of hand synergies and vice versa. Used for model training and when using a trained model for grasping during pipeline execution.
+- *env.py*: contains the definition of the training environment for the RL training. It fulfills the "gym" interface of "stable-baselines3".
+- *workspace\_analyzer.py*: contains code for performing a workspace analysis.
+- *bio\_ik\_helper\_functions.py*: contains static functions helpful for generationg "bio\_ik" requests.
 
 Finally comes the scripts folder. Besides the train.py strict, any script can be called manually. They include:
 - train.py: script gets called through the train.launch file. 
@@ -139,17 +141,27 @@ To visualize the a workspace analysis or transform parts of it into a rosbag, on
 - write\_bag: write the top threshold percentage data into a rosbag as TransformStamped msgs.
 - set\_intersection: publish a volume of the the intersection of the best percentage of data according to all metrics. The specified threshold is the percentage cutoff.
 - write\_intersection: the same as set\_intersection, but instead of publsihing a volume write the resulting transforms as TransformStamped msgs in a rosbag instead.
+
 Additionally, one can manually specify the option to halve the displayed volume by set\_volume by manually setting the variable "xy\_halved" or "xz\_halved" to `True` in "visualize\_workspace.py" lines 409 and 410.
+
 **IMPORTANT: The workspace visualize writes data always in a file named after the date and time of its startup. When calling multiple write operations, they will overwrite each other. To write into different files, restart the visualizer in between.**
 
 # Installation
 Workspace installation:
-- create virtualenv with: virtualenv name 
-- clone git repository for bimanual\_handover and bimanual\_handover\_msgs
-- pip install required packages
-- make orocos\_kinematics\_dynamics build:
-	- go into python\_orocos\_kdl
-	- comment out find\_package(pybind11 ...) and related lines in CMakeLists.txt
-	- only keep add subdirectory(pybind11) and comment out the rest until pybind11\_add\_module
-- build workspace
-- call `python setup.py install` to install the bimanual handover package
+- Create virtualenv with: virtualenv name 
+- Initialize a ros workspace in the virtualenv
+- Move to the src folder
+- Clone git repository for bimanual\_handover and bimanual\_handover\_msgs. This can be done thorough `git clone git@github.com:bsygo/bimanual_handover.git` and `git clone git@github.com:bsygo/bimanual_handover_msgs.git` respectively.
+- Pip install all required packages
+- Get and install specific [moveit](https://github.com/bsygo/moveit/tree/pr-moveit-added-ACM-python-methods) version.
+- Get and install the [orocos\_kinematics\_dynamics](https://github.com/orocos/orocos_kinematics_dynamics). Make it build through:
+	- Go into python\_orocos\_kdl
+	- Comment out find\_package(pybind11 ...) and related lines in CMakeLists.txt
+	- Only keep add subdirectory(pybind11) and comment out the rest until pybind11\_add\_module
+- Get and install the [hrl\_kdl](https://amir-yazdani.github.io/post/pykdl/) repository.
+    - One might need to change a line of code in /hrl-kdl/pykdl\_utils/src/pykfl\_utils/kdl\_kiinematics.py. This change is at line 41. One has to change the line to `from pykdl_utils.kdl_parser import kdl_tree_from_urdf_model`.
+- Get and install the hand\_synergy repository. This is a private repository, so please ask the owner for access if interested. It can be found at [hand\_synergy](https://github.com/TAMS-Group/hand_synergy).
+- Get and install the [robot\_body\_filter](https://github.com/peci1/robot_body_filter) repository.
+- Build workspace
+- Call `python setup.py install` to install the bimanual handover package
+

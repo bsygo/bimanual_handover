@@ -13,31 +13,32 @@ The *data* folder contains a saved point cloud and a script to load it for the d
 The *models* folder contains all available finished RL grasping models as options to use in the pipeline. The two best models for side and top grasps are listed in the config file for the pipeline. This folder also contains the replay buffer for each model. Additionally, some .txt files provide further information about the models. When using the full data version of this repository, it also contains a subfolder *models/checkpoints*, which includes all checkpoints of these models.
 
 The *src* folder contains the code for the pipeline. Even though some files are theoretically callable, do not call them but use the correct launch files instead. Following is a list of contained files with a short description of their functionality:
-- *handover\_controller.py*: contains the main controller for the pipeline. It calls every service of the pipeline in the correct order to perform handovers. 
-- *initial\_setup.py*: contains the service to move the robot in the default starting configuration and grasp the object initially with the two-finger gripper with the help of a human operator.
-- *capture\_pc.py*: contains the service to move the gripper with the object before the RGB-D camera to gather a point cloud of the object. The point is published under the topic "pc/pc\_raw" for further processing.
-- *pc\_crop.cpp*: contains the service to receive a point cloud from the topic "pc/pc\_raw" and apply a cropbox filter to it. This point cloud is then send further on the topic "pc/pc\_cropped", which is the input topic for the *robot\_body\_filter*. It also receives point clouds on the topic "pc/pc\_filtered", which is the output topic of the *robot\_self\_filter*, and transforms them into the correct pose for later handover pose filtering. This transformed point cloud is published on the topic "pc/pc\_final".
-- *capture\_pc.py*: waits to receive a point cloud on the topic "pc/pc\_final". Once received, it moves the arm with the gripper back into the default pose and sends a confirmation.
-- *handover\_mover.py*: contains the service to choose a graps and handover pose and move to these poses. 
-- *hand\_closer.py*: contains the service for performing the grasping action with the hand.
-- *grasp\_tester.py*: contains the service to test a grasp by checking the force applied to the left arm through a small upwards motion of the hand.
-- *finish\_handover.py*: contains the service to retract the gripper once a grasp test was successul and move the hand into the finish pose.
+- *handover\_controller.py*: Contains the main controller for the pipeline. It calls every service of the pipeline in the correct order to perform handovers. 
+- *initial\_setup.py*: Contains the service to move the robot in the default starting configuration and grasp the object initially with the two-finger gripper with the help of a human operator.
+- *capture\_pc.py*: Contains the service to move the gripper with the object before the RGB-D camera to gather a point cloud of the object. The point is published under the topic "pc/pc\_raw" for further processing.
+- *pc\_crop.cpp*: Contains the service to receive a point cloud from the topic "pc/pc\_raw" and apply a cropbox filter to it. This point cloud is then send further on the topic "pc/pc\_cropped", which is the input topic for the *robot\_body\_filter*. It also receives point clouds on the topic "pc/pc\_filtered", which is the output topic of the *robot\_self\_filter*, and transforms them into the correct pose for later handover pose filtering. This transformed point cloud is published on the topic "pc/pc\_final".
+- *capture\_pc.py*: Waits to receive a point cloud on the topic "pc/pc\_final". Once received, it moves the arm with the gripper back into the default pose and sends a confirmation.
+- *handover\_mover.py*: Contains the service to choose a graps and handover pose and move to these poses. 
+- *hand\_closer.py*: Contains the service for performing the grasping action with the hand.
+- *grasp\_tester.py*: Contains the service to test a grasp by checking the force applied to the left arm through a small upwards motion of the hand.
+- *finish\_handover.py*: Contains the service to retract the gripper once a grasp test was successul and move the hand into the finish pose.
 - *syn\_gras\_gen.py*: contains the code to generate joint configurations with the help of hand synergies and vice versa. Used for model training and when using a trained model for grasping during pipeline execution.
-- *env.py*: contains the definition of the training environment for the RL training. It fulfills the "gym" interface of "stable-baselines3".
-- *workspace\_analyzer.py*: contains code for performing a workspace analysis.
-- *bio\_ik\_helper\_functions.py*: contains static functions helpful for generationg "bio\_ik" requests.
+- *env.py*: Contains the definition of the training environment for the RL training. It fulfills the "gym" interface of "stable-baselines3".
+- *workspace\_analyzer.py*: Contains code for performing a workspace analysis.
+- *bio\_ik\_helper\_functions.py*: Contains static functions helpful for generationg "bio\_ik" requests.
 
 Finally comes the *scripts* folder. Besides the *train.py* script, any script can be called manually. They include:
-- *train.py*: script gets called through the *train.launch* file. 
-- *launch\_handover.py*: script needs to be called once the handover pipeline is ready after a call of *full.launch*. It allows to start the handover of one object. 
-- *select\_random\_object.py*: script just prints a random generated list of objects used for training. 
-- *dummy\_action\_server.py*: start a dummy action server for the "/hand/rh\_trajectory\_controller/follow\_joint\_trajectory" action server, that does nothing, to test the threshold and model closers without the real robot.
+- *train.py*: Script gets called through the *train.launch* file. 
+- *launch\_handover.py*: Script needs to be called once the handover pipeline is ready after a call of *full.launch*. It allows to start the handover of one object. 
+- *select\_random\_object.py*: Script just prints a random generated list of objects used for training. 
+- *dummy\_action\_server.py*: Start a dummy action server for the "/hand/rh\_trajectory\_controller/follow\_joint\_trajectory" action server, that does nothing, to test the threshold and model closers without the real robot.
 - *dummy\_publisher.py*: publish dummy msgs for "/hand/joint\_states", "/ft/l\_gripper\_motor", and "/hand/rh/tactile", that contain no information, to test the threshold and model closers, as well as the grasp tester, without a real robot.
+
 In the *scripts/visualizers* subfolder exist additional scripts for visualizing data for the thesis:
-- *plot\_actions.py*: plot recorded network outputs, loaded from .json files. The filenames need to be specified manually in the script as the variable "filenames". The current setting produces all action plots of the thesis, if the action files are in *data/actions*.
-- *plot\_cost\_function.py*: produces a plot of the cost function used in the thesis.
-- *plot\_training\_data.py*: produces plots of the training data for every model. Currently, it produces all plots for the trained models with the side grasp during the hyperparameter optimization. To plot the values for the top grasp, use the commented part under the "plot\_reward" function. For this to work, the data has to be available in *data/plots*.
-- *visualize\_workspace.py*: allows to plot a workspace analysis in different ways. Refer to the workspace analysis section for further details.
+- *plot\_actions.py*: Plot recorded network outputs, loaded from .json files. The filenames need to be specified manually in the script as the variable "filenames". The current setting produces all action plots of the thesis, if the action files are in *data/actions*.
+- *plot\_cost\_function.py*: Produces a plot of the cost function used in the thesis.
+- *plot\_training\_data.py*: Produces plots of the training data for every model. Currently, it produces all plots for the trained models with the side grasp during the hyperparameter optimization. To plot the values for the top grasp, use the commented part under the "plot\_reward" function. For this to work, the data has to be available in *data/plots*.
+- *visualize\_workspace.py*: Allows to plot a workspace analysis in different ways. Refer to the workspace analysis section for further details.
 
 When using the full data version of this repository, it also contains an additional logs folder, which contains the tensorboard log data of all training attemps. Load them using `tensorboard --logdir logs` while in the main directory.
 
@@ -45,20 +46,20 @@ Other files are only necessary to build the workspace.
 
 # Handover Pipeline
 The config file for the handover pipeline is *config.yaml*. Before starting handovers attempts or training, make sure its parameters are set correctly. These parameters are:
-- *handover\_type*: determines how much of the handover pipeline gets executed. Available modes are "train" and "full". The first option only executes the pipeline until the hand and gripper are at the correct handover pose, without the hand grasping the object. The second option executes the full pipeline, finishing with the hand moving into the final pose. This option does not matter for the training pipeline.
-- *initial\_setup*: currently only "fixed" is available.
-- *record\_attempt*: whether or not to write information about the handover attempts into a .txt file under data/records. Useful for evaluating trained models, keep False for training.
+- *handover\_type*: Determines how much of the handover pipeline gets executed. Available modes are "train" and "full". The first option only executes the pipeline until the hand and gripper are at the correct handover pose, without the hand grasping the object. The second option executes the full pipeline, finishing with the hand moving into the final pose. This option does not matter for the training pipeline.
+- *initial\_setup*: Currently only "fixed" is available.
+- *record\_attempt*: Whether or not to write information about the handover attempts into a .txt file under data/records. Useful for evaluating trained models, keep False for training.
 - *handover\_mover*:
-    - *grasp\_pose\_mode*: sets how the pipeline determines the grasp pose of the hand relative to the gripper. Options are "pc" and "fixed". If set to "pc", the grasp pose is determined by the point cloud reading of the object. Otherwise, the point cloud collection step is skipped entirely and hardcoded values are used. This option influences the training.
-    - *handover\_pose\_mode*: sets how the pipeline chooses the handover pose. Options are "fixed", "load\_sample", or "random\_sample". The first option uses fixed values for the handover pose. The option "load\_sample" samples the handover pose from available poses provided by the file specified in the next paramter. Otherwise, "random\_sample" samples random handover poses from a grid before the robot. Both sampling strategies continue until they find a handover pose below the hardcoded threshold determined through workspace analyses in the thesis or they checked all poses. Highly relevant for training
-    - *side\_sample\_file*: only relevant if *handover\_pose\_mode* is set to "load\_sample". Determines the rosbag with the handover poses to sample from for side grasps. The file has to be under *data/workspace\_analysis*. Only relevant for training if set to "load\_sample".
-    - *top\_sample\_file*: only relevant if *handover\_pose\_mode* is set to "load\_sample". Determines the rosbag with the handover poses to sample from for top grasps. The file has to be under *data/workspace\_analysis*. Only relevant for training if set to "load\_sample".
-    - *debug*: provide additional output for debugging.
-    - *verbose*: print additional output to the console if *debug* is also set to True.
-    - *write\_time*: write the time it takes to find a handover pose into a .txt file. This file will be written under *data/records*. Turn off for training.
+    - *grasp\_pose\_mode*: Sets how the pipeline determines the grasp pose of the hand relative to the gripper. Options are "pc" and "fixed". If set to "pc", the grasp pose is determined by the point cloud reading of the object. Otherwise, the point cloud collection step is skipped entirely and hardcoded values are used. This option influences the training.
+    - *handover\_pose\_mode*: Sets how the pipeline chooses the handover pose. Options are "fixed", "load\_sample", or "random\_sample". The first option uses fixed values for the handover pose. The option "load\_sample" samples the handover pose from available poses provided by the file specified in the next paramter. Otherwise, "random\_sample" samples random handover poses from a grid before the robot. Both sampling strategies continue until they find a handover pose below the hardcoded threshold determined through workspace analyses in the thesis or they checked all poses. Highly relevant for training.
+    - *side\_sample\_file*: Only relevant if *handover\_pose\_mode* is set to "load\_sample". Determines the rosbag with the handover poses to sample from for side grasps. The file has to be under *data/workspace\_analysis*. Only relevant for training if set to "load\_sample".
+    - *top\_sample\_file*: Only relevant if *handover\_pose\_mode* is set to "load\_sample". Determines the rosbag with the handover poses to sample from for top grasps. The file has to be under *data/workspace\_analysis*. Only relevant for training if set to "load\_sample".
+    - *debug*: Provide additional output for debugging.
+    - *verbose*: Print additional output to the console if *debug* is also set to True.
+    - *write\_time*: Write the time it takes to find a handover pose into a .txt file. This file will be written under *data/records*. Turn off for training.
 - *grasp\_tester*:
-    - *debug*: additional output for debugging.
-    - *direction*: axis of the force sensor to use for grasp testing. Only tested for "y", so do not change.
+    - *debug*: Additional output for debugging.
+    - *direction*: Axis of the force sensor to use for grasp testing. Only tested for "y", so do not change.
 - *hand\_closer*: Not relevant for training.
     - *closer\_type*: Decides how the hand is closed for grasping. Options are "threshold", "model", or "demo". The last option is used when running a test without the real robot. The "threshold" option closes the hand by adding a small constant value to the current joint value of each finger until the fingers make contact with the object. The "model" option uses an RL learned neural network to close the hand by utilizing hand synergies.
     - *debug*: Additional output for debugging.
@@ -86,23 +87,23 @@ Once these parameters are set, one can start the pipeline with the following ste
 
 # Training
 As the training uses part of the handover pipeline, make sure the correct parameters for the pipeline are set as well. Only options before the *hand\_closer* parameters can be relevant. Refer to the handover pipeline section for more details. Before starting a training, make sure the correct parameters are set in the config file *train.yaml*. These parameters are:
-- *timesteps*: for how many timesteps the model should train. For the thesis, this value mostly remained at 12000 steps.
-- *model\_type*: the RL algorithm used for training. Theoretically, "ppo" is available as well but recent tests and the thesis only considered "sac", so the other model might encounter issues.
-- *model\_path*: if it is desired to train a new model, set it to an empty string. Otherwise, state the filepath to the model for continuing the training, starting from the "bimanual\_handover" directory. Make sure the corresponding replay buffer file lies in the same directory.
-- *checkpoint*: only relevant if continuing a training. Set to True if the training continues froma checkpoint. Otherwise, for example when continuing the training of a finished model, set it to False.
-- *contact\_modality*: which modality to use for contact checking with the object. While "tactile" is theoretically possible, it can cause issues and the thesis only used "effort".
--  *env\_check*: whether or not to call the environment check from "stable-baselines3" to make sure the environment is correct.
-- *record*: whether or not to record the actions and observations of the model during training as a .txt file. Not used for the thesis.
-- *observation\_space*: choose the inputs for the state space. The only recently tested ones are *pca*, *effort*, and *one\_hot*. Options are:
+- *timesteps*: For how many timesteps the model should train. For the thesis, this value mostly remained at 12000 steps.
+- *model\_type*: The RL algorithm used for training. Theoretically, "ppo" is available as well but recent tests and the thesis only considered "sac", so the other model might encounter issues.
+- *model\_path*: If it is desired to train a new model, set it to an empty string. Otherwise, state the filepath to the model for continuing the training, starting from the "bimanual\_handover" directory. Make sure the corresponding replay buffer file lies in the same directory.
+- *checkpoint*: Only relevant if continuing a training. Set to True if the training continues froma checkpoint. Otherwise, for example when continuing the training of a finished model, set it to False.
+- *contact\_modality*: Which modality to use for contact checking with the object. While "tactile" is theoretically possible, it can cause issues and the thesis only used "effort".
+-  *env\_check*: Whether or not to call the environment check from "stable-baselines3" to make sure the environment is correct.
+- *record*: Whether or not to record the actions and observations of the model during training as a .txt file. Not used for the thesis.
+- *observation\_space*: Choose the inputs for the state space. The only recently tested ones are *pca*, *effort*, and *one\_hot*. Options are:
     - *joint\_values*: 9D vector of the joint values for the 9 closing joints.
     - *pca*: 3D hand synergy encoding of the current joint configuration of the hand.
     - *effort*: 9D effort difference values for the 9 clsoing joints.
     - *tactile*: 5D tactile difference values for the 5 BioTac sensors, one on each fingertip.
     - *one\_hot*: 3D one-hot encoding of the object currently used.
 - *architecture*:
-    - *entropy\_coefficient*: the value of the entropy coefficient, as used during hyperparameter optimzation in the thesis.
-    - *actor*: list of hidden layer sizes for the actor network.
-    - *critic*: list of hidden layer sizes for the critic network.
+    - *entropy\_coefficient*: The value of the entropy coefficient, as used during hyperparameter optimzation in the thesis.
+    - *actor*: List of hidden layer sizes for the actor network.
+    - *critic*: List of hidden layer sizes for the critic network.
 
 Now, to start and execute a training follow these steps:
 1. Launch the training process through `roslaunch bimanual_handover train.launch`
@@ -118,7 +119,7 @@ The training saves checkpoints every 100 training steps. If the training gets in
 The config file for the workspace analysis is *workspace.yaml*. It contains the following options:
 - *load*: Specify the file name of the workspace analysis to continue expanding. The .json file has to be under *data/workspace\_analysis*. Set to an empty string to start a new workspace analyis.
 - *grasp\_type*: The grasp type to perform the workspace analysis with. Options are "top", "side", "side\_x", and "side\_y". The last two option correspond to the x- and y-shifted side grasp, respectively. Set to the correct type used in the loaded file, if a file is loaded.
-- *object\_type*: currently makes no difference for the analysis. Options are "can", "bleach", and "roll".
+- *object\_type*: Currently makes no difference for the analysis. Options are "can", "bleach", and "roll".
 - *debug*: Additional information for debugging.
 - *verbose*: Log additional information to the console if debug is also turned on.
 
@@ -152,6 +153,12 @@ Additionally, one can manually specify the option to halve the displayed volume 
 To make sure the objects have enough space to perform the required grasps on them above the gripper, follow roughly the following images on how to insert the object into the gripper:
 
 Side Grasp:
+<p align="middle">
+  <img src="docs/can_side_grasp.jpg" width="100" />
+  <img src="docs/bleach_side_grasp.jpg" width="100" /> 
+  <img src="docs/roll_side_grasp.jpg" width="100" />
+</p>
+
 ![Chips Can](docs/can_side_grasp.jpg)
 ![Bleach Bottle](docs/bleach_side_grasp.jpg)
 ![Paper Roll](docs/roll_side_grasp.jpg)

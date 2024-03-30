@@ -154,19 +154,17 @@ To make sure the objects have enough space to perform the required grasps on the
 
 Side Grasp:
 <p align="middle">
-  <img src="docs/can_side_grasp.jpg" width="100" />
-  <img src="docs/bleach_side_grasp.jpg" width="100" /> 
-  <img src="docs/roll_side_grasp.jpg" width="100" />
+  <img src="docs/can_side_grasp.jpg" width="200" />
+  <img src="docs/bleach_side_grasp.jpg" width="200" /> 
+  <img src="docs/roll_side_grasp.jpg" width="200" />
 </p>
 
-![Chips Can](docs/can_side_grasp.jpg)
-![Bleach Bottle](docs/bleach_side_grasp.jpg)
-![Paper Roll](docs/roll_side_grasp.jpg)
-
 Top Grasp:
-![Chips Can](docs/can_top_grasp.jpg)
-![Bleach Bottle](docs/bleach_top_grasp.jpg)
-![Paper Roll](docs/roll_top_grasp.jpg)
+<p align="middle">
+  <img src="docs/can_top_grasp.jpg" width="200" />
+  <img src="docs/bleach_top_grasp.jpg" width="200" /> 
+  <img src="docs/roll_top_grasp.jpg" width="200" />
+</p>
 
 # Installation
 Workspace installation:

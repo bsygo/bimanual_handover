@@ -277,7 +277,18 @@ class WorkspaceAnalyzer():
         self.hand = MoveGroupCommander("right_arm", ns = "/")
         self.hand.get_current_pose() # To initiate state monitor: see moveit issue #2715
         self.left_arm = MoveGroupCommander("left_arm", ns = "/")
+        self.left_arm.set_max_velocity_scaling_factor(1.0)
+        self.left_arm.set_max_acceleration_scaling_factor(1.0)
+        self.right_arm = MoveGroupCommander("right_arm_pr2", ns = "/")
+        self.right_arm.set_max_velocity_scaling_factor(1.0)
+        self.right_arm.set_max_acceleration_scaling_factor(1.0)
         self.fingers = MoveGroupCommander("right_fingers", ns = "/")
+        self.head = MoveGroupCommander("head", ns = "/")
+        self.head.set_max_velocity_scaling_factor(1.0)
+        self.head.set_max_acceleration_scaling_factor(1.0)
+        self.torso = MoveGroupCommander("torso", ns = "/")
+        self.torso.set_max_velocity_scaling_factor(1.0)
+        self.torso.set_max_acceleration_scaling_factor(1.0)
         self.robot = RobotCommander()
 
         # Wait for bio_ik service
@@ -285,8 +296,8 @@ class WorkspaceAnalyzer():
         self.bio_ik_srv = rospy.ServiceProxy('/bio_ik/get_bio_ik', GetIK)
 
         # Set the object and grasp type for the workspace analysis
-        self.side = "side"
-        self.object_type = "can"
+        self.side = rospy.get_param("/handover/workspace_analysis/grasp_type")
+        self.object_type = rospy.get_param("/handover/workspace_analysis/object_type")
 
         # Setup FK
         self.fk_robot = URDF.from_parameter_server(key = "/robot_description")
@@ -299,8 +310,8 @@ class WorkspaceAnalyzer():
         self.handover_frame_pub = rospy.Publisher("handover_frame_pose", PoseStamped, queue_size = 1)
 
         # Debug stuff
-        self.verbose = rospy.get_param("/handover/handover_mover/verbose")
-        self.debug = False
+        self.verbose = rospy.get_param("/handover/workspace_analysis/verbose")
+        self.debug = rospy.get_param("/handover/workspace_analysis/debug")
         if self.debug:
             self.debug_gripper_pose_pub = rospy.Publisher('debug/handover_mover/gripper_pose', PoseStamped, queue_size = 1, latch = True)
             self.debug_hand_pose_pub = rospy.Publisher('debug/handover_mover/hand_pose', PoseStamped, queue_size = 1, latch = True)
@@ -312,8 +323,24 @@ class WorkspaceAnalyzer():
             self.debug_hand_markers_pub = rospy.Publisher('debug/handover_mover/hand_markers', Marker, queue_size = 1, latch = True)
             self.debug_gripper_markers_pub = rospy.Publisher('debug/handover_mover/gripper_markers', Marker, queue_size = 1, latch = True)
 
+        # Move the robot in the default configuration for the workspace analysis
+        self.move_initial()
+
     def shutdown(self):
         roscpp_shutdown()
+
+    def move_initial(self):
+        '''
+        Move head, torso, and both arms of the robot into the default configuration for the workspace analysis.
+        '''
+        self.head.set_joint_value_target([0.0, 0.872665])
+        self.head.go()
+        self.torso.set_joint_value_target([0.0167])
+        self.torso.go()
+        self.left_arm.set_named_target("left_arm_to_side")
+        self.left_arm.go()
+        self.right_arm.set_named_target("right_arm_to_side")
+        self.right_arm.go()
 
     def add_pose_goal(self, request, pose, eef_link):
         '''
@@ -562,7 +589,6 @@ class WorkspaceAnalyzer():
             hand_marker.points.append(transformed_hand.pose.position)
             gripper_marker.points.append(transformed_gripper.pose.position)
             if score < 1:
-                input("wait for screenshot \n")
                 hand_marker.colors.append(ColorRGBA(0, 1, 0, 1))
                 gripper_marker.colors.append(ColorRGBA(0, 1, 0, 1))
             else:
@@ -685,12 +711,12 @@ class WorkspaceAnalyzer():
 def main():
     # Specify from where to load data to continue expanding a workspace
     # analysis. Set to None if starting a new one.
-    load = "workspace_analysis_can_side_final.json"
+    load = rospy.get_param("/handover/workspace_analysis/load")
     rospy.init_node("workspace_analyzer")
     th = TransformHandler()
     rospy.loginfo("TransformHandler started.")
     # Start with a new block if no data was provided, otherwise continue expansion.
-    if load is None:
+    if load == "":
         rospy.loginfo("No load file provided. Initialized without previous values.")
         th.initial_block()
     else:

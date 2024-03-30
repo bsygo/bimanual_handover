@@ -1,0 +1,7 @@
+workspace_analysis:
+    load: "" # empty string or filename
+    # example filename for side grasp: "workspace_analysis_side_final.json"
+    grasp_type: side # top, side, side_x, side_y
+    object_type: can
+    debug: False
+    verbose: False

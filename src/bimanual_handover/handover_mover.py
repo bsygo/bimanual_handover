@@ -143,13 +143,17 @@ class HandoverMover():
         '''
         Get the transforms from the specified bag file.
         '''
-        filename = rospy.get_param("handover_mover/sample_file")
+        if self.side == "side":
+            filename = rospy.get_param("handover_mover/side_sample_file")
+        elif self.side == "top":
+            filename = rospy.get_param("handover_mover/top_sample_file")
         transforms = []
         transforms_bag = rosbag.Bag(self.pkg_path + "/data/workspace_analysis/" + filename, 'r')
         for _, msg, _ in transforms_bag.read_messages():
             transforms.append(msg)
         transforms_bag.close()
         random.shuffle(transforms)
+        rospy.loginfo("Loaded transforms from file.")
         return transforms
         # Commented part was used for screenshots
         '''
@@ -166,15 +170,15 @@ class HandoverMover():
         '''
         translation_step = 0.06
         # Values from workspace analysis
-        if self.object_type == "can" and self.side == "side":
-            min_linear_limits = [0, 2, -4]
+        if self.side == "side":
+            min_linear_limits = [-10, -11, -8]
             min_linear_limits = [translation_step * limit for limit in min_linear_limits]
-            max_linear_limits = [2, 5, 0]
+            max_linear_limits = [5, 10, 10]
             max_linear_limits = [translation_step * limit for limit in max_linear_limits]
         else:
-            min_linear_limits = [0, 0, -3]
+            min_linear_limits = [-8, -12, -10]
             min_linear_limits = [translation_step * limit for limit in min_linear_limits]
-            max_linear_limits = [1, 4, 0]
+            max_linear_limits = [8, 10, 11]
             max_linear_limits = [translation_step * limit for limit in max_linear_limits]
 
         rotation_step = math.pi * 30/180
@@ -383,12 +387,11 @@ class HandoverMover():
         hand_pose = do_transform_pose(hand_pose, base_handover_transform)
 
         # Get the early stopping cost threshold and maximum pose distance for the IK solution
-        if self.object_type == "can" or self.object_type == "bleach" or self.object_type == "roll":
-            # From workspace analysis
-            if self.side == "side":
-                score_limit = 0.19
-            else:
-                score_limit = 0.16
+        # From workspace analysis
+        if self.side == "side":
+            score_limit = 0.19
+        else:
+            score_limit = 0.15
         deviation_limit = 0.01
 
         # Initialize variables to find best transforms

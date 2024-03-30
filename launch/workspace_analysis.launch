@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <launch>
         <group ns="handover">
-                <rosparam file="$(find bimanual_handover)/config/config.yaml" />
+                <rosparam file="$(find bimanual_handover)/config/workspace.yaml" />
                 <node name="handover_frame_publisher_node" pkg="bimanual_handover" type="handover_frame_publisher.py" output="screen" />
                 <node name="workspace_analyzer_node" pkg="bimanual_handover" type="workspace_analyzer.py" output="screen" />
         </group>

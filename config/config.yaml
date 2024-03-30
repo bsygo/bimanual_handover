@@ -1,5 +1,5 @@
 # Handover controller
-handover_type: train # full or train
+handover_type: full # full or train
 initial_setup: fixed
 record_attempt: False
 
@@ -7,9 +7,8 @@ record_attempt: False
 handover_mover: 
     grasp_pose_mode: fixed # pc or fixed
     handover_pose_mode: load_sample # fixed, load_sample or random_sample
-    sample_file: workspace_analysis_top_intersection.bag 
-    # side sample file: workspace_analysis_side_intersection.bag 
-    # top sample file: workspace_analysis_top_intersection.bag
+    side_sample_file: workspace_analysis_side_intersection.bag 
+    top_sample_file: workspace_analysis_top_intersection.bag
     debug: False
     verbose: False
     write_time: False
@@ -20,7 +19,7 @@ grasp_tester:
     direction: y
 
 hand_closer: 
-    closer_type: demo # threshold, model or demo
+    closer_type: model # threshold, model or demo
 
     # Threshold closer
     debug: False
@@ -29,12 +28,10 @@ hand_closer:
     # Model closer
     model_closer:
         write_actions: False
-        model_path: '/models/sac_model_29_02_2024_13_37'
-        # side model: '/models/sac_model_29_02_2024_13_37' 
-        # top model: '/models/sac_model_19_03_2024_15_34'
-        model_replay_buffer_path: '/models/sac_model_29_02_2024_13_37_replay_buffer'
-        # side model buffer: '/models/sac_model_29_02_2024_13_37_replay_buffer' 
-        # top model buffer: '/models/sac_model_19_03_2024_15_34_replay_buffer'
+        side_model_path: '/models/sac_model_29_02_2024_13_37'
+        top_model_path: '/models/sac_model_19_03_2024_15_34'
+        side_model_buffer: '/models/sac_model_29_02_2024_13_37_replay_buffer' 
+        top_model_buffer: '/models/sac_model_19_03_2024_15_34_replay_buffer'
 
         # Structure of observation space for given model
         observation_space:                                                              

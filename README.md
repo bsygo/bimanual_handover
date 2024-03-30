@@ -2,7 +2,7 @@
 This code belongs to my master's thesis "Bimanual Robot-to-Robot Handover Utilizing Multi-Modal Feedback". It covers the mentioned pipeline to perform bimanual handovers as well as the corresponding code for training a new grasping model, and performing a workplace analysis. Check the thesis for any conceptual questions. The next section gives an overview over the structure of this project. For starting anything, check the section about the desired part first.
 
 # Structure
-The config folder contains two types of files: config files and rviz configs. The config files set the parameters for any handover or training attempt, so it is important to set them to the desired parameters before starting anything. Each section explains their config file in detail. The exception is pc\_filter.yaml, which is a config file for the robot\_self\_filter. It should not need any adaptation. The rviz configs are just helpful for visualizations and include the settings used to make screenshots from various angles of the workspace analysis for the thesis.
+The config folder contains two types of files: yaml files and rviz configs. The yaml config files set the parameters for any handover or training attempt, so it is important to set them to the desired parameters before starting anything. Each section explains their config file in detail. The exception is pc\_filter.yaml, which is a config file for the robot\_self\_filter. It should not need any adaptation. The rviz configs are just helpful for visualizations and include the settings used to make screenshots from various angles of the workspace analysis for the thesis.
 
 The launch folder holds the launch files for this project. Only three out of the four available are designed to be launched manually. The pc\_filter.launch is called by other launch files exclusively. The files full.launch, train.launch, and workspace\_analysis.launch start the handover pipeline, the training process, and the workspace analysis respectively. Before calling one, it is advised to visit the section about the corresponding task first.
 
@@ -29,13 +29,15 @@ Finally comes the scripts folder. Besides the train.py strict, any script can be
 - train.py: script gets called through the train.launch file. 
 - launch\_handover.py: script needs to be called once the handover pipeline is ready after a call of full.launch. It allows to start the handover of one object. 
 - select\_random\_object.py: script just prints a random generated list of objects used for training. 
+- dummy\_action\_server.py: start a dummy action server for the "/hand/rh\_trajectory\_controller/follow\_joint\_trajectory" action server, that does nothing, to test the threshold and model closers without the real robot.
+- dummy\_publisher.py: publish dummy msgs for "/hand/joint\_states", "/ft/l\_gripper\_motor", and "/hand/rh/tactile", that contain no information, to test the threshold and model closers, as well as the grasp tester, without a real robot.
 In the visualizers subfolder exist additional scripts for visualizing data for the thesis:
 - plot\_actions.py: plot recorded network outputs, loaded from .json files. The filenames need to be specified manually in the script as the variable "filenames". The current setting produces all action plots of the thesis, if the action files are in the "actions" subfolder under the "data" folder.
 - plot\_cost\_function.py: produces a plot of the cost function used in the thesis.
 - plot\_training\_data.py: produces plots of the training data for every model. Currently, it produces all plots for the trained models with the side grasp during the hyperparameter optimization. To plot the values for the top grasp, use the commented part under the "plot\_reward" function. For this to work, the data has to be available in the "plots" subfolder fo the "data" folder.
 - visualize\_workspace.py: allows to plot a workspace analysis in different ways. Refer to the workspace analysis section for further details.
 
-When using the full data version of this repository, it also contains an additional logs folder, which contains the tensorboard log data of all training attemps. Load them using `tensorboard ..logdir logs` while in the bimanual\_handover directory.
+When using the full data version of this repository, it also contains an additional logs folder, which contains the tensorboard log data of all training attemps. Load them using `tensorboard --logdir logs` while in the bimanual\_handover directory.
 
 Other files are only necessary to build the workspace.
 
@@ -47,7 +49,8 @@ The config file for the handover pipeline is the config.yaml file. Before starti
 - handover\_mover: parameters for the handover\_mover
     - grasp\_pose\_mode: sets how the pipeline determines the grasp pose of the hand relative to the gripper. Options are "pc" and "fixed". If set to "pc", the grasp pose is determined by the point cloud reading of the object. Otherwise, the point cloud collection step is skipped entirely and hardcoded values are used. This option influences the training.
     - handover\_pose\_mode: sets how the pipeline chooses the handover pose. Options are "fixed", "load\_sample", or "random\_sample". The first option uses fixed values for the handover pose. The option "load\_sample" samples the handover pose from available poses provided by the file specified in the next paramter. Otherwise, "random\_sample" samples random handover poses from a grid before the robot. Both sampling strategies continue until they find a handover pose below the hardcoded threshold determined through workspace analyses in the thesis or they checked all poses. Highly relevant for training
-    - sample\_file: only relevant if handover\_pose\_mode is set to load\_sample. Determines the rosbag with the handover poses to sample from. The file has to be under data/workspace\_analysis. Only relevant for training if set to load\_sample.
+    - side\_sample\_file: only relevant if handover\_pose\_mode is set to load\_sample. Determines the rosbag with the handover poses to sample from for side grasps. The file has to be under data/workspace\_analysis. Only relevant for training if set to load\_sample.
+    - top\_sample\_file: only relevant if handover\_pose\_mode is set to load\_sample. Determines the rosbag with the handover poses to sample from for top grasps. The file has to be under data/workspace\_analysis. Only relevant for training if set to load\_sample.
     - debug: provide additional output for debugging.
     - verbose: print additional output to the console of debug is also set to True.
     - write\_time: write the time it takes to find a handover pose into a .txt file. This file will be written under data/records. Turn off for training.
@@ -60,8 +63,10 @@ The config file for the handover pipeline is the config.yaml file. Before starti
     - mode: which modality is used to determine contact with the object. Available options are "effort" and "tactile", but only "effort" is tested recently and used for the thesis.
     - model\_closer: specific parameters only relevant to the model close.
         - write\_actions: whether or not to write the network output in a .txt file under data/actions.
-        - model\_path: the path to the model used for the model closer.
-        - model\_replay\_buffer\_path: the path to the replay buffer for the used model.
+        - side\_model\_path: the path to the model used for the model closer for side grasps.
+        - top\_model\_path: the path to the model used for the model closer for top grasps.
+        - side\_model\_buffer: the path to the replay buffer for the used model for side grasps.
+        - top\_model\_buffer: the path to the replay buffer for the used model for top grasps.
         - observation\_space: choose the inputs for the state space. The only tested ones are pca, effort, and one\_hot. Options are:
             - joint\_values: 9D vector of the joint values for the 9 closing joints.
             - pca: 3D hand synergy encoding of the current joint configuration of the hand.
@@ -76,7 +81,6 @@ Once these parameters are set, one can start the pipeline with the following ste
 2. Once the pipeline has started and publishes the info "handover\_controller\_srv initialized", one can start a handover by calling `roslaunch bimanual_handover launch_handover.py object_type grasp_type`. Available object\_types are "can", "bleach", and "roll", while possible grasp types are "top" and "side".
 3. Next, the initial\_setup will ask if the current object needs changing. If no object is currently a gripper, consider this as an object change. Enter "n" if the object should not be changed, otherwise enter "y". If the object has to be changed, a new prompt will appear with a warning that the next step will open the gripper to release the currently held opject. Press enter when ready to catch the object. Afterward, a final prompt will warn that the gripper closes in the next step. Place the object in the gripper and press enter. Once finished, the handover process continues until the end.
 4. To start an additional attempt, repeat with step 2.
-**IMPORTANT: As it is currently necessary to manually specify the sample file and model path for the top and side grasp separately, it is necessary to restart the pipeline before switching to the other grasp type if using either option.**
 
 # Training
 As the training uses part of the handover pipeline, make sure the correct parameters for the pipeline are set as well. Every option before the hand\_closer parameters is relevant. Refer to the handover pipeline section for more details. Before starting a training, make sure the correct parameters are set in the config file train.yaml. These parameters are:
@@ -108,12 +112,17 @@ Now, to start and execute a training follow these steps:
 The training saves checkpoints every 100 training steps. If the training gets interrupted, change the yaml file to load the last available checkpoint and restart the training. The checkpoints are saved in the subfolder checkpoints under the folder models, while the finished models are saved directly in the models folder.
 
 # Workspace Analysis
-For starting a workspace analysis, follow these steps:
-1. The workspace analysis does not have a config file. Instead, one has to set the file from where to load an exisiting workspace analysis, for continuing to expand it, in the "main" function in "workspace\_analyzer.py". The "load" variable needs to contain the filename and the file needs to be in the "workspace\_analysis" subfolder of the "data" folder. If a new workspace analysis should be started instead, set the "load" variable to None. 
-2. Additionally, one needs to manually specify the object and graspy type for the workspace analysis in the "\_\_init\_\_" function of the "workspace\_analyzer" class, lines 288 and 289. The available object types are "can", "bleach", and "roll", while the available grasp types are "top", "side", "side\_x", and "side\_y". The latter two options corresponding to the x- and y-shifted side grasp, respectively. 
-3. For launching a workspace analysis, one now has to launch `roslaunch tams_pr2_moveit_config demo.launch` first to start a moveit and rviz demo session for the PR2. 
-4. Now, the PR2 needs to be set into the correct default pose for the workspace analysis. For this, manually start "initial\_setup.py" by calling `rosrun bimanual_handover initial_setup.py` and manually call the service `initial_setup_srv`. Refer to the handover pipeline section for more information about the behavior of this service. Afterward, manuall move the left arm of the PR2 into its default pose through rviz by planning and executing a motion of the "left\_arm" group to the named target pose "left\_arm\_to\_side".
-5. Now, a workspace analysis can be started by calling `roslaunch bimanual_handover workspace_analysis.launch`
+The config file for the workspace analysis is workspace.yaml. It contains the following options:
+- load: specify the file name of the workspace analysis to continue expanding. The .json file has to be under data/workspace\_analysis. Set to an empty string to start a new workspace analyis.
+- grasp\_type: the grasp type to perform the workspace analysis with. Options are "top", "side", "side\_x", and "side\_y". The last two option correspond to the x- and y-shifted side grasp, respectively. Set to the correct type used in the loaded file, if a file is loaded.
+- object\_type: currently makes no difference for the analysis. Options are "ca,", "bleach", and "roll".
+- debug: additional information for debugging.
+- verbose: log additional information to the console if debug is also turned on.
+
+Once the parameters in the config file are set correctly, start the analysis through the foloowing steps:
+1. Start a demo session of the PR2 through `roslaunch tams_pr2_moveit_config demo.launch`.
+2. Now launch the workspace analysis through `roslaunch bimanual_handover workspace_analysis.launch`. It will initially move the robot into the correct configuration and then start the analysis.
+3. Wait until the process finishes. The workspace analysis .json file will be under data/workspace\_analysis.
 
 To visualize the a workspace analysis or transform parts of it into a rosbag, one need to use start the visualizer through `rosrun bimanual_handover visualize_workspace.py`. Now, one can perform varios actions by sending ros messages to the correct topics. All topics are in the namespace `workspace_visualizer` and a message can be manuall send to it through `rostopic pub /workspace_visualizer/topic_name` and autocompleting the call with "tab" to set the desired message parameters. The available topics are:
 - load\_json: load data from the specified .json workspace analysis file. It has to be under the workspace\_analysis subfolder of the data folder. Loading data is the first step required for most other topics.

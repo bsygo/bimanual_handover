@@ -96,7 +96,7 @@ class HandoverCommander():
 
         # Send request to hand_closer.
         rospy.loginfo('Sending service request to hand_closer_srv.')
-        closing_response = self.hand_closer_srv(object_type)
+        closing_response = self.hand_closer_srv(object_type, side)
         rospy.loginfo('Closing response: {}'.format(closing_response.finished))
         if not closing_response.finished:
             rospy.logerr('Closing hand failed.')
@@ -118,7 +118,7 @@ class HandoverCommander():
                     return False
 
         rospy.loginfo('Sending service request to finish_handover_srv.')
-        self.finish_handover_srv('placeholder')
+        self.finish_handover_srv(None)
 
         rospy.loginfo('Handover finished.')
 

@@ -19,12 +19,8 @@ import actionlib
 from control_msgs.msg import FollowJointTrajectoryAction, FollowJointTrajectoryGoal
 from copy import deepcopy
 from moveit_msgs.msg import DisplayTrajectory, RobotTrajectory
-from sr_robot_msgs.msg import BiotacAll
 from pr2_msgs.msg import PressureState
 from geometry_msgs.msg import WrenchStamped
-import actionlib
-from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
-from control_msgs.msg import FollowJointTrajectoryAction, FollowJointTrajectoryGoal
 import json
 
 class DemoCloser():
@@ -245,9 +241,12 @@ class ModelCloser():
         # Setup and load model paths
         rospack = rospkg.RosPack()
         self.pkg_path = rospack.get_path('bimanual_handover')
-        model_path = self.pkg_path + rospy.get_param("hand_closer/model_closer/model_path")
-        self.model = SAC.load(model_path)
-        self.model.load_replay_buffer(self.pkg_path + rospy.get_param("hand_closer/model_closer/model_replay_buffer_path"))
+        self.side_model_path = self.pkg_path + rospy.get_param("hand_closer/model_closer/side_model_path")
+        self.side_model = SAC.load(self.side_model_path)
+        self.side_model.load_replay_buffer(self.pkg_path + rospy.get_param("hand_closer/model_closer/side_model_buffer"))
+        self.top_model_path = self.pkg_path + rospy.get_param("hand_closer/model_closer/top_model_path")
+        self.top_model = SAC.load(self.top_model_path)
+        self.top_model.load_replay_buffer(self.pkg_path + rospy.get_param("hand_closer/model_closer/top_model_buffer"))
         self.contact_modality = rospy.get_param("hand_closer/mode")
         self.write_actions = rospy.get_param("hand_closer/model_closer/write_actions")
 
@@ -264,6 +263,7 @@ class ModelCloser():
         self.fingers.set_max_acceleration_scaling_factor(1.0)
 
         # Set initial values
+        self.grasp_type = None
         self.current_object = [0, 0, 0]
         self.initial_effort = None
         self.current_effort = None
@@ -345,7 +345,12 @@ class ModelCloser():
             for value in self.current_object:
                 observation.append(value)
         observation = np.array(observation, dtype = np.float32)
-        action, _states = self.model.predict(observation, deterministic = True)
+
+        # Get the action from the model corresponding to the chosen grasp type
+        if self.grasp_type == "side":
+            action, _states = self.side_model.predict(observation, deterministic = True)
+        elif self.grasp_type == "top":
+            action, _states = self.top_model.predict(observation, deterministic = True)
         return action
 
     def exec_action(self, action):
@@ -425,6 +430,9 @@ class ModelCloser():
         self.traj_client.wait_for_result()
 
     def close_hand(self, req):
+        # Set grasp type to the requested one
+        self.grasp_type = req.grasp_type
+
         # Set object to the requested one
         if req.object_type == "can":
             self.current_object = [1, 0, 0]
